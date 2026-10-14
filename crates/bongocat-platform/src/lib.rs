@@ -127,6 +127,17 @@ pub fn pick_model_cover(
     model_source_picker::pick_model_cover(on_complete)
 }
 
+/// Let the user choose a plugin package to install.
+///
+/// The selection vocabulary is shared with the model pickers: the dialog only
+/// reports a real regular file, and the plugin manager decides whether the bytes
+/// are an installable package.
+pub fn pick_plugin_package(
+    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+) -> Result<(), ModelSourcePickerError> {
+    model_source_picker::pick_plugin_package(on_complete)
+}
+
 pub fn startup_item_state(
     environment: StartupItemEnvironment,
 ) -> Result<StartupItemState, StartupItemError> {

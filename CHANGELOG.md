@@ -6,6 +6,9 @@
 
 - Added a plugin system: plugins run as separate processes and extend the model window through a versioned protocol.
 - Added a plugin center under Settings that lists, enables, disables and configures discovered plugins.
+- Plugins are distributed and installed as ZIP packages, and the plugin center can now install a package from disk, uninstall a plugin, and reset its data separately.
+- The Pomodoro plugin now shows its countdown in the model window, staying in sync with starting, pausing and resetting the timer.
+- Plugins keep running when the settings window is closed.
 
 ### 🎨 Interface
 

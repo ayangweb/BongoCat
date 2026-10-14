@@ -67,6 +67,39 @@ impl PluginRegistry {
             .map(|e| (e.metadata.clone(), e.state))
             .collect()
     }
+    /// Whether a plugin currently has a running process.
+    pub fn is_running(&self, id: &str) -> bool {
+        self.entries
+            .get(id)
+            .is_some_and(|entry| entry.process.is_some())
+    }
+    /// Drop a plugin from the registry entirely, stopping its process first.
+    ///
+    /// Used by uninstall, where the package the entry pointed at no longer
+    /// exists: keeping the entry would leave a card for a plugin that is gone.
+    pub fn forget(&mut self, id: &str) {
+        if let Some(mut entry) = self.entries.remove(id)
+            && let Some(mut process) = entry.process.take()
+        {
+            let _ = process.stop();
+        }
+    }
+    /// Drop every registered plugin whose id is not in `present`.
+    ///
+    /// Discovery runs this after a scan so a package removed behind the product's
+    /// back does not keep a stale entry, while a plugin that is still on disk
+    /// keeps its state and configuration across rescans.
+    pub fn forget_missing(&mut self, present: &[String]) {
+        let missing = self
+            .entries
+            .keys()
+            .filter(|id| !present.iter().any(|kept| kept == *id))
+            .cloned()
+            .collect::<Vec<_>>();
+        for id in missing {
+            self.forget(&id);
+        }
+    }
     pub fn enable(&mut self, id: &str) -> Result<PluginOutput, RegistryError> {
         let entry = self
             .entries

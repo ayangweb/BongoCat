@@ -6,6 +6,7 @@
 //! modules beside it.
 
 use super::*;
+use bongocat_plugin_hud::{HudConsumer, HudViewport, HudViewportReporter};
 
 pub(crate) const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -211,6 +212,18 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) retry_backoff: FrameRetryBackoff,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The newest plugin layer, consumed once per tick and drawn as the topmost
+    /// layer. `None` disables plugin UI, which is what a build or a test with no
+    /// plugin host looks like.
+    pub(crate) hud_consumer: Option<HudConsumer>,
+    /// Where a click on a plugin's control is reported.
+    pub(crate) hud_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    /// Where the window reports its own size and backing scale, so the plugin
+    /// service composes a layer that matches the window it will be drawn into.
+    pub(crate) hud_viewport_reporter: Option<HudViewportReporter>,
+    /// The plugin layer's hit-test data, mirrored onto the window state because
+    /// the window procedure reads it through `GWLP_USERDATA`.
+    pub(crate) hud_targets: OverlayPluginTargets,
     pub(crate) hover: PointerHoverHide,
     /// Inactivity hide shares the session's frame tick and the hover hide's
     /// fade window: both are temporary presentation states layered on the
@@ -248,6 +261,9 @@ impl ProductOverlaySession {
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
         } = interaction_sinks;
         validate_options(options)?;
         let initial_frame = render_consumer
@@ -270,6 +286,9 @@ impl ProductOverlaySession {
                 return Err(error);
             }
         };
+        // The plugin pointer route is attached after the window exists because
+        // its sender has no meaning to a window that cannot yet receive a click.
+        overlay.window._state.plugin_interaction_sender = hud_interaction_sender.clone();
         let mut frames_presented = 0;
         if runtime_client.snapshot().overlay_visible {
             if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
@@ -312,6 +331,10 @@ impl ProductOverlaySession {
             retry_backoff: FrameRetryBackoff::default(),
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
+            hud_targets: OverlayPluginTargets::default(),
             hover: PointerHoverHide::default(),
             idle: IdleHide::default(),
             placement: OverlayPlacementConstraint::default(),
@@ -420,6 +443,10 @@ impl ProductOverlaySession {
         if !minimized {
             self.overlay.sync_window_size()?;
         }
+        // Plugin UI rides along with the model: the newest layer is taken before
+        // the frame is drawn, and the window's own size is reported at the same
+        // point so the next composed layer matches it.
+        self.take_plugin_layer()?;
         if self.options.keep_inside_screen && !minimized {
             let bounds = self.overlay.window.bounds()?;
             // A box that is still outside the displays is only corrected once it
@@ -603,6 +630,62 @@ impl ProductOverlaySession {
         self.overlay.taskbar_icon_is_visible()
     }
 
+    /// Take the newest plugin layer and upload it to the GPU model.
+    ///
+    /// A layer whose window size no longer matches the panel is dropped rather
+    /// than stretched: the next composed frame matches the live size, and a
+    /// stretched panel would put a plugin's buttons where its own hit testing
+    /// does not expect them.
+    fn take_plugin_layer(&mut self) -> Result<(), OverlayError> {
+        let width = self.overlay.renderer.width;
+        let height = self.overlay.renderer.height;
+        // The window reports its own numbers before the layer is drawn: the plugin
+        // service composes against the newest report, so a resize is visible to it
+        // on the same tick the window takes its new size. The window is
+        // per-monitor DPI aware and its buffers are physical pixels, so the DPI
+        // over 96 is the backing scale the panel is rasterized at.
+        if let Some(reporter) = &self.hud_viewport_reporter {
+            let dpi = unsafe { GetDpiForWindow(self.overlay.window.hwnd) };
+            let scale = if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 } as f32;
+            reporter.publish(HudViewport::new(width, height, scale));
+        }
+        let Some(consumer) = &self.hud_consumer else {
+            return Ok(());
+        };
+        let layer = consumer.take_latest();
+        if let Some(layer) = layer.as_ref() {
+            self.hud_targets = OverlayPluginTargets::from_layer(layer, width, height);
+            self.push_plugin_targets();
+        } else if width != self.hud_targets.window_width || height != self.hud_targets.window_height
+        {
+            // The window changed size while no plugin published anything new:
+            // the old hit-test data no longer describes the window.
+            self.hud_targets = OverlayPluginTargets::default();
+            self.push_plugin_targets();
+        }
+        // SAFETY: the device and its immediate context belong to this session's
+        // renderer and are used on its owner thread; the layer's pixels are
+        // uploaded before the borrow ends.
+        unsafe {
+            self.overlay.renderer.model.set_plugin_layer(
+                &self.overlay.renderer.device,
+                layer.as_ref(),
+                width,
+                height,
+            )
+        }
+        .map_err(windows_error("upload the plugin layer"))?;
+        Ok(())
+    }
+
+    /// Publish the plugin hit-test data to the window procedure.
+    ///
+    /// The window procedure reaches its state through `GWLP_USERDATA` on this
+    /// same thread, so the data is copied rather than borrowed from the session.
+    fn push_plugin_targets(&mut self) {
+        self.overlay.window._state.plugin_targets = self.hud_targets.clone();
+    }
+
     /// Advance the hover hide and push the resulting window presentation.
     ///
     /// Hover hide needs a trustworthy pointer position. A missing sample (no
@@ -694,6 +777,11 @@ impl ProductOverlaySession {
     ) -> Result<NativeOverlay, OverlayError> {
         let mut overlay =
             NativeOverlay::create(frame, options, bounds, context_menu_sender, resize_sender)?;
+        // A replacement window has no plugin pointer route of its own: the
+        // interaction sender and the current hit-test data travel with it, or its
+        // first click would find no control there.
+        overlay.window._state.plugin_interaction_sender = self.hud_interaction_sender.clone();
+        overlay.window._state.plugin_targets = self.hud_targets.clone();
         let alpha = if options.window_mode {
             1.0
         } else {

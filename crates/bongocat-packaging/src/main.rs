@@ -444,8 +444,10 @@ usage: cargo run -p bongocat-packaging -- [options]
 Builds the Production product and packages the host platform release artifacts.
 
 options:
-  --prepare-dev-plugins    build local plugin packages for Development only;
-                           takes no other option and never modifies app bundles
+  --prepare-dev-plugins    build local plugins into ZIP packages under
+                           target/plugins; installing them is the Development
+                           product's own lifecycle. Takes no other option and
+                           never modifies app bundles or the product's storage
   --target <triple>        one of aarch64-apple-darwin,
                             x86_64-apple-darwin, x86_64-pc-windows-msvc;
                             defaults to the host target

@@ -1,6 +1,6 @@
 # ADR-0090: Independent Rust plugin processes
 
-Status: accepted for implementation; platform acceptance remains open
+Status: accepted; implemented, platform acceptance remains open
 Date: 2026-10-14
 
 ## Research and decision
@@ -56,11 +56,14 @@ Plugins own config defaults, validation, migration, state bytes and both view
 surfaces. Views are bounded typed trees (text, action, boolean and integer
 controls) with scoped IDs, predefined model-window anchors and settings surfaces.
 The host renders a plugin's model view where the model window is shown and its
-settings tree in the plugin center; the dedicated model-window overlay adapter is
-the remaining platform work behind the P4-PLUGINS exit conditions, not a per-plugin
-rule. Host owns per-environment/per-plugin storage and atomic writes. Config
-and state survive disable/upgrade; uninstall removes executable but preserves data
-until explicit reset. Configuration is prepared by the plugin before host commit.
+settings tree in the plugin center. The model view is a dedicated overlay layer,
+not part of the Live2D model draw: the platform overlay composites the plugin HUD
+into its own texture, quad and clip transform, and the layer's hit rectangles are
+routed back to the plugin as click messages on both macOS Metal and Windows D3D11.
+The adapter is shared host code, not a per-plugin rule. Host owns
+per-environment/per-plugin storage and atomic writes. Config and state survive
+disable/upgrade; uninstall removes executable but preserves data until explicit
+reset. Configuration is prepared by the plugin before host commit.
  No GPUI entity, GPU handle or platform pointer crosses the boundary.
 Future primitives/capabilities require a protocol minor/version gate, not bespoke
 plugin IDs. Native binaries are trusted code, **not an OS sandbox**; capability
@@ -69,16 +72,31 @@ explain that trust boundary. Production refuses unsigned catalogs/packages;
 Development scans its explicit local package directory and is not Production.
 
 `just dev` and `just dev-smoke` first invoke `just dev-plugins`: the packaging
-crate independently builds each local package and prepares its manifest and
-executable in Development storage. App bundles still contain no plugins. The
-center discovers those prepared packages, not source folders or an empty
-unprepared directory. Runtime directory overrides are not accepted; Production
-and Development always use their respective storage roots. Discovery runs on the
-background executor and distinguishes loading, failure/retry and an empty list.
-The example's display name is Pomodoro and its source package is `plugins/pomodoro`;
-its existing `com.bongocat.countdown` ID and binary name remain stable to avoid
-changing persisted identity.
-It is a focus countdown, not yet an automatic work/break-cycle implementation.
+crate independently builds each local package into a ZIP under `target/plugins`,
+exactly the shape a release ships, and stops there. The build tool never writes
+the application store — the store has one writer, the product's own install
+lifecycle, and a Development build side-loads those ZIPs through that same path
+after startup. App bundles still contain no plugins. Runtime directory overrides
+are not accepted; Production and Development always use their respective storage
+roots. Discovery runs on the background executor and distinguishes loading,
+failure/retry and an empty list. The example's display name is Pomodoro and its
+source package is `plugins/pomodoro`; its existing `com.bongocat.countdown` ID and
+binary name remain stable to avoid changing persisted identity. It is a focus
+countdown, not yet an automatic work/break-cycle implementation, and its model
+view is the countdown panel that the plugin keeps in sync with start, pause and
+reset.
+
+Installed packages live under `<plugin_dir>/packages/<id>/<version>/` with a
+`current` pointer, and per-plugin data under `<plugin_dir>/data/<id>/`. Install
+extracts into staging, validates the manifest, preserves Unix executable bits and
+atomically renames into place before switching `current`; uninstall removes the
+executable but preserves data until an explicit reset.
+
+`bongocat-plugin-service` owns every plugin for the whole application lifetime.
+The settings window is only a client: closing it does not stop plugins, stop
+ticks or stop the model-window layer. The service drains commands, advances
+plugin ticks on a fixed interval and republishes the composed HUD layer only when
+the viewport or the plugin frames actually change.
 
 Install/update prepare a versioned directory, verify signed bytes, then atomically
 switch the selected manifest; old running artifacts are stopped before switch.

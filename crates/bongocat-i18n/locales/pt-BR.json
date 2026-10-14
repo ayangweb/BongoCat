@@ -552,6 +552,10 @@
     "failed": "Falha ao carregar",
     "loading": "Carregando plugins…",
     "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
-    "retry": "Tentar novamente"
+    "retry": "Tentar novamente",
+    "install": "Instalar pacote…",
+    "uninstall": "Desinstalar",
+    "reset_data": "Redefinir dados",
+    "version": "Versão %{version}"
   }
 }

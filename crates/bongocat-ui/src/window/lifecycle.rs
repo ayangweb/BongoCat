@@ -6,6 +6,7 @@ pub fn open_settings_window(
     window_state: SettingsWindowState,
     seed: SettingsWindowSeed,
     navigation_memory: SettingsNavigationMemory,
+    plugin_service: Option<bongocat_plugin_service::PluginServiceClient>,
     request_quit: impl Fn(&mut App) + 'static,
     request_update: impl Fn(&mut App) + 'static,
     cx: &mut App,
@@ -70,12 +71,22 @@ pub fn open_settings_window(
                     let mut view =
                         SettingsView::new(client, seed, request_quit, request_update, window, cx);
                     view.set_navigation_memory(navigation_memory.clone());
+                    if let Some(plugin_service) = plugin_service.clone() {
+                        view.set_plugin_host(plugins_host::PluginHost::new(plugin_service));
+                    }
                     view.refresh(cx);
                     view
                 });
                 view.update(cx, |view, cx| {
                     view.start_snapshot_polling(cx);
-                    view.start_plugin_polling(seed.environment, cx);
+                    // The plugin center renders the service's current state on the
+                    // first frame rather than after its first poll: a window that
+                    // opened onto an installed plugin must not flash an empty page.
+                    if view.plugin_host.is_available() {
+                        view.plugin_host.refresh();
+                        view.start_plugin_center_polling(cx);
+                        cx.notify();
+                    }
                 });
                 opened_settings_view.borrow_mut().replace(view.clone());
                 let appearance_view = view.downgrade();

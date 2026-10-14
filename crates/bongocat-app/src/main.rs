@@ -21,6 +21,7 @@
 
 #[cfg(test)]
 mod binary_tests;
+mod dev_plugins;
 mod gamepad_observer;
 mod model_cover;
 mod overlay_placement;
@@ -193,6 +194,12 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    /// The one owner of the installed plugins.
+    ///
+    /// It outlives every window on purpose: a plugin's timer keeps counting while
+    /// the settings window is closed, and the model window draws the panels the
+    /// service composes.
+    plugin_service: Option<bongocat_plugin_service::PluginService>,
     /// The currently open settings window, if any; close destroys it.
     settings_window: Option<SettingsWindowHandle>,
     /// Process-local memory for the last settings sidebar page.
@@ -327,6 +334,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
     let application_log = application.log_handle();
+    // The plugin service starts before the overlay, because the overlay is what
+    // draws the layer the service composes: the window has to be handed the
+    // consumer end before its first tick. A store that cannot be opened is not
+    // fatal — the plugin center reports it and the cat still runs.
+    let plugin_storage_root = application.storage_root().to_path_buf();
+    let (plugin_service, plugin_overlay_handles) =
+        match bongocat_plugin_service::PluginService::start(&plugin_storage_root, 16) {
+            Ok(started) => (Some(started.0), Some(started.1)),
+            Err(error) => {
+                application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                        .with_context(ApplicationLogContext::Service("plugin"))
+                        .with_context(ApplicationLogContext::Reason("plugin_service_unavailable")),
+                );
+                let _ = error;
+                (None, None)
+            }
+        };
+    // A Development build installs the ZIPs `just dev-plugins` just built, through
+    // the product's own lifecycle rather than the build tool writing into the
+    // store. A Production build has no such directory and installs nothing here.
+    if let Some(service) = plugin_service.as_ref() {
+        let installed = dev_plugins::side_load_development_packages(&service.client());
+        if !installed.is_empty() {
+            application.record_log_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceRecovered)
+                    .with_context(ApplicationLogContext::Service("plugin"))
+                    .with_context(ApplicationLogContext::Operation("dev_side_load"))
+                    .with_context(ApplicationLogContext::Count(installed.len() as u64)),
+            );
+        }
+    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),
@@ -495,6 +534,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
                 resize_sender: Some(resize_sender),
+                hud_consumer: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.hud_consumer.clone()),
+                hud_interaction_sender: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.interaction_sender.clone()),
+                hud_viewport_reporter: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.viewport_reporter.clone()),
             },
         ) {
             Ok(overlay) => overlay,
@@ -611,6 +659,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
+            plugin_service,
             settings_window: None,
             settings_navigation_memory: SettingsNavigationMemory::new(),
             update_service: Some(update_service),

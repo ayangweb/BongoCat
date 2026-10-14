@@ -1,7 +1,7 @@
 # Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-25
+最后更新：2026-10-14
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -56,19 +56,29 @@ Rust 2024 edition application
 
 - 插件是**独立 Rust 进程**，以版本化 JSON 协议（`bongocat-plugin-sdk`）与主程序通信；
   插件不进入主程序进程，也不共享 Rust ABI，因此插件与主程序的编译器和链接布局互不影响。
-- `bongocat-plugin-manager` 负责包发现（`plugin.json` 清单）、生命周期（discover → enable →
-  configure/tick → disable → shutdown）、协议帧大小上限、请求/响应超时和单个进程的故障隔离。
+- 插件以 ZIP 包分发，包内含 `plugin.json` 清单与入口可执行文件，开发与发布使用同一形状。
+  安装按 `<plugin_dir>/packages/<id>/<version>/` 落盘并以 `current` 指针原子切换，插件数据
+  独立存放在 `<plugin_dir>/data/<id>/`：卸载只删除可执行文件并保留数据，重置数据才删除。
+- `bongocat-plugin-manager` 负责包发现（`plugin.json` 清单）、ZIP 解包校验（路径安全、解压
+  体积与条目上限）、安装/卸载/重置生命周期（discover → enable → configure/tick → disable →
+  shutdown）、协议帧大小上限、请求/响应超时和单个进程的故障隔离。
+- `bongocat-plugin-service` 是插件在应用内唯一的 owner：设置窗口只是它的一个客户端，关闭设置
+  窗口不影响插件继续运行、继续 tick 和继续更新模型窗口。
 - 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
   action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
 - 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板；Emoji 图标来自清单，
   本地/网络图片是后续扩展。主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
+- 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
+  画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
   HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
-- Development 的 `just dev` / `just dev-smoke` 先经打包工具独立构建本地插件包，
-  写入 Development 专属插件目录；插件中心异步扫描该目录，区分加载、空列表与失败重试。
-  Production 不读取本地源码目录，也不使用运行时目录覆盖。
-- 首个验证插件是番茄钟（#996）；其余候选 Issue（#905、#849、#90、#74、#945、#927）
-  保留，未在本阶段实现。边界、取舍与限制见 ADR-0090。
+- Development 的 `just dev` / `just dev-smoke` 先经打包工具把本地插件构建为 ZIP 写入
+  `target/plugins`，构建工具不写入应用数据目录；Development 构建启动后由产品自身的安装
+  生命周期侧载这些包，与下载安装走同一条路径，两个环境的差异只在字节来源。Production 不
+  读取本地源码目录，也不使用运行时目录覆盖。
+- 首个验证插件是番茄钟（#996）：它在模型窗口显示独立倒计时区域，并与插件的开始、暂停、重置
+  保持同步；其余候选 Issue（#905、#849、#90、#74、#945、#927）保留，未在本阶段实现。
+  边界、取舍与限制见 ADR-0090。
 
 ## 2. “纯 Rust”的定义
 

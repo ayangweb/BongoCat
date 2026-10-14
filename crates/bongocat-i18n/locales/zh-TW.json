@@ -552,6 +552,10 @@
     "failed": "載入失敗",
     "loading": "正在載入外掛…",
     "discovery_failed": "無法載入外掛清單，請重試。",
-    "retry": "重試"
+    "retry": "重試",
+    "install": "安裝外掛包…",
+    "uninstall": "卸載",
+    "reset_data": "重設資料",
+    "version": "版本 %{version}"
   }
 }

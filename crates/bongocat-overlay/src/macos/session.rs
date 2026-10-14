@@ -6,6 +6,7 @@
 //! modules beside it.
 
 use super::*;
+use bongocat_plugin_hud::{HudConsumer, HudViewport, HudViewportReporter};
 
 pub(crate) const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
 
@@ -29,6 +30,18 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) retry_backoff: FrameRetryBackoff,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The newest plugin layer, consumed once per tick and drawn as the topmost
+    /// layer. `None` disables plugin UI, which is what a build or a test with no
+    /// plugin host looks like.
+    pub(crate) hud_consumer: Option<HudConsumer>,
+    /// Where a click on a plugin's control is reported.
+    pub(crate) hud_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    /// Where the panel's own size and backing scale are reported, so the plugin
+    /// service composes a layer that matches the window it will be drawn into.
+    pub(crate) hud_viewport_reporter: Option<HudViewportReporter>,
+    /// The plugin layer's hit-test data, copied to the window monitor's own
+    /// thread so the AppKit callback can resolve a click without the session.
+    pub(crate) hud_targets: OverlayPluginTargets,
     pub(crate) right_button_monitor: Option<RightButtonMonitor>,
     pub(crate) hover: PointerHoverHide,
     /// Inactivity hide shares the session's frame tick and the hover hide's
@@ -56,6 +69,9 @@ impl ProductOverlaySession {
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
         } = interaction_sinks;
         validate_product_options(options)?;
         let initial_frame = render_consumer
@@ -130,6 +146,7 @@ impl ProductOverlaySession {
             ResizeBase::new(f64::from(base_width), f64::from(base_height)),
             context_menu_sender.clone(),
             resize_sender.clone(),
+            hud_interaction_sender.clone(),
         );
         Ok(Self {
             application,
@@ -151,6 +168,10 @@ impl ProductOverlaySession {
             retry_backoff,
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
+            hud_targets: OverlayPluginTargets::default(),
             right_button_monitor: context_menu_monitor,
             hover: PointerHoverHide::default(),
             idle: IdleHide::default(),
@@ -257,6 +278,10 @@ impl ProductOverlaySession {
         // drawable and the mask targets follow here, before anything draws
         // against them.
         self.overlay.sync_window_size()?;
+        // Plugin UI rides along with the model: the newest layer is taken before
+        // the frame is drawn, and the window's own size is reported at the same
+        // point so the next composed layer matches it.
+        self.take_plugin_layer()?;
         if self.options.keep_inside_screen {
             let mtm = MainThreadMarker::new().ok_or_else(|| {
                 OverlayError::new("macOS overlay placement check lost the main thread")
@@ -590,6 +615,63 @@ impl ProductOverlaySession {
         self.overlay.model_generation
     }
 
+    /// Take the newest plugin layer and upload it to the GPU model.
+    ///
+    /// A layer whose window size no longer matches the drawable is dropped rather
+    /// than stretched: the next composed frame matches the live size, and a
+    /// stretched panel would put a plugin's buttons where its own hit testing
+    /// does not expect them.
+    fn take_plugin_layer(&mut self) -> Result<(), OverlayError> {
+        let drawable = self.overlay.layer.drawable_size();
+        let width = drawable.width.round().max(0.0) as u32;
+        let height = drawable.height.round().max(0.0) as u32;
+        // The window reports its own numbers before the layer is drawn: the plugin
+        // service composes against the newest report, so a resize is visible to it
+        // on the same tick the window takes its new size.
+        if let Some(reporter) = &self.hud_viewport_reporter {
+            reporter.publish(HudViewport::new(
+                width,
+                height,
+                self.overlay.panel.backingScaleFactor() as f32,
+            ));
+        }
+        let Some(consumer) = &self.hud_consumer else {
+            return Ok(());
+        };
+        let layer = consumer.take_latest();
+        if let Some(layer) = layer.as_ref() {
+            self.hud_targets = OverlayPluginTargets::from_layer(layer, width, height);
+            self.push_plugin_targets();
+        } else if width != self.hud_targets.window_width || height != self.hud_targets.window_height
+        {
+            // The window changed size while no plugin published anything new:
+            // the old hit-test data no longer describes the window.
+            self.hud_targets = OverlayPluginTargets::default();
+            self.push_plugin_targets();
+        }
+        self.overlay.model.set_plugin_layer(
+            &self.overlay.device,
+            layer.as_ref(),
+            u64::from(width),
+            u64::from(height),
+        );
+        Ok(())
+    }
+
+    /// Copy the plugin hit-test data to the window monitor's own thread.
+    ///
+    /// The resize monitor's callback runs on the same main thread but reads a
+    /// `Cell` rather than borrowing the session, so the data travels by value.
+    fn push_plugin_targets(&self) {
+        if let Some(monitor) = &self.right_button_monitor {
+            monitor.state.plugin_targets.set(self.hud_targets.clone());
+            monitor
+                .state
+                .plugin_interaction_sender
+                .set(self.hud_interaction_sender.clone());
+        }
+    }
+
     pub(crate) fn stop_input(&mut self) -> Result<(), OverlayError> {
         if self.input_stopped {
             return Ok(());
@@ -693,7 +775,11 @@ impl ProductOverlaySession {
             self.resize_base(),
             self.context_menu_sender.clone(),
             self.resize_sender.clone(),
+            self.hud_interaction_sender.clone(),
         );
+        // A replacement panel needs the current hit-test data straight away, or
+        // its first click would find no control there.
+        self.push_plugin_targets();
     }
 
     pub(crate) fn remove_right_button_monitor(&mut self) {

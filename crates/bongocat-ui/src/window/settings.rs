@@ -20,40 +20,44 @@ pub(super) fn random_behavior_settings_after_mode_change(
 }
 
 impl SettingsView {
-    /// Drive plugin ticks and the plugin-center cache without blocking the frame.
-    pub(super) fn start_plugin_polling(
-        &self,
-        environment: bongocat_config::BuildEnvironment,
-        cx: &mut Context<Self>,
-    ) {
+    /// Attach this window to the running plugin service.
+    ///
+    /// The service outlives the window, so a window that opens attaches to what is
+    /// already running rather than starting anything of its own. A window opened
+    /// with no service attached shows the center's unavailable state, which is what
+    /// a build without the plugin service looks like.
+    pub(super) fn set_plugin_host(&mut self, host: PluginHost) {
+        self.plugin_host = host;
+    }
+
+    /// Keep the plugin center's copy of the service's state current.
+    ///
+    /// The service owns the plugins and ticks them on its own thread; this is only
+    /// how the page notices that a plugin's own view changed — a countdown's
+    /// remaining time, a control it re-labelled. The poll stops while the window is
+    /// hidden, exactly as the snapshot poll does: nothing it renders can be seen.
+    pub(super) fn start_plugin_center_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         let host = self.plugin_host.clone();
         cx.spawn(async move |this, cx| {
-            let discovery = host.clone();
-            executor
-                .spawn(async move {
-                    discovery.initialize(environment);
-                })
-                .await;
-            let _ = this.update(cx, |_, cx| cx.notify());
-            let started = Instant::now();
             loop {
                 executor.timer(Duration::from_millis(200)).await;
-                let elapsed = started.elapsed().as_millis() as u64;
-                let ticking = host.clone();
-                executor
+                let visible = match this.update(cx, |view, _| !view.window_hidden()) {
+                    Ok(visible) => visible,
+                    Err(_) => break,
+                };
+                if !visible || !host.is_available() {
+                    continue;
+                }
+                let poll = host.clone();
+                let changed = executor
                     .spawn(async move {
-                        ticking.tick(elapsed);
+                        let before = poll.snapshot();
+                        poll.refresh();
+                        poll.snapshot() != before
                     })
                     .await;
-                if this
-                    .update(cx, |view, cx| {
-                        if !view.window_hidden() {
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
+                if changed && this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }
             }

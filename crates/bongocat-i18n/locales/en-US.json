@@ -552,6 +552,10 @@
     "failed": "Load failed",
     "loading": "Loading plugins…",
     "discovery_failed": "Could not load the plugin list. Try again.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "install": "Install package…",
+    "uninstall": "Uninstall",
+    "reset_data": "Reset data",
+    "version": "Version %{version}"
   }
 }

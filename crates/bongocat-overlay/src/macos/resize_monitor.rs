@@ -23,6 +23,11 @@ pub(crate) struct ResizeMonitorState {
     pub(crate) drag: Cell<Option<ResizeDrag>>,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The current plugin layer's hit-test data. A plugin that draws a control
+    /// claims the click that lands on it; the panel keeps every other click.
+    pub(crate) plugin_targets: Cell<OverlayPluginTargets>,
+    /// Where a plugin's click is reported.
+    pub(crate) plugin_interaction_sender: Cell<Option<SyncSender<OverlayPluginInteraction>>>,
 }
 
 /// The right-button event monitor for one panel, together with the state its
@@ -56,8 +61,12 @@ pub(crate) fn install_context_menu_monitor(
     base: Option<ResizeBase>,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    plugin_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
 ) -> Option<RightButtonMonitor> {
-    if context_menu_sender.is_none() && resize_sender.is_none() {
+    if context_menu_sender.is_none()
+        && resize_sender.is_none()
+        && plugin_interaction_sender.is_none()
+    {
         return None;
     }
     let window_number = panel.windowNumber();
@@ -67,6 +76,8 @@ pub(crate) fn install_context_menu_monitor(
         drag: Cell::new(None),
         context_menu_sender,
         resize_sender,
+        plugin_targets: Cell::new(OverlayPluginTargets::default()),
+        plugin_interaction_sender: Cell::new(plugin_interaction_sender),
     });
     let shared = Rc::clone(&state);
     let handler: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
@@ -79,6 +90,9 @@ pub(crate) fn install_context_menu_monitor(
                     objc2_app_kit::NSEventType::RightMouseDown => begin_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseDragged => drag_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseUp => finish_resize(&state),
+                    objc2_app_kit::NSEventType::LeftMouseDown => {
+                        handle_plugin_click(&state, event_ref);
+                    }
                     _ => {}
                 }
             }
@@ -90,7 +104,8 @@ pub(crate) fn install_context_menu_monitor(
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(
             NSEventMask::RightMouseDown
                 | NSEventMask::RightMouseDragged
-                | NSEventMask::RightMouseUp,
+                | NSEventMask::RightMouseUp
+                | NSEventMask::LeftMouseDown,
             &handler,
         )
     }?;
@@ -161,6 +176,37 @@ pub(crate) fn request_context_menu(state: &ResizeMonitorState) {
     if let Some(sender) = &state.context_menu_sender {
         let _ = sender.try_send(OverlayContextMenuRequest);
     }
+}
+
+/// Report a left click that landed on one of a plugin's controls.
+///
+/// The panel is movable by its background and the window has no explicit hit
+/// test, so a click is the panel's unless a plugin drew a control under the
+/// pointer. The event's location is converted the same way the drag pointer is:
+/// AppKit's screen coordinates grow upwards, and the layer's device pixels grow
+/// downwards from the panel's top-left corner.
+///
+/// The event is forwarded either way: a click on a plugin's panel is not a
+/// window click, but it must not be swallowed either, because AppKit's window
+/// machinery still needs to see the mouse down.
+pub(crate) fn handle_plugin_click(state: &ResizeMonitorState, event: &NSEvent) {
+    let Some(sender) = state.plugin_interaction_sender.take() else {
+        return;
+    };
+    let targets = state.plugin_targets.take();
+    let location = event.locationInWindow();
+    let frame = state.panel.frame();
+    let scale = state.panel.backingScaleFactor().max(1.0);
+    let x = ((location.x - frame.origin.x) * scale) as f32;
+    let y = ((frame.origin.y + frame.size.height - location.y) * scale) as f32;
+    if let Some(interaction) = targets.interaction_at(x, y) {
+        // A plugin service that has gone away takes the control with it; the
+        // click then falls back to the window, which is what a plugin that
+        // unloaded mid-drag already sees.
+        let _ = sender.try_send(interaction);
+    }
+    state.plugin_interaction_sender.set(Some(sender));
+    state.plugin_targets.set(targets);
 }
 
 /// Apply one drag step to the panel, keeping the window's top edge where it is.

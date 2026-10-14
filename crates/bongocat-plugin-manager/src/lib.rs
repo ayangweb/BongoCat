@@ -17,6 +17,12 @@ use std::{
 use thiserror::Error;
 
 pub const MANIFEST_FILE: &str = "plugin.json";
+/// The directory under a plugin store root that holds installed package trees.
+pub const PACKAGES_DIRECTORY: &str = "packages";
+/// The directory under a plugin store root that holds plugin-owned data.
+pub const DATA_DIRECTORY: &str = "data";
+/// The file inside `<root>/packages/<id>/` naming the selected version.
+pub const CURRENT_FILE: &str = "current";
 #[derive(Debug, Error)]
 pub enum PluginManagerError {
     #[error("plugin manifest is invalid: {0}")]
@@ -27,6 +33,8 @@ pub enum PluginManagerError {
     Registry(#[from] RegistryError),
     #[error("plugin manifest is unsafe: {0}")]
     UnsafeManifest(String),
+    #[error("plugin package is not a readable ZIP archive")]
+    Archive(#[from] zip::result::ZipError),
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginManifest {
@@ -49,23 +57,86 @@ impl PluginManager {
     pub fn plugin_dir(&self) -> &Path {
         &self.plugin_dir
     }
+    /// Install a verified package archive, then make it discoverable.
+    ///
+    /// Discovery is re-run so a newly installed plugin appears without a restart;
+    /// installing a version over a running one does not by itself restart it.
+    pub fn install(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<install::InstalledPackage, PluginManagerError> {
+        self.install_verified(bytes, None)
+    }
+    /// Install a package archive after checking it against a catalog digest.
+    pub fn install_verified(
+        &mut self,
+        bytes: &[u8],
+        expected_sha256: Option<&str>,
+    ) -> Result<install::InstalledPackage, PluginManagerError> {
+        let installed = install::install_package(&self.plugin_dir, expected_sha256, bytes)?;
+        // A running process keeps its own copy of the executable, so replacing the
+        // selected version does not disturb it; the next enable picks the new one.
+        self.discover_plugins()?;
+        Ok(installed)
+    }
+    /// Remove a plugin's executable package. Its data is kept (see [`Self::reset`]).
+    pub fn uninstall(&mut self, id: &str) -> Result<bool, PluginManagerError> {
+        if self.registry.is_running(id) {
+            self.registry.disable(id)?;
+        }
+        let removed = install::uninstall_package(&self.plugin_dir, id)?;
+        self.registry.forget(id);
+        Ok(removed)
+    }
+    /// Drop a plugin's persisted data. The installed package is untouched.
+    pub fn reset(&mut self, id: &str) -> Result<bool, PluginManagerError> {
+        install::reset_plugin_data(&self.plugin_dir, id)
+    }
+    /// Where a plugin's persisted data lives, creating it when `create` is set.
+    ///
+    /// Data is keyed by plugin id and kept outside the versioned package tree, so
+    /// upgrading or reinstalling a plugin never writes into the data it owns.
+    pub fn data_root(&self, id: &str, create: bool) -> Result<PathBuf, PluginManagerError> {
+        install::plugin_data_root(&self.plugin_dir, id, create)
+    }
+    /// The version currently selected for a plugin, if it is installed.
+    pub fn installed_version(&self, id: &str) -> Option<String> {
+        install::selected_root(&self.plugin_dir, id).and_then(|root| {
+            root.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+    }
     pub fn discover_plugins(&mut self) -> Result<usize, PluginManagerError> {
         let mut count = 0;
-        for entry in fs::read_dir(&self.plugin_dir)? {
+        let packages = self.plugin_dir.join(PACKAGES_DIRECTORY);
+        // A store that has never had a plugin installed is empty, not an error.
+        if !packages.is_dir() {
+            self.registry.forget_missing(&[]);
+            return Ok(0);
+        }
+        let mut discovered = Vec::new();
+        for entry in fs::read_dir(&packages)? {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
                 continue;
             }
-            let root = entry.path();
+            let id = entry.file_name().to_string_lossy().into_owned();
+            // A package with no `current` pointer, or one naming a directory that
+            // is not there, is treated as absent rather than as a corrupt plugin.
+            let Some(root) = install::selected_root(&self.plugin_dir, &id) else {
+                continue;
+            };
             let path = root.join(MANIFEST_FILE);
             if !path.is_file() {
                 continue;
             }
             let manifest: PluginManifest = serde_json::from_slice(&fs::read(&path)?)?;
             validate_manifest(&manifest)?;
+            discovered.push(manifest.metadata.id.clone());
             self.registry.register(manifest.metadata, root)?;
             count += 1;
         }
+        self.registry.forget_missing(&discovered);
         Ok(count)
     }
     pub fn list_plugins(&self) -> Vec<(PluginMetadata, PluginState)> {

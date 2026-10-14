@@ -7,6 +7,7 @@
 //! become granted by asking again.
 
 use super::*;
+use bongocat_plugin_hud::{HudConsumer, HudViewportReporter};
 
 impl HasWindowHandle for ProductOverlaySession {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -74,6 +75,19 @@ pub struct OverlayResizeOutcome {
 pub struct OverlayInteractionSinks {
     pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The newest composed plugin layer, taken once per tick and drawn as the
+    /// topmost layer. `None` disables plugin UI, which is what a build or a test
+    /// with no plugin host looks like.
+    pub hud_consumer: Option<HudConsumer>,
+    /// Where a click that lands on a plugin's control is reported.
+    pub hud_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    /// Where the window reports its own size and backing scale.
+    ///
+    /// A composed layer has to match the window it is drawn into, so the native
+    /// session publishes the numbers it just took and the plugin service composes
+    /// against the newest report. `None` disables plugin UI for the same reason
+    /// the layer channel does.
+    pub hud_viewport_reporter: Option<HudViewportReporter>,
 }
 
 impl ProductOverlaySession {
@@ -95,6 +109,9 @@ impl ProductOverlaySession {
             OverlayInteractionSinks {
                 context_menu_sender: None,
                 resize_sender: None,
+                hud_consumer: None,
+                hud_interaction_sender: None,
+                hud_viewport_reporter: None,
             },
         )
     }

@@ -1,5 +1,6 @@
 //! The manager drives a real plugin binary discovered from a directory.
 use bongocat_plugin_manager::{PluginManager, PluginState};
+use std::io::Write as _;
 
 #[cfg(target_os = "windows")]
 const BINARY_FILE: &str = "bongocat-countdown.exe";
@@ -23,16 +24,35 @@ fn target_binary() -> Option<std::path::PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Build the package the way the packaging tool does: one ZIP with the manifest
+/// and the executable, installed through the manager's own lifecycle.
+fn install(source: &std::path::Path, binary: &std::path::Path, directory: &std::path::Path) {
+    let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    archive
+        .start_file("plugin.json", options)
+        .expect("start manifest");
+    archive
+        .write_all(&std::fs::read(source.join("plugin.json")).unwrap())
+        .unwrap();
+    archive
+        .start_file(BINARY_FILE, options.unix_permissions(0o755))
+        .expect("start binary");
+    archive.write_all(&std::fs::read(binary).unwrap()).unwrap();
+    let bytes = archive.finish().unwrap().into_inner();
+
+    let mut manager = PluginManager::new(directory.to_path_buf()).unwrap();
+    manager.install(&bytes).unwrap();
+}
+
 #[test]
 fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
     let (Some(source), Some(binary)) = (source(), target_binary()) else {
         return;
     };
     let directory = tempfile::tempdir().unwrap();
-    let package = directory.path().join("pomodoro");
-    std::fs::create_dir_all(&package).unwrap();
-    std::fs::copy(source.join("plugin.json"), package.join("plugin.json")).unwrap();
-    std::fs::copy(&binary, package.join(BINARY_FILE)).unwrap();
+    install(&source, &binary, directory.path());
 
     let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
     assert_eq!(manager.discover_plugins().unwrap(), 1);

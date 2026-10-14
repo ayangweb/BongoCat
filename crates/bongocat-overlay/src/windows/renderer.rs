@@ -646,6 +646,56 @@ impl Renderer {
                 self.context.DrawIndexed(6, 0, 0);
             }
         }
+        // The plugin layer is the topmost one: a plugin's panel is the user's own
+        // foreground element and must never end up behind the cat.
+        if let Some(layer) = &self.model.plugin_layer {
+            let layer_uniforms = LayerUniforms {
+                scale_offset: layer.transform,
+            };
+            unsafe {
+                self.context
+                    .VSSetShader(&self.pipelines.layer_vertex_shader, None);
+                self.context.PSSetShader(&self.pipelines.layer_shader, None);
+                self.context
+                    .VSSetConstantBuffers(0, Some(&[Some(self.pipelines.layer_buffer.clone())]));
+                self.context
+                    .PSSetConstantBuffers(0, Some(&[Some(self.pipelines.layer_buffer.clone())]));
+                self.context.RSSetState(&self.pipelines.rasterizer);
+                self.context
+                    .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
+                self.context.UpdateSubresource(
+                    &self.pipelines.layer_buffer,
+                    0,
+                    None,
+                    std::ptr::from_ref(&layer_uniforms).cast(),
+                    0,
+                    0,
+                );
+                let vertex_buffer = Some(layer.vertex_buffer.clone());
+                let stride = size_of::<bongocat_render::Vertex>() as u32;
+                let offset = 0_u32;
+                self.context.IASetVertexBuffers(
+                    0,
+                    1,
+                    Some(&raw const vertex_buffer),
+                    Some(&raw const stride),
+                    Some(&raw const offset),
+                );
+                self.context.IASetIndexBuffer(
+                    &self.model.background_index_buffer,
+                    DXGI_FORMAT_R16_UINT,
+                    0,
+                );
+                self.context.PSSetShaderResources(
+                    0,
+                    Some(&[
+                        Some(layer.shader_resource.clone()),
+                        Some(self.model.empty_mask.shader_resource.clone()),
+                    ]),
+                );
+                self.context.DrawIndexed(6, 0, 0);
+            }
+        }
         if verify || capture {
             unsafe {
                 self.context

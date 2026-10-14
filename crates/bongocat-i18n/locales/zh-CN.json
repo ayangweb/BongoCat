@@ -552,6 +552,10 @@
     "failed": "加载失败",
     "loading": "正在加载插件…",
     "discovery_failed": "无法加载插件列表，请重试。",
-    "retry": "重试"
+    "retry": "重试",
+    "install": "安装插件包…",
+    "uninstall": "卸载",
+    "reset_data": "重置数据",
+    "version": "版本 %{version}"
   }
 }

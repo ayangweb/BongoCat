@@ -254,7 +254,7 @@ mod tests {
                 icon: PluginIcon::Emoji("🍅".into()),
                 downloads: BTreeMap::from([(
                     "macos".to_owned(),
-                    "countdown-1.0.0-macos.tar.gz".to_owned(),
+                    "countdown-1.0.0-macos.zip".to_owned(),
                 )]),
                 sha256: None,
                 homepage: None,

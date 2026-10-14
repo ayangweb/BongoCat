@@ -105,8 +105,6 @@ fn settings_view_with_endpoint(
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),
@@ -194,8 +192,6 @@ fn rendered_shortcuts_scope(
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),

@@ -29,9 +29,57 @@ pub(crate) struct GpuModel {
     pub(crate) mirror_horizontal: bool,
     pub(crate) active_keys: Vec<KeyOverlay>,
     pub(crate) masked_drawable_count: usize,
+    /// The plugin layer, drawn as one quad above every other layer.
+    pub(crate) plugin_layer: Option<PluginLayer>,
+}
+
+/// The plugin layer's GPU resources.
+///
+/// The texture and the quad's vertex buffer are created together because the
+/// quad is sized from the same layer the texture is uploaded from, so a layer
+/// that changes size replaces both.
+pub(crate) struct PluginLayer {
+    pub(crate) texture: Texture,
+    pub(crate) vertex_buffer: Buffer,
+    pub(crate) transform: [f32; 4],
 }
 
 impl GpuModel {
+    /// Upload a composed plugin layer, replacing the previous one.
+    ///
+    /// A layer is composed for one window size, so a layer whose size no longer
+    /// matches the drawable is dropped rather than stretched: the plugin service
+    /// composes the next one against the live size, and a stretched panel would
+    /// put a plugin's buttons where its own hit testing does not expect them.
+    pub(crate) fn set_plugin_layer(
+        &mut self,
+        device: &Device,
+        layer: Option<&bongocat_plugin_hud::HudLayer>,
+        width: u64,
+        height: u64,
+    ) {
+        let width = u32::try_from(width).unwrap_or(u32::MAX);
+        let height = u32::try_from(height).unwrap_or(u32::MAX);
+        let layer = layer.filter(|layer| {
+            !layer.is_empty() && layer.window_width == width && layer.window_height == height
+        });
+        let Some(layer) = layer else {
+            self.plugin_layer = None;
+            return;
+        };
+        let texture = create_plugin_texture(device, layer);
+        let vertices = layer.quad_vertices();
+        self.plugin_layer = Some(PluginLayer {
+            texture,
+            vertex_buffer: device.new_buffer_with_data(
+                vertices.as_ptr().cast(),
+                std::mem::size_of_val(&vertices) as u64,
+                MTLResourceOptions::StorageModeShared,
+            ),
+            transform: layer.clip_transform(),
+        });
+    }
+
     pub(crate) fn prepare(
         device: &Device,
         resources: &RenderResources,
@@ -185,6 +233,7 @@ impl GpuModel {
                 .iter()
                 .filter(|drawable| !drawable.masks.is_empty())
                 .count(),
+            plugin_layer: None,
         })
     }
 
@@ -323,6 +372,35 @@ pub(crate) fn create_solid_mask_texture(device: &Device) -> Texture {
         0,
         pixel.as_ptr().cast(),
         4,
+    );
+    texture
+}
+
+/// Upload one composed plugin layer as a premultiplied RGBA texture.
+pub(crate) fn create_plugin_texture(
+    device: &Device,
+    layer: &bongocat_plugin_hud::HudLayer,
+) -> Texture {
+    let descriptor = TextureDescriptor::new();
+    descriptor.set_texture_type(MTLTextureType::D2);
+    descriptor.set_pixel_format(MODEL_TEXTURE_FORMAT);
+    descriptor.set_width(u64::from(layer.width));
+    descriptor.set_height(u64::from(layer.height));
+    descriptor.set_storage_mode(MTLStorageMode::Shared);
+    descriptor.set_usage(MTLTextureUsage::ShaderRead);
+    let texture = device.new_texture(&descriptor);
+    texture.replace_region(
+        MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: u64::from(layer.width),
+                height: u64::from(layer.height),
+                depth: 1,
+            },
+        },
+        0,
+        layer.pixels.as_ptr().cast(),
+        u64::from(layer.width) * 4,
     );
     texture
 }

@@ -44,8 +44,6 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),
@@ -194,8 +192,6 @@ fn a_preset_models_card_opens_the_same_in_place_editor(cx: &mut TestAppContext) 
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),
@@ -305,8 +301,6 @@ fn an_in_flight_command_never_flickers_the_models_page_gate(cx: &mut TestAppCont
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),
@@ -386,8 +380,6 @@ fn the_frames_before_the_first_snapshot_render_the_seeded_appearance(cx: &mut Te
                 SettingsWindowSeed {
                     language: SettingsLanguage::ChineseSimplified,
                     appearance_theme: SettingsTheme::Dark,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),

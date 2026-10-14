@@ -552,6 +552,10 @@
     "failed": "Tải thất bại",
     "loading": "Đang tải tiện ích…",
     "discovery_failed": "Không thể tải danh sách tiện ích. Vui lòng thử lại.",
-    "retry": "Thử lại"
+    "retry": "Thử lại",
+    "install": "Cài đặt gói…",
+    "uninstall": "Gỡ cài đặt",
+    "reset_data": "Đặt lại dữ liệu",
+    "version": "Phiên bản %{version}"
   }
 }

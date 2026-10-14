@@ -552,6 +552,10 @@
     "failed": "Échec du chargement",
     "loading": "Chargement des plugins…",
     "discovery_failed": "Impossible de charger la liste des plugins. Réessayez.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "install": "Installer le paquet…",
+    "uninstall": "Désinstaller",
+    "reset_data": "Réinitialiser les données",
+    "version": "Version %{version}"
   }
 }

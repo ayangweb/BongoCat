@@ -8,19 +8,17 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+atomic-write-file.workspace = true
 bongocat-plugin-sdk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bongocat-update.workspace = true
-flate2.workspace = true
 minisign-verify = "=0.3.0"
-tar.workspace = true
 cargo-packager-updater.workspace = true
 sha2 = "=0.11.1"
-thiserror.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true
+thiserror.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

@@ -37,9 +37,66 @@ pub(crate) struct GpuModel {
     pub(crate) mirror_horizontal: bool,
     pub(crate) active_keys: Vec<KeyOverlay>,
     pub(crate) masked_drawable_count: usize,
+    /// The plugin layer, uploaded as one texture and drawn as one quad above
+    /// every other layer. `None` while no plugin draws anything.
+    pub(crate) plugin_layer: Option<PluginLayer>,
+}
+
+/// The plugin layer's GPU resources.
+///
+/// The texture and the quad's vertex buffer are created together because the
+/// quad is sized from the same layer the texture is uploaded from, so a layer
+/// that changes size replaces both.
+pub(crate) struct PluginLayer {
+    pub(crate) _texture: ID3D11Texture2D,
+    pub(crate) shader_resource: ID3D11ShaderResourceView,
+    pub(crate) vertex_buffer: ID3D11Buffer,
+    pub(crate) transform: [f32; 4],
 }
 
 impl GpuModel {
+    /// Upload a composed plugin layer, replacing the previous one.
+    ///
+    /// A layer is composed for one window size, so a layer whose size no longer
+    /// matches the window is dropped rather than stretched: the plugin service
+    /// composes the next one against the live size, and a stretched panel would
+    /// put a plugin's buttons where its own hit testing does not expect them.
+    pub(crate) unsafe fn set_plugin_layer(
+        &mut self,
+        device: &ID3D11Device,
+        layer: Option<&bongocat_plugin_hud::HudLayer>,
+        width: u32,
+        height: u32,
+    ) -> WindowsResult<()> {
+        let layer = layer.filter(|layer| {
+            !layer.is_empty() && layer.window_width == width && layer.window_height == height
+        });
+        let Some(layer) = layer else {
+            self.plugin_layer = None;
+            return Ok(());
+        };
+        let texture = unsafe {
+            create_texture_resource(
+                device,
+                layer.width,
+                layer.height,
+                MODEL_TEXTURE_FORMAT,
+                layer.pixels.as_ptr(),
+                layer.width.saturating_mul(4),
+            )
+        }?;
+        let vertices = layer.quad_vertices();
+        let vertex_buffer =
+            unsafe { create_buffer(device, &vertices, D3D11_BIND_VERTEX_BUFFER.0 as u32)? };
+        self.plugin_layer = Some(PluginLayer {
+            _texture: texture._texture,
+            shader_resource: texture.shader_resource,
+            vertex_buffer,
+            transform: layer.clip_transform(),
+        });
+        Ok(())
+    }
+
     pub(crate) unsafe fn prepare(
         device: &ID3D11Device,
         context: &ID3D11DeviceContext,
@@ -185,6 +242,7 @@ impl GpuModel {
                 .iter()
                 .filter(|drawable| !drawable.masks.is_empty())
                 .count(),
+            plugin_layer: None,
         })
     }
 

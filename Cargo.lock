@@ -777,6 +777,7 @@ dependencies = [
  "bongocat-model-store",
  "bongocat-overlay",
  "bongocat-platform",
+ "bongocat-plugin-service",
  "bongocat-render",
  "bongocat-runtime",
  "bongocat-storage",
@@ -921,6 +922,7 @@ dependencies = [
  "bongocat-input",
  "bongocat-model",
  "bongocat-platform",
+ "bongocat-plugin-hud",
  "bongocat-render",
  "bongocat-runtime",
  "core-graphics-types 0.2.0",
@@ -950,6 +952,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.21",
+ "zip 9.0.2",
 ]
 
 [[package]]
@@ -987,20 +990,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "bongocat-plugin-manager"
+name = "bongocat-plugin-hud"
 version = "2.3.1"
 dependencies = [
  "bongocat-plugin-sdk",
+ "fontdue",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "bongocat-plugin-manager"
+version = "2.3.1"
+dependencies = [
+ "atomic-write-file",
+ "bongocat-plugin-sdk",
  "bongocat-update",
  "cargo-packager-updater",
- "flate2",
  "minisign-verify 0.3.0",
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "tar",
  "tempfile",
  "thiserror 2.0.21",
+ "zip 9.0.2",
 ]
 
 [[package]]
@@ -1010,6 +1022,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "bongocat-plugin-service"
+version = "2.3.1"
+dependencies = [
+ "async-channel",
+ "bongocat-plugin-hud",
+ "bongocat-plugin-manager",
+ "bongocat-plugin-sdk",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zip 9.0.2",
 ]
 
 [[package]]
@@ -1053,13 +1078,15 @@ dependencies = [
  "bongocat-config",
  "bongocat-i18n",
  "bongocat-platform",
- "bongocat-plugin-manager",
  "bongocat-plugin-sdk",
+ "bongocat-plugin-service",
  "bongocat-ui-protocol",
  "dirs 7.0.0",
  "gpui-kit",
  "serde",
  "serde_json",
+ "tempfile",
+ "zip 9.0.2",
 ]
 
 [[package]]
@@ -2518,6 +2545,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fontdue"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7894823fa221401399e2598f8b63f81ac77ff5c63248b7656779bff1632d7d3d"
+dependencies = [
+ "hashbrown 0.15.5",
+ "ttf-parser",
+]
+
+[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3946,6 +3983,8 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.1.5",
 ]
 
@@ -10513,6 +10552,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e2fc56a6707efb066c40aead2409ebb1224e6dde24a074e9fbc78ced500507b"
 dependencies = [
  "crc32fast",
+ "flate2",
  "indexmap",
  "memchr",
  "nix",

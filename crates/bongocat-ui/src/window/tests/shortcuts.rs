@@ -363,8 +363,6 @@ fn the_controls_inside_a_shortcut_row_act_without_recording(cx: &mut TestAppCont
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),
@@ -521,8 +519,6 @@ fn a_shortcut_rows_frame_is_sized_by_its_chord_and_holds_its_controls(cx: &mut T
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
-
-                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),

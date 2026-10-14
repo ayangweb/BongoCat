@@ -42,6 +42,11 @@ pub(crate) struct OverlayWindowState {
     pub(crate) resize_start_bounds: Option<OverlayWindowBounds>,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The current plugin layer's hit-test data. A plugin that draws a control
+    /// claims the click that lands on it; the window keeps every other click.
+    pub(crate) plugin_targets: OverlayPluginTargets,
+    /// Where a click on a plugin's control is reported.
+    pub(crate) plugin_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
     pub(crate) sizing: WindowSizing,
     pub(crate) drag: Option<ResizeDrag>,
 }
@@ -128,6 +133,8 @@ impl OverlayWindow {
             resize_start_bounds: None,
             context_menu_sender,
             resize_sender,
+            plugin_targets: OverlayPluginTargets::default(),
+            plugin_interaction_sender: None,
             sizing,
             drag: None,
         });

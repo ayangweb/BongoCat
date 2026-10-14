@@ -552,6 +552,10 @@
     "failed": "불러오기 실패",
     "loading": "플러그인 불러오는 중…",
     "discovery_failed": "플러그인 목록을 불러올 수 없습니다. 다시 시도하세요.",
-    "retry": "다시 시도"
+    "retry": "다시 시도",
+    "install": "패키지 설치…",
+    "uninstall": "제거",
+    "reset_data": "데이터 초기화",
+    "version": "버전 %{version}"
   }
 }

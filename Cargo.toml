@@ -18,6 +18,8 @@ members = [
     "crates/bongocat-platform",
     "crates/bongocat-plugin-sdk",
     "crates/bongocat-plugin-manager",
+    "crates/bongocat-plugin-hud",
+    "crates/bongocat-plugin-service",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
     "crates/bongocat-storage",
@@ -70,7 +72,7 @@ time = { version = "=0.3.55", default-features = false, features = ["formatting"
 tray-icon = { version = "=0.26.1", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
-zip = { version = "=9.0.2", default-features = false }
+zip = { version = "=9.0.2", default-features = false, features = ["deflate-flate2"] }
 
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-input = { path = "crates/bongocat-input" }
@@ -87,6 +89,8 @@ bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
 bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
+bongocat-plugin-hud = { path = "crates/bongocat-plugin-hud" }
+bongocat-plugin-service = { path = "crates/bongocat-plugin-service" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 bongocat-storage = { path = "crates/bongocat-storage" }
