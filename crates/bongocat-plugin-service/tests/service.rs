@@ -1,7 +1,7 @@
 //! The service drives a real plugin process and publishes what it draws.
 //!
 //! The package is built the way the packaging tool builds one — the checked-in
-//! manifest plus the compiled countdown binary, in one ZIP — and installed
+//! manifest plus the compiled pomodoro binary, in one ZIP — and installed
 //! through the manager, so this exercises the same lifecycle a download does. A
 //! checkout with no built plugin binary skips rather than pretending.
 
@@ -10,11 +10,11 @@ use bongocat_plugin_service::{PluginService, plugin_directory};
 use std::io::Write as _;
 
 #[cfg(target_os = "windows")]
-const BINARY_FILE: &str = "bongocat-countdown.exe";
+const BINARY_FILE: &str = "bongocat-pomodoro.exe";
 #[cfg(not(target_os = "windows"))]
-const BINARY_FILE: &str = "bongocat-countdown";
+const BINARY_FILE: &str = "bongocat-pomodoro";
 
-const PLUGIN_ID: &str = "com.bongocat.countdown";
+const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
 fn plugin_package() -> Option<Vec<u8>> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -39,8 +39,8 @@ fn plugin_package() -> Option<Vec<u8>> {
     archive.finish().ok().map(|cursor| cursor.into_inner())
 }
 
-/// Start a service on a private store and install the countdown package into it.
-fn service_with_countdown() -> Option<(PluginService, tempfile::TempDir)> {
+/// Start a service on a private store and install the pomodoro package into it.
+fn service_with_pomodoro() -> Option<(PluginService, tempfile::TempDir)> {
     let bytes = plugin_package()?;
     let store = tempfile::tempdir().ok()?;
     let (service, _handles) = PluginService::start(store.path(), 4).expect("plugin service starts");
@@ -61,7 +61,7 @@ fn the_store_is_private_to_the_storage_root_it_was_started_with() {
 
 #[test]
 fn a_plugin_runs_and_keeps_running_without_a_window() {
-    let Some((service, store)) = service_with_countdown() else {
+    let Some((service, store)) = service_with_pomodoro() else {
         return;
     };
     let client = service.client();
@@ -90,12 +90,12 @@ fn a_plugin_runs_and_keeps_running_without_a_window() {
 
 #[test]
 fn a_click_on_a_control_reaches_the_plugin_that_drew_it() {
-    let Some((service, _store)) = service_with_countdown() else {
+    let Some((service, _store)) = service_with_pomodoro() else {
         return;
     };
     let client = service.client();
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
-    // The countdown starts at zero, so the first `toggle` arms it at its full
+    // The pomodoro timer starts at zero, so the first `toggle` arms it at its full
     // length; the plugin's own view is what proves the click arrived.
     client.action_blocking(PLUGIN_ID, "toggle").unwrap();
     client.action_blocking(PLUGIN_ID, "restart").unwrap();
@@ -105,7 +105,7 @@ fn a_click_on_a_control_reaches_the_plugin_that_drew_it() {
             node,
             bongocat_plugin_sdk::UiNode::Text { text } if text == "25:00"
         )),
-        "restart must set the countdown to the configured length"
+        "restart must set the pomodoro timer to the configured length"
     );
     service.shutdown().unwrap();
 }
@@ -149,7 +149,7 @@ fn the_composed_layer_matches_the_window_that_reported_itself() {
     );
 
     // A click the window resolved travels to the plugin and comes back as a new
-    // frame: the countdown's text moves from its zero state to the full length.
+    // frame: the pomodoro panel's text moves from its zero state to the full length.
     handles
         .interaction_sender
         .try_send(HudInteraction {
@@ -232,7 +232,7 @@ fn wait_for_text(client: &bongocat_plugin_service::PluginServiceClient) -> bool 
 
 #[test]
 fn uninstalling_removes_the_package_and_keeps_the_data() {
-    let Some((service, store)) = service_with_countdown() else {
+    let Some((service, store)) = service_with_pomodoro() else {
         return;
     };
     let client = service.client();

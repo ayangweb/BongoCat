@@ -1,4 +1,4 @@
-//! Standalone countdown plugin. The application knows no timer business rules.
+//! Standalone Pomodoro plugin. The application knows no timer business rules.
 #![forbid(unsafe_code)]
 use bongocat_plugin_sdk::{
     Anchor, ConfigValue, Configuration, HostMessage, Plugin, PluginOutput, PluginView, UiNode,
@@ -6,7 +6,7 @@ use bongocat_plugin_sdk::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize)]
-struct Countdown {
+struct Pomodoro {
     remaining_ms: u64,
     running: bool,
     #[serde(skip)]
@@ -17,7 +17,7 @@ struct Countdown {
 fn default_minutes() -> i64 {
     25
 }
-impl Countdown {
+impl Pomodoro {
     fn configure(&mut self, config: &Configuration) -> Result<(), String> {
         let minutes = match config.get("minutes") {
             None => default_minutes(),
@@ -66,20 +66,19 @@ impl Countdown {
                 ..Default::default()
             },
             config: [("minutes".into(), ConfigValue::Integer(self.minutes))].into(),
-            state: serde_json::to_vec(self).map_err(|_| "Cannot save countdown")?,
+            state: serde_json::to_vec(self).map_err(|_| "Cannot save pomodoro")?,
         })
     }
 }
-impl Plugin for Countdown {
+impl Plugin for Pomodoro {
     fn id(&self) -> &'static str {
-        "com.bongocat.countdown"
+        "com.bongocat.pomodoro"
     }
     fn handle(&mut self, message: HostMessage) -> Result<PluginOutput, String> {
         match message {
             HostMessage::Start { config, state } => {
                 if !state.is_empty() {
-                    *self =
-                        serde_json::from_slice(&state).map_err(|_| "Invalid saved countdown")?;
+                    *self = serde_json::from_slice(&state).map_err(|_| "Invalid saved pomodoro")?;
                 }
                 self.running = false;
                 self.last_tick = None;
@@ -110,7 +109,7 @@ impl Plugin for Countdown {
                     self.remaining_ms = self.minutes as u64 * 60_000;
                     self.running = true;
                 }
-                _ => return Err("Unknown countdown action".into()),
+                _ => return Err("Unknown pomodoro action".into()),
             },
             HostMessage::Pause | HostMessage::Stop => {
                 self.running = false;
@@ -132,7 +131,7 @@ impl Plugin for Countdown {
     }
 }
 fn main() -> std::io::Result<()> {
-    bongocat_plugin_sdk::run(&mut Countdown {
+    bongocat_plugin_sdk::run(&mut Pomodoro {
         minutes: default_minutes(),
         ..Default::default()
     })
@@ -141,8 +140,8 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn monotonic_countdown_pause_resume_and_finish() {
-        let mut p = Countdown {
+    fn monotonic_pomodoro_pause_resume_and_finish() {
+        let mut p = Pomodoro {
             minutes: 1,
             ..Default::default()
         };
@@ -164,7 +163,7 @@ mod tests {
     }
     #[test]
     fn invalid_configuration_keeps_previous_value() {
-        let mut p = Countdown {
+        let mut p = Pomodoro {
             minutes: 25,
             ..Default::default()
         };
@@ -176,7 +175,7 @@ mod tests {
     }
     #[test]
     fn restart_is_paused_and_state_is_plugin_owned() {
-        let mut p = Countdown {
+        let mut p = Pomodoro {
             minutes: 25,
             remaining_ms: 500,
             running: true,

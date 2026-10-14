@@ -184,7 +184,7 @@ mod tests {
             window_width: 350,
             window_height: 350,
             targets: vec![HudTarget {
-                plugin: "com.bongocat.countdown".to_owned(),
+                plugin: "com.bongocat.pomodoro".to_owned(),
                 id: "toggle".to_owned(),
                 rect,
             }],
@@ -195,7 +195,7 @@ mod tests {
     fn a_click_inside_a_control_belongs_to_the_plugin_that_drew_it() {
         let layer = layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0));
         let interaction = plugin_interaction_at(&layer, 20.0, 20.0).expect("hits the button");
-        assert_eq!(interaction.plugin, "com.bongocat.countdown");
+        assert_eq!(interaction.plugin, "com.bongocat.pomodoro");
         assert_eq!(interaction.id, "toggle");
     }
 

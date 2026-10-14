@@ -16,13 +16,13 @@ fn exchange(
 }
 
 #[test]
-fn countdown_binary_completes_a_full_session() {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bongocat-countdown"))
+fn pomodoro_binary_completes_a_full_session() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bongocat-pomodoro"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("the countdown binary builds with the test");
+        .expect("the pomodoro binary builds with the test");
     let mut input = BufWriter::new(child.stdin.take().unwrap());
     let mut output = BufReader::new(child.stdout.take().unwrap());
 
@@ -32,7 +32,7 @@ fn countdown_binary_completes_a_full_session() {
         1,
         HostMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
-            id: "com.bongocat.countdown".into(),
+            id: "com.bongocat.pomodoro".into(),
         },
     );
     assert!(handshake.result.is_ok());

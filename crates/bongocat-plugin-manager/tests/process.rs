@@ -3,11 +3,11 @@ use bongocat_plugin_manager::{PluginManager, PluginState};
 use std::io::Write as _;
 
 #[cfg(target_os = "windows")]
-const BINARY_FILE: &str = "bongocat-countdown.exe";
+const BINARY_FILE: &str = "bongocat-pomodoro.exe";
 #[cfg(not(target_os = "windows"))]
-const BINARY_FILE: &str = "bongocat-countdown";
+const BINARY_FILE: &str = "bongocat-pomodoro";
 
-/// The compiled countdown package. The test skips rather than pretending when
+/// The compiled pomodoro package. The test skips rather than pretending when
 /// nothing has built the plugin binary yet.
 fn source() -> Option<std::path::PathBuf> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -58,10 +58,10 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
     assert_eq!(manager.discover_plugins().unwrap(), 1);
     assert_eq!(manager.list_plugins()[0].1, PluginState::Discovered);
 
-    manager.enable_plugin("com.bongocat.countdown").unwrap();
+    manager.enable_plugin("com.bongocat.pomodoro").unwrap();
     assert_eq!(manager.list_plugins()[0].1, PluginState::Enabled);
     let started = manager
-        .plugin_output("com.bongocat.countdown")
+        .plugin_output("com.bongocat.pomodoro")
         .unwrap()
         .clone();
     assert!(started.model.nodes.iter().any(|node| matches!(
@@ -71,7 +71,7 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
 
     manager
         .configure_plugin(
-            "com.bongocat.countdown",
+            "com.bongocat.pomodoro",
             [(
                 "minutes".into(),
                 bongocat_plugin_sdk::ConfigValue::Integer(5),
@@ -81,11 +81,11 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
         .unwrap();
     manager.tick(250);
     manager
-        .action_plugin("com.bongocat.countdown", "restart")
+        .action_plugin("com.bongocat.pomodoro", "restart")
         .unwrap();
     assert!(
         manager
-            .plugin_output("com.bongocat.countdown")
+            .plugin_output("com.bongocat.pomodoro")
             .unwrap()
             .model
             .nodes
@@ -97,7 +97,7 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
     manager.tick(1250);
     assert!(
         manager
-            .plugin_output("com.bongocat.countdown")
+            .plugin_output("com.bongocat.pomodoro")
             .unwrap()
             .model
             .nodes
@@ -106,7 +106,7 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
                 bongocat_plugin_sdk::UiNode::Text { text } if text == "04:59"
             ))
     );
-    manager.disable_plugin("com.bongocat.countdown").unwrap();
+    manager.disable_plugin("com.bongocat.pomodoro").unwrap();
     assert_eq!(manager.list_plugins()[0].1, PluginState::Disabled);
     manager.shutdown();
 }

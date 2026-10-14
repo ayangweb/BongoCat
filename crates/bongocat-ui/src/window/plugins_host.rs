@@ -218,13 +218,13 @@ mod tests {
     use std::io::Write as _;
 
     #[cfg(target_os = "windows")]
-    const BINARY_FILE: &str = "bongocat-countdown.exe";
+    const BINARY_FILE: &str = "bongocat-pomodoro.exe";
     #[cfg(not(target_os = "windows"))]
-    const BINARY_FILE: &str = "bongocat-countdown";
+    const BINARY_FILE: &str = "bongocat-pomodoro";
 
-    const PLUGIN_ID: &str = "com.bongocat.countdown";
+    const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
-    /// A plugin store holding the checked-in countdown package, installed the same
+    /// A plugin store holding the checked-in pomodoro package, installed the same
     /// way a download is.
     fn store_with_pomodoro() -> Option<(PluginService, tempfile::TempDir)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -345,7 +345,7 @@ mod tests {
         visual.run_until_parked();
         visual.update(|window, _| {
             let card = window
-                .try_find("plugin-card-com.bongocat.countdown")
+                .try_find("plugin-card-com.bongocat.pomodoro")
                 .expect("the discovered plugin must be painted")
                 .bounds();
             assert!(card.size.width > px(0.) && card.size.height > px(0.));

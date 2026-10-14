@@ -237,7 +237,7 @@ mod tests {
     fn metadata(id: &str, version: &str) -> PluginMetadata {
         PluginMetadata {
             id: id.into(),
-            name: "Countdown".into(),
+            name: "Pomodoro".into(),
             description: "timer".into(),
             version: version.into(),
             app_versions: ">=2.3.1".into(),
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn installs_a_zip_and_rejects_a_bad_digest() {
         let directory = tempfile::tempdir().unwrap();
-        let bytes = package("com.bongocat.countdown", "1.0.0");
+        let bytes = package("com.bongocat.pomodoro", "1.0.0");
         let installed =
             install_package(directory.path(), Some(&sha256_of(&bytes)), &bytes).unwrap();
         assert_eq!(installed.version, "1.0.0");
@@ -298,17 +298,17 @@ mod tests {
         install_package(
             directory.path(),
             None,
-            &package("com.bongocat.countdown", "1.0.0"),
+            &package("com.bongocat.pomodoro", "1.0.0"),
         )
         .unwrap();
         install_package(
             directory.path(),
             None,
-            &package("com.bongocat.countdown", "1.1.0"),
+            &package("com.bongocat.pomodoro", "1.1.0"),
         )
         .unwrap();
         assert_eq!(
-            selected_root(directory.path(), "com.bongocat.countdown")
+            selected_root(directory.path(), "com.bongocat.pomodoro")
                 .unwrap()
                 .file_name()
                 .unwrap(),
@@ -319,7 +319,7 @@ mod tests {
             directory
                 .path()
                 .join(PACKAGES_DIRECTORY)
-                .join("com.bongocat.countdown/1.0.0/plugin")
+                .join("com.bongocat.pomodoro/1.0.0/plugin")
                 .is_file()
         );
     }
@@ -330,20 +330,20 @@ mod tests {
         install_package(
             directory.path(),
             None,
-            &package("com.bongocat.countdown", "1.0.0"),
+            &package("com.bongocat.pomodoro", "1.0.0"),
         )
         .unwrap();
-        let data = plugin_data_root(directory.path(), "com.bongocat.countdown", true).unwrap();
+        let data = plugin_data_root(directory.path(), "com.bongocat.pomodoro", true).unwrap();
         fs::write(data.join("state.json"), b"{}").unwrap();
 
-        assert!(uninstall_package(directory.path(), "com.bongocat.countdown").unwrap());
-        assert!(selected_root(directory.path(), "com.bongocat.countdown").is_none());
+        assert!(uninstall_package(directory.path(), "com.bongocat.pomodoro").unwrap());
+        assert!(selected_root(directory.path(), "com.bongocat.pomodoro").is_none());
         assert!(data.join("state.json").is_file());
 
-        assert!(reset_plugin_data(directory.path(), "com.bongocat.countdown").unwrap());
+        assert!(reset_plugin_data(directory.path(), "com.bongocat.pomodoro").unwrap());
         assert!(!data.exists());
         // Removing something absent is not an error.
-        assert!(!uninstall_package(directory.path(), "com.bongocat.countdown").unwrap());
+        assert!(!uninstall_package(directory.path(), "com.bongocat.pomodoro").unwrap());
     }
 
     #[test]
@@ -351,10 +351,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let no_manifest = archive(&[("plugin", b"no manifest")]);
         assert!(install_package(directory.path(), None, &no_manifest).is_err());
-        assert!(selected_root(directory.path(), "com.bongocat.countdown").is_none());
+        assert!(selected_root(directory.path(), "com.bongocat.pomodoro").is_none());
 
         let manifest = PluginManifest {
-            metadata: metadata("com.bongocat.countdown", "1.0.0"),
+            metadata: metadata("com.bongocat.pomodoro", "1.0.0"),
             sha256: None,
         };
         let escaping = archive(&[
@@ -378,18 +378,18 @@ mod tests {
         assert_eq!(manager.discover_plugins().unwrap(), 0);
 
         manager
-            .install(&package("com.bongocat.countdown", "1.0.0"))
+            .install(&package("com.bongocat.pomodoro", "1.0.0"))
             .unwrap();
         assert_eq!(manager.discover_plugins().unwrap(), 1);
         assert_eq!(manager.list_plugins()[0].1, PluginState::Discovered);
         assert_eq!(
             manager
-                .installed_version("com.bongocat.countdown")
+                .installed_version("com.bongocat.pomodoro")
                 .as_deref(),
             Some("1.0.0")
         );
 
-        assert!(manager.uninstall("com.bongocat.countdown").unwrap());
+        assert!(manager.uninstall("com.bongocat.pomodoro").unwrap());
         assert_eq!(manager.discover_plugins().unwrap(), 0);
         assert!(manager.list_plugins().is_empty());
     }

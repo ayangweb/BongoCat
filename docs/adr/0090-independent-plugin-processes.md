@@ -80,11 +80,12 @@ after startup. App bundles still contain no plugins. Runtime directory overrides
 are not accepted; Production and Development always use their respective storage
 roots. Discovery runs on the background executor and distinguishes loading,
 failure/retry and an empty list. The example's display name is Pomodoro and its
-source package is `plugins/pomodoro`; its existing `com.bongocat.countdown` ID and
-binary name remain stable to avoid changing persisted identity. It is a focus
-countdown, not yet an automatic work/break-cycle implementation, and its model
-view is the countdown panel that the plugin keeps in sync with start, pause and
-reset.
+source package is `plugins/pomodoro`, with the matching `com.bongocat.pomodoro`
+ID and `bongocat-pomodoro` binary. The plugin system is unreleased, so no
+persisted identity depends on the earlier `countdown` naming and it needed no
+migration path. It is a focus timer, not yet an automatic work/break-cycle
+implementation, and its model view is the countdown panel that the plugin keeps
+in sync with start, pause and reset.
 
 Installed packages live under `<plugin_dir>/packages/<id>/<version>/` with a
 `current` pointer, and per-plugin data under `<plugin_dir>/data/<id>/`. Install
@@ -109,7 +110,7 @@ fault containment fallback, not a successful graceful shutdown.
 
 Autotests must cover handshake, compatibility, framing limits, malformed output,
 timeout, lifecycle, config rejection, restart, install safety and failed update.
-Run the actual separately built countdown binary. Both platform adapters need
+Run the actual separately built pomodoro binary. Both platform adapters need
 real UI/interaction/DPI validation; macOS compilation cannot prove Windows behavior.
 Production catalog publication/signing is external release work: an unavailable
 catalog must be a retryable error, never a fabricated ecosystem or unsigned fallback.

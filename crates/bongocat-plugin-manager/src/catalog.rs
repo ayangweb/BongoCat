@@ -245,8 +245,8 @@ mod tests {
     fn catalog() -> Catalog {
         Catalog {
             plugins: vec![CatalogEntry {
-                id: "com.bongocat.countdown".into(),
-                name: "Countdown".into(),
+                id: "com.bongocat.pomodoro".into(),
+                name: "Pomodoro".into(),
                 description: "A timer".into(),
                 version: "1.0.0".into(),
                 app_versions: ">=2.3.0, <3".into(),
@@ -254,7 +254,7 @@ mod tests {
                 icon: PluginIcon::Emoji("🍅".into()),
                 downloads: BTreeMap::from([(
                     "macos".to_owned(),
-                    "countdown-1.0.0-macos.zip".to_owned(),
+                    "pomodoro-1.0.0-macos.zip".to_owned(),
                 )]),
                 sha256: None,
                 homepage: None,

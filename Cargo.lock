@@ -817,15 +817,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bongocat-countdown"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "bongocat-i18n"
 version = "2.3.1"
 dependencies = [
@@ -1035,6 +1026,15 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "zip 9.0.2",
+]
+
+[[package]]
+name = "bongocat-pomodoro"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

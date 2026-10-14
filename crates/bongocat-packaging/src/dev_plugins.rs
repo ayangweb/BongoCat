@@ -160,7 +160,7 @@ mod tests {
         let package = package_plugin(root.path(), &manifest, bytes, &executable).unwrap();
         assert_eq!(
             package.file_name().unwrap().to_string_lossy(),
-            "com.bongocat.countdown-1.0.0.zip"
+            "com.bongocat.pomodoro-1.0.0.zip"
         );
         // The artifact is a build output under `target/`, and the tool's job ends
         // there: installing it is the product's own lifecycle.
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(manager.list_plugins()[0].0.name, "Pomodoro / 番茄钟");
         assert_eq!(
             manager
-                .installed_version("com.bongocat.countdown")
+                .installed_version("com.bongocat.pomodoro")
                 .as_deref(),
             Some("1.0.0")
         );
@@ -187,7 +187,7 @@ mod tests {
         assert!(
             store
                 .path()
-                .join("packages/com.bongocat.countdown/1.0.0")
+                .join("packages/com.bongocat.pomodoro/1.0.0")
                 .is_dir()
         );
     }
