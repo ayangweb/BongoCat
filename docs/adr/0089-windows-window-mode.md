@@ -65,6 +65,5 @@ Mver baseline `4da0b9468ad3b6ffaa096eba3f080501d6ab0b5c`,
   Automated frame metrics at 120/144/192 DPI passed; actual OBS capture was
   inspected at the current 150% display scale.
 
-The corresponding Phase 4 task is recorded in `docs/TODO.md`. Evidence and
-remaining Windows platform checks are recorded in
+Evidence and remaining Windows platform checks are recorded in
 `docs/benchmark/windows-window-mode-2026-10-08.md`.

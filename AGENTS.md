@@ -31,12 +31,12 @@
 ### 2.2 开始前
 
 1. 检查当前分支和 `git status`，保留全部用户修改；先 `git fetch` 把上游同步到最新（见 §10）。
-2. 定位 TODO 中对应阶段、任务和退出门槛；读现有实现与测试，不从文档标题推断行为。
+2. 明确当前任务及相关 ADR 中的退出门槛；读现有实现与测试，不从文档标题推断行为。
 3. 明确最小交付范围、平台范围和验证方式；跨阶段门禁先完成前置 spike，否则明确报告阻塞。
 
 ### 2.3 实施
 
-1. 遵循既有模块边界与命名，改动只覆盖请求和当前 TODO 项；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
+1. 遵循既有模块边界与命名，改动只覆盖请求和当前任务；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
 2. 平台差异只放在 platform adapter 或 `cfg` 模块，不扩散到 runtime、model、config、UI。
 3. 新依赖说明用途、维护状态、许可证和替换边界。
 4. 不做无关重构、批量格式化，不覆盖用户未提交修改，不动无关 lockfile、生成文件与资产 metadata。
@@ -45,7 +45,7 @@
 
 1. 按 §9 跑与风险相称的格式化、静态检查、测试和平台 smoke test。
 2. 复查正常、错误、重启和 shutdown 路径，以及依赖方向、平台类型泄漏、`unsafe` 范围和日志隐私。
-3. 完成定义全部满足并有证据时才勾选 TODO checkbox；架构、行为协议或退出条件变化时同步 Technical Design、TODO 与 ADR。
+3. 完成定义全部满足并有证据时才宣称完成；架构、行为协议或退出条件变化时同步 Technical Design 与 ADR。
 4. 最终报告列出改动、验证命令与结果、未运行测试、已知风险、CHANGELOG 判断和下一项未完成任务。文档任务无需声称运行代码测试。
 
 ## 3. 阶段与数据版本
@@ -141,7 +141,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - 语义色通过 `ActiveTheme::theme()` 读取；不重复硬编码颜色、字号、间距、圆角或控件高度，无明确产品需求时用组件默认值与 `Theme`。
 - 常用组件：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、`Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)` + `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、`Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog`、`Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`，分别订阅 `InputEvent` 与 `NumberInputEvent`；范围、步长和最终校验来自业务 schema，组件事件不得绕过 typed command。组件已在自身输入边界限制的条件不要再新增错误码或本地化文案。
-- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在 TODO 记录已迁移组件、剩余特殊控件和官方文档依据。
+- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在相关 ADR 记录已迁移组件、剩余特殊控件和官方文档依据。
 - visual-first 契约（ADR-0054）：不维护 screen-reader/AccessKit tree、辅助桥、隐藏 label/action 或仅供辅助技术的文案，也不新增直接 AccessKit 依赖。
 - 设置界面安静、紧凑、适合重复操作；图标表达常用工具并提供可见 tooltip；控件覆盖 hover、active、focus、disabled、loading、error；Development、Production 与 smoke 使用同一套可见组成，smoke 只改变驱动方式。
 - 支持浅色、深色、系统主题和现有本地化语言；文案遵循 `docs/localization-copy-conventions.md`（省略号只用单个 `…`，由 `tools/validate-locales.py` 强制）。
@@ -187,14 +187,14 @@ just schema                                             # 从 Rust 类型生成�
 - 退出不依赖强杀，所有 worker 在超时内 join；8 小时 soak 无持续内存、GPU、handle、线程或日志增长。
 - scaffold 不等于功能完成；编译通过不等于平台行为完成；单个模型通过不等于模型兼容完成；增加超时不等于修复 issue #47；未验证签名、权限和回滚不等于可发布。
 
-### 9.4 文档与 TODO
+### 9.4 文档与验收
 
 - 架构决策、约束变化和 go/no-go 结果写入 `docs/adr/`；Benchmark 写入 `docs/benchmark/`；历史考古写入 `docs/migration/`。
 - Technical Design 只描述当前目标架构，不写历史路线、候选方案比较或已放弃设计，也不把旧配置兼容重新纳入产品范围。
 - 根级用户/贡献者文档同时维护英文与简体中文：`README.md` / `README.zh-CN.md`、`CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`、`CHANGELOG.md` / `CHANGELOG.zh-CN.md`；英文文件不带语言后缀，修改一份必须同步另一份。
-- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design、TODO 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，必须保留替换、迁移、重写、默认行为变化和升级注意事项。
+- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，必须保留替换、迁移、重写、默认行为变化和升级注意事项。
 - 仓库自有文件名与用户文档不使用历史重写阶段的名称或同义内部限定词；普通文案中的 `native` 只用于操作系统原生能力或 Cubism Native 官方产品名；既有 Rust 类型与 API 边界不因文档清理顺带重命名。
-- TODO checkbox 仅在完成定义完整满足后勾选；部分完成保持 `[ ]` 并写明状态与剩余工作；新任务放入正确 phase，标明依赖与退出条件。
+- 相关 ADR 中的验收项仅在完成定义完整满足后标记完成；部分完成写明状态与剩余工作，保留依赖与退出条件。
 - changelog 分段标题词表、版本标题和发版 commit 规则见 `docs/changelog-conventions.md`；没有对应的下一个版本标题时统一写入 `Unreleased`，不得自行创建版本标题。
 
 ## 10. Git 与交付
