@@ -53,13 +53,15 @@ protocol before start. Every exchange has a deadline; failure stops just that
 plugin. Stdout is protocol-only and stderr is discarded, not a key-sequence log.
 
 Plugins own config defaults, validation, migration, state bytes and both view
-surfaces. Host owns per-environment/per-plugin storage and atomic writes. Config
+surfaces. Views are bounded typed trees (text, action, boolean and integer
+controls) with scoped IDs, predefined model-window anchors and settings surfaces.
+The host renders a plugin's model view where the model window is shown and its
+settings tree in the plugin center; the dedicated model-window overlay adapter is
+the remaining platform work behind the P4-PLUGINS exit conditions, not a per-plugin
+rule. Host owns per-environment/per-plugin storage and atomic writes. Config
 and state survive disable/upgrade; uninstall removes executable but preserves data
 until explicit reset. Configuration is prepared by the plugin before host commit.
-Views are bounded typed trees (text, action, boolean and integer controls), scoped
-IDs, predefined model-window anchors and settings surfaces. Native adapters render
-model content in the existing model window; GPUI renders configuration in the
-plugin center. No GPUI entity, GPU handle or platform pointer crosses the boundary.
+ No GPUI entity, GPU handle or platform pointer crosses the boundary.
 Future primitives/capabilities require a protocol minor/version gate, not bespoke
 plugin IDs. Native binaries are trusted code, **not an OS sandbox**; capability
 checks limit host calls, not their own filesystem/network access. Installation must
