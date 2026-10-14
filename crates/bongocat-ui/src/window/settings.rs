@@ -33,6 +33,31 @@ impl SettingsView {
     /// otherwise pay a directory scan every second to render a value that did not
     /// move. Everything that advances the revision is observed by the probe
     /// itself, so a snapshot is requested exactly when one would have changed.
+    /// Drive plugin ticks and the plugin-center cache without blocking the frame.
+    pub(super) fn start_plugin_polling(&self, cx: &mut Context<Self>) {
+        let executor = cx.background_executor().clone();
+        let host = self.plugin_host.clone();
+        cx.spawn(async move |this, cx| {
+            let started = Instant::now();
+            loop {
+                executor.timer(Duration::from_millis(200)).await;
+                let elapsed = started.elapsed().as_millis() as u64;
+                host.tick(elapsed);
+                if this
+                    .update(cx, |view, cx| {
+                        if !view.window_hidden() {
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         let client = self.client.clone();

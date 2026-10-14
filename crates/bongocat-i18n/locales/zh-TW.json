@@ -29,7 +29,9 @@
       "title": "關於"
     },
     "plugins": {
-      "title": "插件"
+      "title": "插件",
+      "subtitle": "Extend the model window with installable plugins.",
+      "empty": "No plugins found. Development builds scan the local plugin folder."
     }
   },
   "system_menu": {
@@ -543,5 +545,10 @@
         "unsupported_build": "開發版本不支援開機自動啟動"
       }
     }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "failed": "Load failed"
   }
 }

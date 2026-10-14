@@ -29,7 +29,9 @@
       "title": "À propos"
     },
     "plugins": {
-      "title": "Extensions"
+      "title": "Extensions",
+      "subtitle": "Extend the model window with installable plugins.",
+      "empty": "No plugins found. Development builds scan the local plugin folder."
     }
   },
   "system_menu": {
@@ -543,5 +545,10 @@
         "unsupported_build": "Le lancement au démarrage n’est pas disponible dans les versions de développement"
       }
     }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "failed": "Load failed"
   }
 }

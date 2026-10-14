@@ -1638,8 +1638,13 @@ impl Render for SettingsView {
             SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
         let plugins_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
             SettingItem::render({
-                move |_: &RenderOptions, _window: &mut Window, _app: &mut App| {
-                    plugins_page::content_static(language).into_any_element()
+                let view = view_entity.clone();
+                move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
+                    let page_language = view.read(app).display_language();
+                    view.update(app, move |view, cx| {
+                        plugins_page::content(view, page_language, cx)
+                    })
+                    .into_any_element()
                 }
             })
             .keywords(plugins_keywords),

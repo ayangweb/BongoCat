@@ -1,213 +1,146 @@
-//! 插件注册表
-
-use bongocat_plugin_sdk::{HostMessage, Plugin, PluginConfigSchema, PluginMessage, PluginMetadata};
-use std::collections::HashMap;
+//! Process-backed plugin registry. A failed child only removes that entry.
+use crate::loader::Process;
+use bongocat_plugin_sdk::{Configuration, HostMessage, PluginMetadata, PluginOutput};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// 注册表错误
 #[derive(Debug, Error)]
 pub enum RegistryError {
-    #[error("插件未找到: {0}")]
-    PluginNotFound(String),
-    #[error("插件初始化失败: {0}")]
-    InitializationFailed(String),
-    #[error("插件运行时错误: {0}")]
-    RuntimeError(String),
+    #[error("plugin not found: {0}")]
+    NotFound(String),
+    #[error("plugin is already running: {0}")]
+    AlreadyRunning(String),
+    #[error("plugin process failed: {0}")]
+    Process(#[from] std::io::Error),
 }
-
-/// 插件状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginState {
-    /// 已禁用
-    Disabled,
-    /// 已启用
+    Discovered,
     Enabled,
+    Disabled,
+    Failed,
 }
-
-/// 插件注册信息
-struct PluginEntry {
-    /// 插件实例
-    plugin: Box<dyn Plugin>,
-    /// 插件状态
+struct Entry {
+    metadata: PluginMetadata,
+    root: PathBuf,
     state: PluginState,
-    /// 插件路径
-    #[allow(dead_code)]
-    path: PathBuf,
-    /// 插件配置
-    config: HashMap<String, serde_json::Value>,
+    process: Option<Process>,
+    config: Configuration,
+    last_output: PluginOutput,
 }
-
-/// 插件注册表
 pub struct PluginRegistry {
-    plugins: HashMap<String, PluginEntry>,
+    entries: BTreeMap<String, Entry>,
 }
-
 impl PluginRegistry {
-    /// 创建新的注册表
     pub fn new() -> Self {
         Self {
-            plugins: HashMap::new(),
+            entries: BTreeMap::new(),
         }
     }
-
-    /// 注册插件
     pub fn register(
         &mut self,
-        id: String,
-        plugin: Box<dyn Plugin>,
-        path: PathBuf,
+        metadata: PluginMetadata,
+        root: PathBuf,
     ) -> Result<(), RegistryError> {
-        let entry = PluginEntry {
-            plugin,
-            state: PluginState::Disabled,
-            path,
-            config: HashMap::new(),
-        };
-
-        self.plugins.insert(id, entry);
+        if self.entries.contains_key(&metadata.id) {
+            return Ok(());
+        }
+        self.entries.insert(
+            metadata.id.clone(),
+            Entry {
+                metadata,
+                root,
+                state: PluginState::Discovered,
+                process: None,
+                config: Configuration::new(),
+                last_output: PluginOutput::default(),
+            },
+        );
         Ok(())
     }
-
-    /// 取消注册插件
-    pub fn unregister(&mut self, id: &str) -> Result<(), RegistryError> {
-        if let Some(mut entry) = self.plugins.remove(id) {
-            let _ = entry.plugin.shutdown();
-            Ok(())
-        } else {
-            Err(RegistryError::PluginNotFound(id.to_string()))
-        }
-    }
-
-    /// 启用插件
-    pub fn enable(&mut self, id: &str) -> Result<(), RegistryError> {
-        let entry = self
-            .plugins
-            .get_mut(id)
-            .ok_or_else(|| RegistryError::PluginNotFound(id.to_string()))?;
-
-        if entry.state == PluginState::Disabled {
-            entry
-                .plugin
-                .initialize(entry.config.clone())
-                .map_err(|e| RegistryError::InitializationFailed(e.to_string()))?;
-            entry.state = PluginState::Enabled;
-        }
-
-        Ok(())
-    }
-
-    /// 禁用插件
-    pub fn disable(&mut self, id: &str) -> Result<(), RegistryError> {
-        let entry = self
-            .plugins
-            .get_mut(id)
-            .ok_or_else(|| RegistryError::PluginNotFound(id.to_string()))?;
-
-        if entry.state == PluginState::Enabled {
-            let _ = entry.plugin.shutdown();
-            entry.state = PluginState::Disabled;
-        }
-
-        Ok(())
-    }
-
-    /// 获取插件
-    pub fn contains(&self, id: &str) -> bool {
-        self.plugins.contains_key(id)
-    }
-
-    /// 列出所有插件
-    pub fn list(&self) -> Vec<(String, PluginMetadata, PluginState)> {
-        self.plugins
-            .iter()
-            .map(|(id, entry)| (id.clone(), entry.plugin.metadata(), entry.state))
+    pub fn list(&self) -> Vec<(PluginMetadata, PluginState)> {
+        self.entries
+            .values()
+            .map(|e| (e.metadata.clone(), e.state))
             .collect()
     }
-
-    /// 向所有启用的插件广播消息
-    pub fn broadcast_message(&mut self, message: HostMessage) -> Vec<(String, Vec<PluginMessage>)> {
-        let mut results = Vec::new();
-
-        for (id, entry) in &mut self.plugins {
-            if entry.state == PluginState::Enabled {
-                match entry.plugin.handle_message(message.clone()) {
-                    Ok(messages) if !messages.is_empty() => {
-                        results.push((id.clone(), messages));
-                    }
-                    Err(e) => {
-                        eprintln!("插件 {} 处理消息时出错: {}", id, e);
-                    }
-                    _ => {}
+    pub fn enable(&mut self, id: &str) -> Result<PluginOutput, RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        if entry.process.is_some() {
+            return Ok(entry.last_output.clone());
+        }
+        let mut process = Process::start(&entry.root, &entry.metadata)?;
+        let output = process.exchange(HostMessage::Start {
+            config: entry.config.clone(),
+            state: Vec::new(),
+        })?;
+        entry.last_output = output.clone();
+        entry.process = Some(process);
+        entry.state = PluginState::Enabled;
+        Ok(output)
+    }
+    pub fn disable(&mut self, id: &str) -> Result<(), RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        if let Some(mut process) = entry.process.take() {
+            process.stop()?;
+        }
+        entry.state = PluginState::Disabled;
+        Ok(())
+    }
+    pub fn configure(
+        &mut self,
+        id: &str,
+        config: Configuration,
+    ) -> Result<PluginOutput, RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        entry.config = config.clone();
+        let Some(process) = entry.process.as_mut() else {
+            return Ok(entry.last_output.clone());
+        };
+        let output = process.exchange(HostMessage::Configure { config })?;
+        entry.last_output = output.clone();
+        Ok(output)
+    }
+    pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, PluginOutput)> {
+        let mut outputs = Vec::new();
+        for (id, entry) in &mut self.entries {
+            let Some(process) = entry.process.as_mut() else {
+                continue;
+            };
+            match process.exchange(HostMessage::Tick { elapsed_ms }) {
+                Ok(output) => {
+                    entry.last_output = output.clone();
+                    outputs.push((id.clone(), output));
+                }
+                Err(_) => {
+                    entry.process.take();
+                    entry.state = PluginState::Failed;
                 }
             }
         }
-
-        results
+        outputs
     }
-
-    /// 向特定插件发送消息
-    pub fn send_message(
-        &mut self,
-        id: &str,
-        message: HostMessage,
-    ) -> Result<Vec<PluginMessage>, RegistryError> {
-        let entry = self
-            .plugins
-            .get_mut(id)
-            .ok_or_else(|| RegistryError::PluginNotFound(id.to_string()))?;
-
-        if entry.state != PluginState::Enabled {
-            return Ok(Vec::new());
-        }
-
-        entry
-            .plugin
-            .handle_message(message)
-            .map_err(|e| RegistryError::RuntimeError(e.to_string()))
+    pub fn output(&self, id: &str) -> Option<&PluginOutput> {
+        self.entries.get(id).map(|e| &e.last_output)
     }
-
-    /// 获取插件配置 schema
-    pub fn get_config_schema(&self, id: &str) -> Option<Option<PluginConfigSchema>> {
-        self.plugins
-            .get(id)
-            .map(|entry| entry.plugin.config_schema())
-    }
-
-    /// 更新插件配置
-    pub fn update_config(
-        &mut self,
-        id: &str,
-        config: HashMap<String, serde_json::Value>,
-    ) -> Result<(), RegistryError> {
-        let entry = self
-            .plugins
-            .get_mut(id)
-            .ok_or_else(|| RegistryError::PluginNotFound(id.to_string()))?;
-
-        entry.config = config.clone();
-
-        if entry.state == PluginState::Enabled {
-            let message = HostMessage::ConfigChanged { config };
-            entry
-                .plugin
-                .handle_message(message)
-                .map_err(|e| RegistryError::RuntimeError(e.to_string()))?;
-        }
-
-        Ok(())
-    }
-
-    /// 关闭所有插件
-    pub fn shutdown_all(&mut self) {
-        for entry in self.plugins.values_mut() {
-            if entry.state == PluginState::Enabled {
-                entry.plugin.shutdown().ok();
+    pub fn shutdown(&mut self) {
+        for entry in self.entries.values_mut() {
+            if let Some(mut process) = entry.process.take() {
+                let _ = process.stop();
             }
         }
     }
 }
-
 impl Default for PluginRegistry {
     fn default() -> Self {
         Self::new()

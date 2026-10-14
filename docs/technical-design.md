@@ -52,6 +52,21 @@ Rust 2024 edition application
 - 官方 Cubism Core 是预编译厂商二进制，是“应用代码纯 Rust”的唯一 FFI 例外；BongoCat 业务逻辑不得进入 SDK bridge。
 - Linux 不进入首发范围，但共享业务 crate 不得依赖 Win32/AppKit 类型，不得故意封死后续 backend。
 
+## 1.1 插件系统
+
+- 插件是**独立 Rust 进程**，以版本化 JSON 协议（`bongocat-plugin-sdk`）与主程序通信；
+  插件不进入主程序进程，也不共享 Rust ABI，因此插件与主程序的编译器和链接布局互不影响。
+- `bongocat-plugin-manager` 负责包发现（`plugin.json` 清单）、生命周期（discover → enable →
+  configure/tick → disable → shutdown）、协议帧大小上限、请求/响应超时和单个进程的故障隔离。
+- 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
+  action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
+- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板；Emoji 图标来自清单，
+  本地/网络图片是后续扩展。主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
+- 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
+  HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
+- 首个验证插件是番茄钟（#996）；其余候选 Issue（#905、#849、#90、#74、#945、#927）
+  保留，未在本阶段实现。边界、取舍与限制见 ADR-0090。
+
 ## 2. “纯 Rust”的定义
 
 本项目中的“纯 Rust”定义为：

@@ -23,8 +23,7 @@ members = [
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
-    "plugins/typing-sounds",
-    "plugins/input-stats",
+    "plugins/countdown",
 ]
 
 [workspace.package]

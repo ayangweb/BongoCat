@@ -1,203 +1,172 @@
-//! BongoCat 插件管理器
-//!
-//! 负责插件的发现、加载、卸载和生命周期管理。
-
-use bongocat_plugin_sdk::{HostMessage, PluginError, PluginMessage, PluginMetadata};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use thiserror::Error;
-
+//! Discovery and lifecycle management for independently distributed plugins.
+#![forbid(unsafe_code)]
+mod catalog;
 mod loader;
 mod registry;
-
-pub use loader::{LoaderError, PluginLoader};
+use bongocat_plugin_sdk::PluginMetadata;
+pub use catalog::{
+    CATALOG_NAME, Catalog, CatalogEntry, CatalogError, download_verified, fetch_and_select,
+    parse_catalog, select_for_host, sha256_of,
+};
 pub use registry::{PluginRegistry, PluginState, RegistryError};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+use thiserror::Error;
 
-/// 插件管理器错误
+pub const MANIFEST_FILE: &str = "plugin.json";
 #[derive(Debug, Error)]
 pub enum PluginManagerError {
-    #[error("插件加载失败: {0}")]
-    LoadFailed(String),
-    #[error("插件未找到: {0}")]
-    PluginNotFound(String),
-    #[error("插件已存在: {0}")]
-    PluginAlreadyExists(String),
-    #[error("插件错误: {0}")]
-    PluginError(#[from] PluginError),
-    #[error("加载器错误: {0}")]
-    LoaderError(#[from] LoaderError),
-    #[error("注册表错误: {0}")]
-    RegistryError(#[from] RegistryError),
-    #[error("IO 错误: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("序列化错误: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    #[error("plugin manifest is invalid: {0}")]
+    Manifest(#[from] serde_json::Error),
+    #[error("plugin IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("plugin registry error: {0}")]
+    Registry(#[from] RegistryError),
+    #[error("plugin manifest is unsafe: {0}")]
+    UnsafeManifest(String),
 }
-
-/// 插件清单（用于生产环境从 GitHub 获取）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginManifest {
-    /// 插件列表
-    pub plugins: Vec<PluginManifestEntry>,
+    pub metadata: PluginMetadata,
+    pub sha256: Option<String>,
 }
 
-/// 插件清单条目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginManifestEntry {
-    /// 插件 ID
-    pub id: String,
-    /// 插件名称
-    pub name: String,
-    /// 插件描述
-    pub description: String,
-    /// 插件版本
-    pub version: String,
-    /// 插件作者
-    pub author: String,
-    /// 插件图标（Emoji）
-    pub icon: String,
-    /// 最小应用版本
-    pub min_app_version: String,
-    /// 下载 URL（按平台）
-    pub download_urls: HashMap<String, String>,
-    /// 插件主页
-    pub homepage: Option<String>,
-    /// 插件仓库
-    pub repository: Option<String>,
-}
-
-/// 插件管理器
 pub struct PluginManager {
-    /// 插件注册表
     registry: PluginRegistry,
-    /// 插件加载器
-    loader: PluginLoader,
-    /// 插件目录
     plugin_dir: PathBuf,
 }
-
 impl PluginManager {
-    /// 创建新的插件管理器
     pub fn new(plugin_dir: PathBuf) -> Result<Self, PluginManagerError> {
-        // 确保插件目录存在
-        if !plugin_dir.exists() {
-            bongocat_storage::create_private_dir_all(&plugin_dir)?;
-        }
-
+        fs::create_dir_all(&plugin_dir)?;
         Ok(Self {
             registry: PluginRegistry::new(),
-            loader: PluginLoader::new(),
             plugin_dir,
         })
     }
-
-    /// 获取插件目录
     pub fn plugin_dir(&self) -> &Path {
         &self.plugin_dir
     }
-
-    /// 扫描并加载所有可用插件
-    pub fn discover_plugins(&mut self) -> Result<(), PluginManagerError> {
-        if !self.plugin_dir.exists() {
-            return Ok(());
-        }
-
-        for entry in walkdir::WalkDir::new(&self.plugin_dir)
-            .max_depth(2)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let path = entry.path();
-            if path.is_file() {
-                let extension = path.extension().and_then(|s| s.to_str());
-                let is_plugin = if cfg!(target_os = "windows") {
-                    extension == Some("dll")
-                } else if cfg!(target_os = "macos") {
-                    extension == Some("dylib")
-                } else {
-                    false
-                };
-
-                if is_plugin {
-                    self.load_plugin(path).ok();
-                }
+    pub fn discover_plugins(&mut self) -> Result<usize, PluginManagerError> {
+        let mut count = 0;
+        for entry in fs::read_dir(&self.plugin_dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
             }
+            let root = entry.path();
+            let path = root.join(MANIFEST_FILE);
+            if !path.is_file() {
+                continue;
+            }
+            let manifest: PluginManifest = serde_json::from_slice(&fs::read(&path)?)?;
+            validate_manifest(&manifest)?;
+            self.registry.register(manifest.metadata, root)?;
+            count += 1;
         }
-
-        Ok(())
+        Ok(count)
     }
-
-    /// 加载插件
-    fn load_plugin(&mut self, path: &Path) -> Result<(), PluginManagerError> {
-        let plugin = self.loader.load(path)?;
-        let metadata = plugin.metadata();
-        let id = metadata.id.clone();
-
-        if self.registry.contains(&id) {
-            return Err(PluginManagerError::PluginAlreadyExists(id));
-        }
-
-        self.registry.register(id, plugin, path.to_path_buf())?;
-        Ok(())
-    }
-
-    /// 获取所有插件元数据
-    pub fn list_plugins(&self) -> Vec<(String, PluginMetadata, PluginState)> {
+    pub fn list_plugins(&self) -> Vec<(PluginMetadata, PluginState)> {
         self.registry.list()
     }
-
-    /// 启用插件
     pub fn enable_plugin(&mut self, id: &str) -> Result<(), PluginManagerError> {
-        Ok(self.registry.enable(id)?)
+        self.registry.enable(id).map(|_| ()).map_err(Into::into)
     }
-
-    /// 禁用插件
     pub fn disable_plugin(&mut self, id: &str) -> Result<(), PluginManagerError> {
-        Ok(self.registry.disable(id)?)
+        self.registry.disable(id).map_err(Into::into)
     }
-
-    /// 卸载插件
-    pub fn uninstall_plugin(&mut self, id: &str) -> Result<(), PluginManagerError> {
-        Ok(self.registry.unregister(id)?)
-    }
-
-    /// 向所有启用的插件广播消息
-    pub fn broadcast_message(&mut self, message: HostMessage) -> Vec<(String, Vec<PluginMessage>)> {
-        self.registry.broadcast_message(message)
-    }
-
-    /// 向特定插件发送消息
-    pub fn send_message_to_plugin(
+    pub fn configure_plugin(
         &mut self,
         id: &str,
-        message: HostMessage,
-    ) -> Result<Vec<PluginMessage>, PluginManagerError> {
-        Ok(self.registry.send_message(id, message)?)
-    }
-
-    /// 获取插件配置 schema
-    pub fn get_plugin_config_schema(
-        &self,
-        id: &str,
-    ) -> Result<Option<bongocat_plugin_sdk::PluginConfigSchema>, PluginManagerError> {
-        self.registry
-            .get_config_schema(id)
-            .ok_or_else(|| PluginManagerError::PluginNotFound(id.to_string()))
-    }
-
-    /// 更新插件配置
-    pub fn update_plugin_config(
-        &mut self,
-        id: &str,
-        config: HashMap<String, serde_json::Value>,
+        config: bongocat_plugin_sdk::Configuration,
     ) -> Result<(), PluginManagerError> {
-        Ok(self.registry.update_config(id, config)?)
+        self.registry
+            .configure(id, config)
+            .map(|_| ())
+            .map_err(Into::into)
     }
+    pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, bongocat_plugin_sdk::PluginOutput)> {
+        self.registry.tick(elapsed_ms)
+    }
+    pub fn plugin_output(&self, id: &str) -> Option<&bongocat_plugin_sdk::PluginOutput> {
+        self.registry.output(id)
+    }
+    pub fn shutdown(&mut self) {
+        self.registry.shutdown();
+    }
+}
+fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
+    let m = &manifest.metadata;
+    if m.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
+        || m.id.is_empty()
+        || m.entry.contains('/')
+        || m.entry.contains('\\')
+        || Path::new(&m.entry).is_absolute()
+    {
+        return Err(PluginManagerError::UnsafeManifest(
+            "protocol, id or entry is invalid".into(),
+        ));
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejects_manifest_path_escape() {
+        let metadata = PluginMetadata {
+            id: "x".into(),
+            name: "x".into(),
+            description: "x".into(),
+            version: "1.0.0".into(),
+            app_versions: ">=2.3.1".into(),
+            protocol_version: 1,
+            entry: "../x".into(),
+            icon: bongocat_plugin_sdk::PluginIcon::Emoji("x".into()),
+            capabilities: vec![],
+        };
+        assert!(
+            validate_manifest(&PluginManifest {
+                metadata,
+                sha256: None
+            })
+            .is_err()
+        );
+    }
+}
 
-    /// 关闭所有插件
-    pub fn shutdown(&mut self) -> Result<(), PluginManagerError> {
-        self.registry.shutdown_all();
-        Ok(())
+/// A verified plugin package, installed under its own versioned directory.
+pub mod install;
+
+/// Compatibility of an advertised release with this build.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Compatibility {
+    /// The plugin may be offered as an install or an update.
+    Compatible,
+    /// It names a protocol this build does not speak.
+    IncompatibleProtocol,
+    /// No advertised build matches this host.
+    MissingPlatform,
+    /// The advertised app range excludes this build.
+    IncompatibleAppVersion,
+}
+
+impl Compatibility {
+    pub fn is_compatible(&self) -> bool {
+        matches!(self, Self::Compatible)
     }
+}
+
+/// One discoverable plugin as the center shows it.
+#[derive(Clone, Debug)]
+pub struct PluginCard {
+    pub metadata: PluginMetadata,
+    pub state: PluginState,
+    pub version: Option<String>,
+    pub compatibility: Compatibility,
+    /// `None` for a locally discovered package, `Some` for a catalog entry.
+    pub download_url: Option<String>,
+    pub sha256: Option<String>,
 }

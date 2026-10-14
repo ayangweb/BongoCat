@@ -29,7 +29,9 @@
       "title": "حول"
     },
     "plugins": {
-      "title": "الإضافات"
+      "title": "الإضافات",
+      "subtitle": "Extend the model window with installable plugins.",
+      "empty": "No plugins found. Development builds scan the local plugin folder."
     }
   },
   "system_menu": {
@@ -543,5 +545,10 @@
         "unsupported_build": "التشغيل التلقائي عند بدء تشغيل الجهاز غير متاح في نسخ التطوير"
       }
     }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "failed": "Load failed"
   }
 }

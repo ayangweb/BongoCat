@@ -86,6 +86,8 @@ mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod plugins_host;
+use plugins_host::PluginHost;
 mod plugins_page;
 mod render;
 mod setting_gate;
@@ -105,6 +107,12 @@ use localization::{
 };
 #[cfg(test)]
 mod tests;
+
+/// The environment the settings tests run against.
+#[cfg(test)]
+pub(super) fn test_environment() -> bongocat_config::BuildEnvironment {
+    bongocat_config::BuildEnvironment::Development
+}
 
 const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 600.0;
@@ -213,9 +221,14 @@ pub struct SettingsWindowSeed {
     /// already resolved against the system language by the application.
     pub language: SettingsLanguage,
     pub appearance_theme: SettingsTheme,
+    /// The build's storage environment, so the plugin center scans the same
+    /// Development or Production root the application itself uses.
+    pub environment: bongocat_config::BuildEnvironment,
 }
 
 pub struct SettingsView {
+    #[allow(dead_code)]
+    pub(crate) plugin_host: PluginHost,
     #[cfg(target_os = "windows")]
     pub(crate) window_background_color: Entity<gpui_kit::component::color_picker::ColorPickerState>,
     #[cfg(target_os = "windows")]

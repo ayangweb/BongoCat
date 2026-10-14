@@ -1,215 +1,279 @@
-//! BongoCat 插件 SDK
-//!
-//! 为插件开发提供核心类型、trait 和工具函数。
+//! Versioned process protocol. No Rust ABI or application internals cross it.
+#![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
+use std::io::{self, Read, Write};
 
-/// 插件元数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const MAX_MESSAGE_BYTES: usize = 256 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ConfigValue {
+    Boolean(bool),
+    Integer(i64),
+    Text(String),
+}
+pub type Configuration = BTreeMap<String, ConfigValue>;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum PluginIcon {
+    Emoji(String),
+    LocalImage(String),
+    RemoteImage(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Capability {
+    ModelUi,
+    Configuration,
+    PersistentState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginMetadata {
-    /// 插件唯一标识符，使用反向域名格式（例如 com.example.my-plugin）
     pub id: String,
-    /// 插件名称
     pub name: String,
-    /// 插件简短描述
     pub description: String,
-    /// 插件版本
     pub version: String,
-    /// 插件作者
-    pub author: String,
-    /// 插件图标（Emoji）
-    pub icon: String,
-    /// 支持的 BongoCat 最小版本
-    pub min_app_version: String,
-    /// 插件主页 URL（可选）
-    pub homepage: Option<String>,
-    /// 插件仓库 URL（可选）
-    pub repository: Option<String>,
+    pub app_versions: String,
+    pub protocol_version: u32,
+    pub entry: String,
+    pub icon: PluginIcon,
+    pub capabilities: Vec<Capability>,
 }
 
-/// 插件配置定义
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginConfigSchema {
-    /// 配置项定义
-    pub fields: Vec<ConfigField>,
-}
-
-/// 配置字段定义
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConfigField {
-    /// 字段键名
-    pub key: String,
-    /// 字段显示名称
-    pub label: String,
-    /// 字段类型
-    pub field_type: ConfigFieldType,
-    /// 默认值（JSON 格式）
-    pub default_value: serde_json::Value,
-    /// 字段描述（可选）
-    pub description: Option<String>,
-}
-
-/// 配置字段类型
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ConfigFieldType {
-    /// 布尔值
-    Boolean,
-    /// 字符串
-    String,
-    /// 整数
-    Integer { min: Option<i64>, max: Option<i64> },
-    /// 浮点数
-    Float { min: Option<f64>, max: Option<f64> },
-    /// 枚举选择
-    Enum { options: Vec<String> },
-}
-
-/// 输入事件类型
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum InputEvent {
-    /// 键盘按下
-    KeyDown { key: String },
-    /// 键盘释放
-    KeyUp { key: String },
-    /// 鼠标按钮按下
-    MouseButtonDown { button: MouseButton },
-    /// 鼠标按钮释放
-    MouseButtonUp { button: MouseButton },
-    /// 鼠标移动
-    MouseMove { delta_x: f32, delta_y: f32 },
-    /// 鼠标滚轮
-    MouseWheel { delta: f32 },
-}
-
-/// 鼠标按钮
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-    Other(u8),
-}
-
-/// 插件渲染位置
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RenderPosition {
-    /// 模型窗口左上角
+pub enum Anchor {
     TopLeft,
-    /// 模型窗口右上角
+    #[default]
     TopRight,
-    /// 模型窗口左下角
     BottomLeft,
-    /// 模型窗口右下角
     BottomRight,
-    /// 模型窗口中心
-    Center,
 }
 
-/// 插件渲染内容
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum RenderContent {
-    /// 文本内容
+pub enum UiNode {
     Text {
-        content: String,
-        font_size: f32,
-        color: (u8, u8, u8, u8),
+        text: String,
     },
-    /// 自定义 UI（暂时保留，未来扩展）
-    Custom { data: serde_json::Value },
+    Button {
+        id: String,
+        label: String,
+    },
+    Toggle {
+        key: String,
+        label: String,
+        value: bool,
+    },
+    Integer {
+        key: String,
+        label: String,
+        value: i64,
+        min: i64,
+        max: i64,
+    },
 }
 
-/// 插件到主程序的消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum PluginMessage {
-    /// 请求播放音频文件
-    PlayAudio { file_path: String },
-    /// 请求更新渲染内容
-    UpdateRender {
-        position: RenderPosition,
-        content: Option<RenderContent>,
-    },
-    /// 请求显示通知
-    ShowNotification { title: String, message: String },
-    /// 请求保存持久化数据
-    SaveData { key: String, value: String },
-    /// 请求读取持久化数据
-    LoadData { key: String },
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PluginView {
+    pub anchor: Anchor,
+    pub nodes: Vec<UiNode>,
 }
 
-/// 主程序到插件的消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl PluginView {
+    pub fn validate(&self) -> bool {
+        self.nodes.len() <= 16
+            && self.nodes.iter().all(|node| match node {
+                UiNode::Text { text } => text.len() <= 1024,
+                UiNode::Button { id, label } => valid_key(id) && label.len() <= 128,
+                UiNode::Toggle { key, label, .. } => valid_key(key) && label.len() <= 128,
+                UiNode::Integer {
+                    key,
+                    label,
+                    value,
+                    min,
+                    max,
+                } => valid_key(key) && label.len() <= 128 && min <= value && value <= max,
+            })
+    }
+}
+pub fn valid_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HostMessage {
-    /// 输入事件
-    InputEvent { event: InputEvent },
-    /// 配置变更
-    ConfigChanged {
-        config: HashMap<String, serde_json::Value>,
+    Handshake {
+        protocol_version: u32,
+        id: String,
     },
-    /// 数据加载响应
-    DataLoaded { key: String, value: Option<String> },
+    Start {
+        config: Configuration,
+        state: Vec<u8>,
+    },
+    Tick {
+        elapsed_ms: u64,
+    },
+    Action {
+        id: String,
+    },
+    Configure {
+        config: Configuration,
+    },
+    Reset,
+    Pause,
+    Resume,
+    Stop,
 }
-
-/// 插件错误
-#[derive(Debug, thiserror::Error)]
-pub enum PluginError {
-    #[error("初始化失败: {0}")]
-    InitializationFailed(String),
-    #[error("配置无效: {0}")]
-    InvalidConfig(String),
-    #[error("运行时错误: {0}")]
-    RuntimeError(String),
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PluginOutput {
+    pub model: PluginView,
+    pub settings: PluginView,
+    pub config: Configuration,
+    pub state: Vec<u8>,
 }
-
-/// 插件生命周期 trait
-pub trait Plugin: Send + Sync {
-    /// 获取插件元数据
-    fn metadata(&self) -> PluginMetadata;
-
-    /// 获取配置 schema（可选）
-    fn config_schema(&self) -> Option<PluginConfigSchema> {
-        None
+impl PluginOutput {
+    pub fn validate(&self) -> bool {
+        self.model.validate()
+            && self.settings.validate()
+            && self.state.len() <= 64 * 1024
+            && self.config.len() <= 64
+            && self.config.iter().all(|(k, v)| {
+                valid_key(k)
+                    && match v {
+                        ConfigValue::Text(s) => s.len() <= 4096,
+                        _ => true,
+                    }
+            })
     }
-
-    /// 初始化插件
-    fn initialize(&mut self, config: HashMap<String, serde_json::Value>)
-    -> Result<(), PluginError>;
-
-    /// 处理来自主程序的消息
-    fn handle_message(&mut self, message: HostMessage) -> Result<Vec<PluginMessage>, PluginError>;
-
-    /// 关闭插件
-    fn shutdown(&mut self) -> Result<(), PluginError>;
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Request {
+    pub sequence: u64,
+    pub message: HostMessage,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Response {
+    pub sequence: u64,
+    pub result: Result<PluginOutput, String>,
 }
 
-/// 插件构造器类型
-pub type PluginConstructor = fn() -> Box<dyn Plugin>;
+pub trait Plugin {
+    fn id(&self) -> &'static str;
+    fn handle(&mut self, message: HostMessage) -> Result<PluginOutput, String>;
+}
 
-/// 声明插件入口点的宏
-#[macro_export]
-macro_rules! declare_plugin {
-    ($plugin_type:ty, $constructor:path) => {
-        #[unsafe(no_mangle)]
-        pub extern "C" fn _plugin_create() -> *mut ::std::ffi::c_void {
-            let constructor: $crate::PluginConstructor = $constructor;
-            let boxed: Box<dyn $crate::Plugin> = constructor();
-            Box::into_raw(boxed) as *mut ::std::ffi::c_void
-        }
+pub fn write_frame<T: Serialize>(writer: &mut impl Write, value: &T) -> io::Result<()> {
+    let bytes = serde_json::to_vec(value)?;
+    if bytes.len() > MAX_MESSAGE_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "plugin frame too large",
+        ));
+    }
+    writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
+    writer.write_all(&bytes)?;
+    writer.flush()
+}
+pub fn read_frame<T: serde::de::DeserializeOwned>(reader: &mut impl Read) -> io::Result<T> {
+    let mut size = [0; 4];
+    reader.read_exact(&mut size)?;
+    let size = u32::from_le_bytes(size) as usize;
+    if size > MAX_MESSAGE_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "plugin frame too large",
+        ));
+    }
+    let mut bytes = vec![0; size];
+    reader.read_exact(&mut bytes)?;
+    serde_json::from_slice(&bytes).map_err(io::Error::other)
+}
 
-        #[unsafe(no_mangle)]
-        pub extern "C" fn _plugin_destroy(ptr: *mut ::std::ffi::c_void) {
-            if !ptr.is_null() {
-                unsafe {
-                    drop(Box::from_raw(ptr as *mut $plugin_type));
+/// Stdout is exclusively framed protocol, never plugin logging.
+pub fn run(plugin: &mut impl Plugin) -> io::Result<()> {
+    let mut input = io::stdin().lock();
+    let mut output = io::stdout().lock();
+    let mut ready = false;
+    loop {
+        let request: Request = read_frame(&mut input)?;
+        let stop = matches!(request.message, HostMessage::Stop);
+        let result = match request.message {
+            HostMessage::Handshake {
+                protocol_version,
+                ref id,
+            } => {
+                if ready || protocol_version != PROTOCOL_VERSION || id != plugin.id() {
+                    Err("incompatible plugin handshake".into())
+                } else {
+                    ready = true;
+                    Ok(PluginOutput::default())
                 }
             }
+            message if ready => plugin.handle(message),
+            _ => Err("handshake required".into()),
+        };
+        write_frame(
+            &mut output,
+            &Response {
+                sequence: request.sequence,
+                result,
+            },
+        )?;
+        if stop {
+            return Ok(());
         }
-    };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejects_oversized_and_truncated_frames() {
+        assert!(
+            read_frame::<Request>(&mut ((MAX_MESSAGE_BYTES as u32 + 1).to_le_bytes().as_slice()))
+                .is_err()
+        );
+        assert!(read_frame::<Request>(&mut [4, 0, 0, 0, 1].as_slice()).is_err());
+    }
+    #[test]
+    fn protocol_roundtrip() {
+        let mut bytes = Vec::new();
+        write_frame(
+            &mut bytes,
+            &Request {
+                sequence: 7,
+                message: HostMessage::Pause,
+            },
+        )
+        .unwrap();
+        let request: Request = read_frame(&mut bytes.as_slice()).unwrap();
+        assert_eq!(request.sequence, 7);
+    }
+    #[test]
+    fn limits_views_and_config_ids() {
+        assert!(!valid_key("../escape"));
+        assert!(
+            !PluginView {
+                nodes: vec![UiNode::Text {
+                    text: "x".repeat(1025)
+                }],
+                ..Default::default()
+            }
+            .validate()
+        );
+    }
 }

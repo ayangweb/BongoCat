@@ -29,7 +29,9 @@
       "title": "정보"
     },
     "plugins": {
-      "title": "플러그인"
+      "title": "플러그인",
+      "subtitle": "Extend the model window with installable plugins.",
+      "empty": "No plugins found. Development builds scan the local plugin folder."
     }
   },
   "system_menu": {
@@ -543,5 +545,10 @@
         "unsupported_build": "개발 빌드에서는 자동 시작을 사용할 수 없습니다"
       }
     }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "failed": "Load failed"
   }
 }

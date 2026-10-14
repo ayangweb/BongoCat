@@ -8,18 +8,19 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-bongocat-plugin-sdk = { workspace = true }
-bongocat-storage = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-walkdir = { workspace = true }
+bongocat-plugin-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bongocat-update.workspace = true
+flate2.workspace = true
+minisign-verify = "=0.3.0"
+tar.workspace = true
+cargo-packager-updater.workspace = true
+sha2 = "=0.11.1"
+thiserror.workspace = true
 
-[target.'cfg(target_os = "windows")'.dependencies]
-libloading = "=0.8.7"
+[dev-dependencies]
+tempfile.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
-libloading = "=0.8.7"
-
-[lints.rust]
-unsafe_code = "allow"
+[lints]
+workspace = true

@@ -81,6 +81,7 @@ pub(crate) fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error
                 // The seed the product derives from its startup snapshot, here matching
                 // the configuration this smoke just committed.
                 SettingsWindowSeed {
+                    environment: bongocat_app::BUILD_ENVIRONMENT,
                     language: SettingsLanguage::ChineseSimplified,
                     appearance_theme: SettingsTheme::Dark,
                 },

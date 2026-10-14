@@ -118,6 +118,7 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
                     SettingsWindowSeed {
                         language: coordinator.product_language,
                         appearance_theme: coordinator.product_appearance_theme,
+                        environment: bongocat_app::BUILD_ENVIRONMENT,
                     },
                     coordinator.settings_navigation_memory.clone(),
                 )

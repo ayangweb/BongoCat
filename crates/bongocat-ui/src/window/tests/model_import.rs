@@ -256,6 +256,8 @@ fn the_mver_dialog_can_open_during_the_settings_render(cx: &mut TestAppContext) 
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
+
+                    environment: test_environment(),
                 },
                 Rc::new(|_| {}),
                 Rc::new(|_| {}),

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- Added a plugin system: plugins run as separate processes and extend the model window through a versioned protocol.
+- Added a plugin center under Settings that lists, enables, disables and configures discovered plugins.
+
+### 🎨 Interface
+
+- Added a "Plugins" destination to the settings sidebar.
+
 ## 2.3.1 - 2026-10-13
 
 ### 🐛 Bug Fixes
