@@ -16,11 +16,15 @@ members = [
     "crates/bongocat-overlay",
     "crates/bongocat-packaging",
     "crates/bongocat-platform",
+    "crates/bongocat-plugin-sdk",
+    "crates/bongocat-plugin-manager",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
+    "plugins/typing-sounds",
+    "plugins/input-stats",
 ]
 
 [workspace.package]
@@ -82,6 +86,8 @@ bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
+bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
+bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 bongocat-storage = { path = "crates/bongocat-storage" }

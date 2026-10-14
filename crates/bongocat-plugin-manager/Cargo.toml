@@ -1,0 +1,25 @@
+[package]
+name = "bongocat-plugin-manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-plugin-sdk = { workspace = true }
+bongocat-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+walkdir = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+libloading = "=0.8.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libloading = "=0.8.7"
+
+[lints.rust]
+unsafe_code = "allow"

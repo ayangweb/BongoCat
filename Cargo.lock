@@ -976,6 +976,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-manager"
+version = "2.3.1"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "bongocat-storage",
+ "libloading",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "walkdir",
+]
+
+[[package]]
+name = "bongocat-plugin-sdk"
+version = "2.3.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "bongocat-render"
 version = "2.3.1"
 dependencies = [
@@ -4351,6 +4373,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "input-stats"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4648,12 +4679,12 @@ dependencies = [
 
 [[package]]
 name = "libloading"
-version = "0.8.9"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-link 0.2.1",
+ "windows-targets 0.53.5",
 ]
 
 [[package]]
@@ -8615,6 +8646,15 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "typing-sounds"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "ucd-trie"
