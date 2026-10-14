@@ -39,9 +39,12 @@ pub(crate) struct ProductOverlaySession {
     /// Where the panel's own size and backing scale are reported, so the plugin
     /// service composes a layer that matches the window it will be drawn into.
     pub(crate) hud_viewport_reporter: Option<HudViewportReporter>,
-    /// The plugin layer's hit-test data, copied to the window monitor's own
-    /// thread so the AppKit callback can resolve a click without the session.
-    pub(crate) hud_targets: OverlayPluginTargets,
+    /// The plugin layer the model window draws and the hit-test data that
+    /// belongs to it. It lives on the session rather than on the native overlay
+    /// because the overlay is replaced on a model switch, and a panel that
+    /// vanished every time the model changed would be the same flash the user
+    /// sees when the layer is cleared.
+    pub(crate) hud_layer: OverlayPluginLayer,
     pub(crate) right_button_monitor: Option<RightButtonMonitor>,
     pub(crate) hover: PointerHoverHide,
     /// Inactivity hide shares the session's frame tick and the hover hide's
@@ -171,7 +174,7 @@ impl ProductOverlaySession {
             hud_consumer,
             hud_interaction_sender,
             hud_viewport_reporter,
-            hud_targets: OverlayPluginTargets::default(),
+            hud_layer: OverlayPluginLayer::default(),
             right_button_monitor: context_menu_monitor,
             hover: PointerHoverHide::default(),
             idle: IdleHide::default(),
@@ -242,6 +245,10 @@ impl ProductOverlaySession {
                     next_options,
                     Some(bounds),
                 )?;
+                // A replacement window starts with an empty GPU model, so the
+                // panel the session is already drawing goes into it before the
+                // first frame is presented, not after.
+                upload_plugin_layer(&mut replacement, self.hud_layer.layer());
                 if runtime_snapshot.overlay_visible {
                     match replacement.draw(self.frames_presented == 0) {
                         Ok(()) => self.retry_backoff.record_success(),
@@ -394,6 +401,10 @@ impl ProductOverlaySession {
                     }
                     Err(error) => return Err(error),
                 };
+                // The replacement window starts with an empty GPU model, so the
+                // panel the session is already drawing goes into it before the
+                // first frame is presented rather than one frame later.
+                upload_plugin_layer(&mut replacement, self.hud_layer.layer());
                 let candidate = match replacement.draw(true) {
                     Ok(()) => {
                         self.retry_backoff.record_success();
@@ -621,6 +632,11 @@ impl ProductOverlaySession {
     /// than stretched: the next composed frame matches the live size, and a
     /// stretched panel would put a plugin's buttons where its own hit testing
     /// does not expect them.
+    ///
+    /// The plugin service publishes a layer only when a panel's content changes,
+    /// so an empty read means "keep the layer on screen" rather than "draw
+    /// nothing": taking the panel down between two publications is exactly the
+    /// flash the user sees as a panel that disappears.
     fn take_plugin_layer(&mut self) -> Result<(), OverlayError> {
         let drawable = self.overlay.layer.drawable_size();
         let width = drawable.width.round().max(0.0) as u32;
@@ -638,23 +654,15 @@ impl ProductOverlaySession {
         let Some(consumer) = &self.hud_consumer else {
             return Ok(());
         };
-        let layer = consumer.take_latest();
-        if let Some(layer) = layer.as_ref() {
-            self.hud_targets = OverlayPluginTargets::from_layer(layer, width, height);
-            self.push_plugin_targets();
-        } else if width != self.hud_targets.window_width || height != self.hud_targets.window_height
-        {
-            // The window changed size while no plugin published anything new:
-            // the old hit-test data no longer describes the window.
-            self.hud_targets = OverlayPluginTargets::default();
+        let change = self
+            .hud_layer
+            .refresh(consumer.take_latest(), width, height);
+        if change.targets_replaced {
             self.push_plugin_targets();
         }
-        self.overlay.model.set_plugin_layer(
-            &self.overlay.device,
-            layer.as_ref(),
-            u64::from(width),
-            u64::from(height),
-        );
+        if change.layer_replaced {
+            upload_plugin_layer(&mut self.overlay, self.hud_layer.layer());
+        }
         Ok(())
     }
 
@@ -664,7 +672,10 @@ impl ProductOverlaySession {
     /// `Cell` rather than borrowing the session, so the data travels by value.
     fn push_plugin_targets(&self) {
         if let Some(monitor) = &self.right_button_monitor {
-            monitor.state.plugin_targets.set(self.hud_targets.clone());
+            monitor
+                .state
+                .plugin_targets
+                .set(self.hud_layer.targets().clone());
             monitor
                 .state
                 .plugin_interaction_sender

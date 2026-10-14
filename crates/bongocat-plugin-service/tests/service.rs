@@ -164,6 +164,36 @@ fn the_composed_layer_matches_the_window_that_reported_itself() {
     service.shutdown().unwrap();
 }
 
+#[test]
+fn a_panel_that_is_not_changing_is_not_republished() {
+    let Some(bytes) = plugin_package() else {
+        return;
+    };
+    let store = tempfile::tempdir().unwrap();
+    let (service, handles) = PluginService::start(store.path(), 4).unwrap();
+    let client = service.client();
+    client.install_blocking(bytes).unwrap();
+    client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    handles
+        .viewport_reporter
+        .publish(HudViewport::new(360, 360, 2.0));
+
+    // The panel is published once and then left alone: this is the contract the
+    // model window's layer handling depends on, because a window that drew a
+    // panel only when one arrived would show a panel for one frame and then a
+    // hole — the flash a user sees as a panel that disappears.
+    let first = wait_for_layer(&handles.hud_consumer);
+    assert!(!first.is_empty());
+    for _ in 0..100 {
+        assert!(
+            handles.hud_consumer.take_latest().is_none(),
+            "an idle panel must not be republished"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    service.shutdown().unwrap();
+}
+
 /// The next non-empty layer, within a bounded wait.
 fn wait_for_layer(consumer: &bongocat_plugin_hud::HudConsumer) -> bongocat_plugin_hud::HudLayer {
     for _ in 0..200 {

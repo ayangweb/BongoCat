@@ -221,9 +221,12 @@ pub(crate) struct ProductOverlaySession {
     /// Where the window reports its own size and backing scale, so the plugin
     /// service composes a layer that matches the window it will be drawn into.
     pub(crate) hud_viewport_reporter: Option<HudViewportReporter>,
-    /// The plugin layer's hit-test data, mirrored onto the window state because
-    /// the window procedure reads it through `GWLP_USERDATA`.
-    pub(crate) hud_targets: OverlayPluginTargets,
+    /// The plugin layer the model window draws and the hit-test data that
+    /// belongs to it. It lives on the session rather than on the native overlay
+    /// because the overlay is replaced on a model switch, and a panel that
+    /// vanished every time the model changed would be the same flash the user
+    /// sees when the layer is cleared.
+    pub(crate) hud_layer: OverlayPluginLayer,
     pub(crate) hover: PointerHoverHide,
     /// Inactivity hide shares the session's frame tick and the hover hide's
     /// fade window: both are temporary presentation states layered on the
@@ -334,7 +337,7 @@ impl ProductOverlaySession {
             hud_consumer,
             hud_interaction_sender,
             hud_viewport_reporter,
-            hud_targets: OverlayPluginTargets::default(),
+            hud_layer: OverlayPluginLayer::default(),
             hover: PointerHoverHide::default(),
             idle: IdleHide::default(),
             placement: OverlayPlacementConstraint::default(),
@@ -404,6 +407,13 @@ impl ProductOverlaySession {
                     self.context_menu_sender.clone(),
                     self.resize_sender.clone(),
                 )?;
+                // A replacement window has an empty GPU model, so the panel the
+                // session is already drawing goes into it before the first frame
+                // is presented rather than one frame later.
+                // SAFETY: the renderer's device and context are used on its
+                // owner thread and the layer is uploaded before the borrow ends.
+                unsafe { upload_plugin_layer(&mut replacement.renderer, self.hud_layer.layer()) }
+                    .map_err(windows_error("upload the plugin layer"))?;
                 if runtime_snapshot.overlay_visible {
                     replacement.draw(self.frames_presented == 0)?;
                     replacement.set_visible(true)?;
@@ -511,6 +521,13 @@ impl ProductOverlaySession {
                     }
                     Err(error) => return Err(error),
                 };
+                // A replacement window has an empty GPU model, so the panel the
+                // session is already drawing goes into it before the first frame
+                // is presented rather than one frame later.
+                // SAFETY: the renderer's device and context are used on its
+                // owner thread and the layer is uploaded before the borrow ends.
+                unsafe { upload_plugin_layer(&mut replacement.renderer, self.hud_layer.layer()) }
+                    .map_err(windows_error("upload the plugin layer"))?;
                 let candidate = replacement.draw(true).and_then(|()| {
                     if overlay_visible {
                         replacement.set_visible(true)
@@ -559,6 +576,16 @@ impl ProductOverlaySession {
                 Ok(switched) => {
                     if switched {
                         self.overlay.resize_for_model(frame.snapshot.canvas)?;
+                        // A model switch in window mode rebuilds the GPU model,
+                        // so the panel the session is drawing goes back into the
+                        // new one instead of waiting for the next publication.
+                        // SAFETY: the renderer's device and context are used on
+                        // its owner thread and the layer is uploaded before the
+                        // borrow ends.
+                        unsafe {
+                            upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer())
+                        }
+                        .map_err(windows_error("upload the plugin layer"))?;
                     }
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
@@ -636,6 +663,11 @@ impl ProductOverlaySession {
     /// than stretched: the next composed frame matches the live size, and a
     /// stretched panel would put a plugin's buttons where its own hit testing
     /// does not expect them.
+    ///
+    /// The plugin service publishes a layer only when a panel's content changes,
+    /// so an empty read means "keep the layer on screen" rather than "draw
+    /// nothing": taking the panel down between two publications is exactly the
+    /// flash the user sees as a panel that disappears.
     fn take_plugin_layer(&mut self) -> Result<(), OverlayError> {
         let width = self.overlay.renderer.width;
         let height = self.overlay.renderer.height;
@@ -652,29 +684,19 @@ impl ProductOverlaySession {
         let Some(consumer) = &self.hud_consumer else {
             return Ok(());
         };
-        let layer = consumer.take_latest();
-        if let Some(layer) = layer.as_ref() {
-            self.hud_targets = OverlayPluginTargets::from_layer(layer, width, height);
-            self.push_plugin_targets();
-        } else if width != self.hud_targets.window_width || height != self.hud_targets.window_height
-        {
-            // The window changed size while no plugin published anything new:
-            // the old hit-test data no longer describes the window.
-            self.hud_targets = OverlayPluginTargets::default();
+        let change = self
+            .hud_layer
+            .refresh(consumer.take_latest(), width, height);
+        if change.targets_replaced {
             self.push_plugin_targets();
         }
-        // SAFETY: the device and its immediate context belong to this session's
-        // renderer and are used on its owner thread; the layer's pixels are
-        // uploaded before the borrow ends.
-        unsafe {
-            self.overlay.renderer.model.set_plugin_layer(
-                &self.overlay.renderer.device,
-                layer.as_ref(),
-                width,
-                height,
-            )
+        if change.layer_replaced {
+            // SAFETY: the device and its immediate context belong to this
+            // session's renderer and are used on its owner thread; the layer's
+            // pixels are uploaded before the borrow ends.
+            unsafe { upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer()) }
+                .map_err(windows_error("upload the plugin layer"))?;
         }
-        .map_err(windows_error("upload the plugin layer"))?;
         Ok(())
     }
 
@@ -683,7 +705,7 @@ impl ProductOverlaySession {
     /// The window procedure reaches its state through `GWLP_USERDATA` on this
     /// same thread, so the data is copied rather than borrowed from the session.
     fn push_plugin_targets(&mut self) {
-        self.overlay.window._state.plugin_targets = self.hud_targets.clone();
+        self.overlay.window._state.plugin_targets = self.hud_layer.targets().clone();
     }
 
     /// Advance the hover hide and push the resulting window presentation.
@@ -781,7 +803,7 @@ impl ProductOverlaySession {
         // interaction sender and the current hit-test data travel with it, or its
         // first click would find no control there.
         overlay.window._state.plugin_interaction_sender = self.hud_interaction_sender.clone();
-        overlay.window._state.plugin_targets = self.hud_targets.clone();
+        overlay.window._state.plugin_targets = self.hud_layer.targets().clone();
         let alpha = if options.window_mode {
             1.0
         } else {

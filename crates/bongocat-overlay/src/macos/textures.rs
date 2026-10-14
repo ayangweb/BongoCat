@@ -44,6 +44,23 @@ pub(crate) struct PluginLayer {
     pub(crate) transform: [f32; 4],
 }
 
+/// Draw one plugin layer into a window, against the window's live drawable size.
+///
+/// The layer and the drawable are read together so a caller cannot upload a
+/// panel measured for the previous window size: `set_plugin_layer` drops a layer
+/// whose recorded size disagrees with the size passed here.
+pub(crate) fn upload_plugin_layer(
+    overlay: &mut NativeOverlay,
+    layer: Option<&bongocat_plugin_hud::HudLayer>,
+) {
+    let drawable = overlay.layer.drawable_size();
+    let width = drawable.width.round().max(0.0) as u64;
+    let height = drawable.height.round().max(0.0) as u64;
+    overlay
+        .model
+        .set_plugin_layer(&overlay.device, layer, width, height);
+}
+
 impl GpuModel {
     /// Upload a composed plugin layer, replacing the previous one.
     ///

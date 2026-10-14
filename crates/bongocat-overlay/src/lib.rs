@@ -121,7 +121,10 @@ pub(crate) use timing::FrameTimingCollector;
 pub use bounds::{OverlaySessionOptions, OverlayWindowBounds};
 pub use cover::{ModelCoverCaptureSession, capture_model_cover};
 pub use error::OverlayError;
-pub use plugin_layer::{OverlayPluginInteraction, OverlayPluginTargets, plugin_interaction_at};
+pub use plugin_layer::{
+    OverlayPluginInteraction, OverlayPluginLayer, OverlayPluginTargets, PluginLayerChange,
+    plugin_interaction_at,
+};
 pub use preview::{run_interactive_model_preview, run_model_preview, run_model_switch_preview};
 pub use product_session::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, ProductOverlaySession,

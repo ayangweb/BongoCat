@@ -54,6 +54,27 @@ pub(crate) struct PluginLayer {
     pub(crate) transform: [f32; 4],
 }
 
+/// Draw one plugin layer into a window, against the window's live buffer size.
+///
+/// The layer and the window size are read together so a caller cannot upload a
+/// panel measured for the previous size: `set_plugin_layer` drops a layer whose
+/// recorded size disagrees with the size passed here.
+pub(crate) unsafe fn upload_plugin_layer(
+    renderer: &mut Renderer,
+    layer: Option<&bongocat_plugin_hud::HudLayer>,
+) -> WindowsResult<()> {
+    let width = renderer.width;
+    let height = renderer.height;
+    // SAFETY: the device and its immediate context belong to this renderer and
+    // are used on its owner thread; the layer's pixels are copied into a
+    // device-owned texture before the borrow ends.
+    unsafe {
+        renderer
+            .model
+            .set_plugin_layer(&renderer.device, layer, width, height)
+    }
+}
+
 impl GpuModel {
     /// Upload a composed plugin layer, replacing the previous one.
     ///

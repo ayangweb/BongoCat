@@ -76,6 +76,99 @@ impl OverlayPluginTargets {
     }
 }
 
+/// What one tick's channel read changed about the layer the window draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PluginLayerChange {
+    /// The layer to draw was replaced or cleared, so the uploaded copy is stale.
+    pub layer_replaced: bool,
+    /// The hit-test data changed, so the native window's copy is stale.
+    pub targets_replaced: bool,
+}
+
+impl PluginLayerChange {
+    /// Nothing changed: the window keeps the layer and the targets it has.
+    pub const fn unchanged() -> Self {
+        Self {
+            layer_replaced: false,
+            targets_replaced: false,
+        }
+    }
+}
+
+/// The layer the model window draws, and the hit-test data that belongs to it.
+///
+/// The plugin service publishes a layer only when a panel's content changes, so
+/// "no layer arrived this tick" means "keep drawing the one on screen": a
+/// countdown changes once a second and an idle panel never. A window that
+/// cleared its layer on every empty read would therefore show a panel for one
+/// frame and then a hole — the flash a user sees as the panel disappearing — so
+/// this is where the decision "which layer is current" lives, portable and
+/// testable, rather than in each native session.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OverlayPluginLayer {
+    layer: Option<HudLayer>,
+    targets: OverlayPluginTargets,
+}
+
+impl OverlayPluginLayer {
+    /// Fold one tick's channel read into the layer the window should draw.
+    ///
+    /// A layer composed for a size the window has since left is dropped rather
+    /// than stretched: the next publication matches the live size, and a
+    /// stretched panel would put a plugin's buttons where its own hit testing
+    /// does not expect them.
+    pub fn refresh(
+        &mut self,
+        incoming: Option<HudLayer>,
+        window_width: u32,
+        window_height: u32,
+    ) -> PluginLayerChange {
+        let Some(layer) = incoming else {
+            // Nothing was published. A window that changed size has no layer
+            // that still describes it; otherwise the layer stays as it is.
+            if self.layer.is_none()
+                || (self.targets.window_width == window_width
+                    && self.targets.window_height == window_height)
+            {
+                return PluginLayerChange::unchanged();
+            }
+            return self.clear();
+        };
+        if layer.window_width != window_width || layer.window_height != window_height {
+            return self.clear();
+        }
+        let targets = OverlayPluginTargets::from_layer(&layer, window_width, window_height);
+        let change = PluginLayerChange {
+            layer_replaced: self.layer.as_ref() != Some(&layer),
+            targets_replaced: targets != self.targets,
+        };
+        self.targets = targets;
+        self.layer = Some(layer);
+        change
+    }
+
+    /// The layer to draw, or `None` when no plugin draws anything.
+    pub fn layer(&self) -> Option<&HudLayer> {
+        self.layer.as_ref()
+    }
+
+    /// The interactive controls of the current layer.
+    pub fn targets(&self) -> &OverlayPluginTargets {
+        &self.targets
+    }
+
+    /// Forget the layer and the controls that described it.
+    fn clear(&mut self) -> PluginLayerChange {
+        let change = PluginLayerChange {
+            layer_replaced: self.layer.is_some(),
+            targets_replaced: !self.targets.is_empty(),
+        };
+        self.layer = None;
+        self.targets = OverlayPluginTargets::default();
+        change
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +224,115 @@ mod tests {
         let targets = OverlayPluginTargets::from_layer(&layer, 350, 350);
         assert!(targets.interaction_at(360.0, 20.0).is_none());
         assert!(targets.interaction_at(-1.0, 20.0).is_none());
+    }
+
+    #[test]
+    fn a_panel_stays_on_screen_between_publications() {
+        let mut current = OverlayPluginLayer::default();
+        let first = current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+        assert!(first.layer_replaced);
+        assert!(first.targets_replaced);
+        assert!(current.layer().is_some());
+
+        // The service publishes only on a change, so the tick after a
+        // publication must not take the panel down again.
+        let idle = current.refresh(None, 350, 350);
+        assert_eq!(idle, PluginLayerChange::unchanged());
+        assert!(current.layer().is_some());
+        assert!(current.targets().interaction_at(20.0, 20.0).is_some());
+    }
+
+    #[test]
+    fn a_new_publication_replaces_the_panel_it_supersedes() {
+        let mut current = OverlayPluginLayer::default();
+        current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+        let next = current.refresh(None, 350, 350);
+        assert_eq!(next, PluginLayerChange::unchanged());
+
+        let mut moved = layer_with(HudRect::new(10.0, 40.0, 72.0, 24.0));
+        moved.pixels = vec![7; 200 * 100 * 4];
+        let change = current.refresh(Some(moved.clone()), 350, 350);
+        assert!(change.layer_replaced);
+        assert!(change.targets_replaced);
+        assert_eq!(current.layer(), Some(&moved));
+    }
+
+    #[test]
+    fn a_window_that_changed_size_drops_the_layer_it_cannot_stretch() {
+        let mut current = OverlayPluginLayer::default();
+        current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+
+        let change = current.refresh(None, 700, 350);
+        assert!(change.layer_replaced);
+        assert!(change.targets_replaced);
+        assert!(current.layer().is_none());
+        assert!(current.targets().interaction_at(20.0, 20.0).is_none());
+    }
+
+    #[test]
+    fn a_publication_for_another_size_never_reaches_the_window() {
+        let mut current = OverlayPluginLayer::default();
+        current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+
+        let change = current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            700,
+            350,
+        );
+        assert!(change.layer_replaced);
+        assert!(current.layer().is_none());
+    }
+
+    #[test]
+    fn an_empty_publication_clears_the_panel() {
+        let mut current = OverlayPluginLayer::default();
+        current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+
+        let mut empty = HudLayer::empty();
+        empty.window_width = 350;
+        empty.window_height = 350;
+        let change = current.refresh(Some(empty), 350, 350);
+        assert!(change.layer_replaced);
+        assert!(change.targets_replaced);
+        assert!(current.layer().is_some_and(HudLayer::is_empty));
+        assert!(current.targets().interaction_at(20.0, 20.0).is_none());
+    }
+
+    #[test]
+    fn hit_test_data_is_republished_only_when_it_changes() {
+        let mut current = OverlayPluginLayer::default();
+        current.refresh(
+            Some(layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0))),
+            350,
+            350,
+        );
+
+        // A repaint that leaves the controls where they are costs no copy to the
+        // window thread.
+        let mut repainted = layer_with(HudRect::new(10.0, 10.0, 72.0, 24.0));
+        repainted.pixels = vec![3; 200 * 100 * 4];
+        let change = current.refresh(Some(repainted), 350, 350);
+        assert!(change.layer_replaced);
+        assert!(!change.targets_replaced);
     }
 }
