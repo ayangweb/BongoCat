@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "정보"
+    },
+    "plugins": {
+      "title": "플러그인"
     }
   },
   "system_menu": {

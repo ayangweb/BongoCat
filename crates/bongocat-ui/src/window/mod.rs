@@ -86,6 +86,7 @@ mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod plugins_page;
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;

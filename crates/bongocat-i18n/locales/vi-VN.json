@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "Giới thiệu"
+    },
+    "plugins": {
+      "title": "Tiện ích"
     }
   },
   "system_menu": {

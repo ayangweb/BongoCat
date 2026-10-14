@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "關於"
+    },
+    "plugins": {
+      "title": "插件"
     }
   },
   "system_menu": {

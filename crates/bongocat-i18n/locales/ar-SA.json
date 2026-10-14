@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "حول"
+    },
+    "plugins": {
+      "title": "الإضافات"
     }
   },
   "system_menu": {

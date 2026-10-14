@@ -1632,6 +1632,26 @@ impl Render for SettingsView {
         // and support actions.
         let about_keywords =
             SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
+
+        // Plugins page shows the plugin management interface.
+        let plugins_keywords =
+            SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
+        let plugins_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
+            SettingItem::render({
+                move |_: &RenderOptions, _window: &mut Window, _app: &mut App| {
+                    plugins_page::content_static(language).into_any_element()
+                }
+            })
+            .keywords(plugins_keywords),
+        );
+        let plugins_page = SettingPage::new(SettingsNavigationPage::Plugins.title(language))
+            .icon(SettingsNavigationPage::Plugins.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Plugins,
+                navigation_memory.clone(),
+            ))
+            .group(plugins_group);
+
         let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
             .icon(SettingsNavigationPage::About.icon())
             .title_suffix(page_reporter(
@@ -1660,6 +1680,7 @@ impl Render for SettingsView {
                 overlay_page,
                 input_interaction_page,
                 shortcuts_page,
+                plugins_page,
                 app_system_page,
                 about_page,
             ]);
