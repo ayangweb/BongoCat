@@ -356,6 +356,43 @@ impl PluginRegistry {
             }
         }
     }
+
+    /// Establish the cumulative activity baseline for one newly started plugin.
+    ///
+    /// This is intentionally separate from [`Self::input_activity`]: sending a
+    /// baseline to every plugin while enabling one plugin could make an already
+    /// running sound plugin replay edges that occurred during the enable action.
+    pub fn initialize_input_activity(
+        &mut self,
+        id: &str,
+        elapsed_ms: u64,
+        activity: bongocat_plugin_sdk::InputActivity,
+    ) {
+        let Some(entry) = self.entries.get_mut(id) else {
+            return;
+        };
+        if !entry
+            .metadata
+            .capabilities
+            .contains(&bongocat_plugin_sdk::Capability::InputActivityV1)
+        {
+            return;
+        }
+        let Some(process) = entry.process.as_mut() else {
+            return;
+        };
+        let message = HostMessage::InputActivity {
+            elapsed_ms,
+            activity,
+        };
+        match process.exchange(message) {
+            Ok(output) => entry.last_output = output,
+            Err(_) => {
+                entry.process.take();
+                entry.state = PluginState::Failed;
+            }
+        }
+    }
 }
 
 /// The activity message one plugin's declared capabilities entitle it to.

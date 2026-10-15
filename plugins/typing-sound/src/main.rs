@@ -537,8 +537,10 @@ struct TypingSound {
     mouse_enabled: bool,
     choices: Choices,
     selection: Selection,
-    /// The counters the host last reported.
-    activity: InputActivity,
+    /// The counters from the last activity message after the host established
+    /// the initial baseline. `None` prevents cumulative counters that predate
+    /// this process from being replayed as fresh key edges.
+    activity: Option<InputActivity>,
     paused: bool,
     library: Library,
     playback: Playback,
@@ -561,7 +563,7 @@ impl Default for TypingSound {
             mouse_enabled: false,
             choices,
             selection,
-            activity: InputActivity::default(),
+            activity: None,
             paused: false,
             library: Library::default(),
             playback: Playback::default(),
@@ -685,8 +687,12 @@ impl TypingSound {
     /// arrived between two polls is not lost, and a device nobody touched costs
     /// nothing.
     fn play_edges(&mut self, elapsed_ms: u64, activity: InputActivity) {
-        let before = self.activity;
-        self.activity = activity;
+        let Some(before) = self.activity.replace(activity) else {
+            // InputActivity is cumulative and the host sends one baseline after
+            // starting this process. Never replay activity that happened before
+            // that baseline as a new press or release.
+            return;
+        };
         for action in Action::ALL {
             let (current, previous) = match action {
                 Action::KeyboardDown => (activity.keyboard_down, before.keyboard_down),
@@ -885,7 +891,7 @@ impl Plugin for TypingSound {
             HostMessage::Start { config, .. } => {
                 self.configure(&config)?;
                 self.paused = false;
-                self.activity = InputActivity::default();
+                self.activity = None;
             }
             HostMessage::Configure { config } => self.configure(&config)?,
             HostMessage::InputActivity {
@@ -896,9 +902,19 @@ impl Plugin for TypingSound {
             // It is read as "the keyboard was pressed", which is everything it
             // says: the release of a keystroke is not something it can report.
             HostMessage::KeyboardActivity { elapsed_ms } => {
+                // This compatibility message is an edge notification rather
+                // than a cumulative snapshot, so it must remain playable even
+                // before the newer activity contract has established a baseline.
+                if self.activity.is_none() {
+                    self.activity = Some(InputActivity::default());
+                }
                 let activity = InputActivity {
-                    keyboard_down: self.activity.keyboard_down.saturating_add(1),
-                    ..self.activity
+                    keyboard_down: self
+                        .activity
+                        .unwrap_or_default()
+                        .keyboard_down
+                        .saturating_add(1),
+                    ..self.activity.unwrap_or_default()
                 };
                 self.play_edges(elapsed_ms, activity);
             }
@@ -914,7 +930,7 @@ impl Plugin for TypingSound {
             }
             HostMessage::Resume => {
                 self.paused = false;
-                self.activity = InputActivity::default();
+                self.activity = None;
             }
             HostMessage::Reset => {
                 self.playback.stop();
@@ -1111,6 +1127,65 @@ mod tests {
         assert!(!decoded.sounds(Action::KeyboardDown).is_empty());
     }
 
+    /// Cumulative totals already include input from before a plugin was started:
+    /// the first snapshot is a baseline, then down and up are independent edges.
+    #[test]
+    fn initial_activity_is_baselined_and_edges_play_separately() {
+        let mut plugin = TypingSound::default();
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 0,
+                activity: InputActivity {
+                    keyboard_down: 40,
+                    keyboard_up: 39,
+                    ..InputActivity::default()
+                },
+            })
+            .unwrap();
+        assert!(plugin.playback.last_played.is_empty());
+
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 1,
+                activity: InputActivity {
+                    keyboard_down: 41,
+                    keyboard_up: 39,
+                    ..InputActivity::default()
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            plugin
+                .playback
+                .last_played
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![Action::KeyboardDown]
+        );
+
+        plugin.playback.last_played.clear();
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 2,
+                activity: InputActivity {
+                    keyboard_down: 41,
+                    keyboard_up: 40,
+                    ..InputActivity::default()
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            plugin
+                .playback
+                .last_played
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![Action::KeyboardUp]
+        );
+    }
+
     /// Every edge the host reports is one sound, and an edge nobody performed is
     /// no sound at all — the counters are compared, not replayed.
     #[test]
@@ -1125,6 +1200,12 @@ mod tests {
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 0,
+                activity: InputActivity::default(),
+            })
+            .unwrap();
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 1,
                 activity: InputActivity {
                     keyboard_down: 1,
                     keyboard_up: 1,
@@ -1163,7 +1244,7 @@ mod tests {
                 elapsed_ms: 200,
                 activity: InputActivity {
                     keyboard_up: 2,
-                    ..plugin.activity
+                    ..plugin.activity.unwrap_or_default()
                 },
             })
             .unwrap();
@@ -1192,6 +1273,12 @@ mod tests {
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 0,
+                activity: InputActivity::default(),
+            })
+            .unwrap();
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 1,
                 activity,
             })
             .unwrap();
@@ -1413,11 +1500,17 @@ mod tests {
             })
             .unwrap();
         plugin.handle(HostMessage::Reset).unwrap();
-        assert_eq!(plugin.activity, InputActivity::default());
-        assert!(plugin.playback.last_played.is_empty());
+        assert_eq!(plugin.activity, None);
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 10,
+                activity: InputActivity::default(),
+            })
+            .unwrap();
+        assert!(plugin.playback.last_played.is_empty());
+        plugin
+            .handle(HostMessage::InputActivity {
+                elapsed_ms: 20,
                 activity: InputActivity {
                     keyboard_down: 5,
                     ..InputActivity::default()

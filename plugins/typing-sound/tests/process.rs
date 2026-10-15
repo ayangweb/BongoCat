@@ -118,6 +118,11 @@ fn preview_and_device_activity_use_the_real_audio_output() {
         config: [("mouse_enabled".into(), ConfigValue::Boolean(true))].into(),
         state: Vec::new(),
     });
+    // The host establishes the counter baseline before the first real edge.
+    process.exchange(HostMessage::InputActivity {
+        elapsed_ms: 0,
+        activity: InputActivity::default(),
+    });
     let preview = process.exchange(HostMessage::Action {
         id: "preview".into(),
     });
@@ -137,6 +142,14 @@ fn preview_and_device_activity_use_the_real_audio_output() {
     });
     assert!(!previewing(&paused));
     process.exchange(HostMessage::Resume);
+    process.exchange(HostMessage::InputActivity {
+        elapsed_ms: 999,
+        activity: InputActivity {
+            keyboard_down: 1,
+            keyboard_up: 1,
+            ..InputActivity::default()
+        },
+    });
     let typed = process.exchange(HostMessage::InputActivity {
         elapsed_ms: 1000,
         activity: InputActivity {

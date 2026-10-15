@@ -264,6 +264,7 @@ fn run(
         started: Instant::now(),
         last_tick: Duration::ZERO,
     };
+    worker.initialize_running_input_activity();
     worker.run(stop);
 }
 
@@ -397,6 +398,30 @@ impl Worker {
         }
     }
 
+    /// Give newly started counter-based plugins the current totals without
+    /// replaying input that happened before their process existed.
+    fn initialize_running_input_activity(&mut self) {
+        let ids = self
+            .manager
+            .list_plugins()
+            .into_iter()
+            .filter(|(_, state)| *state == PluginState::Enabled)
+            .map(|(metadata, _)| metadata.id)
+            .collect::<Vec<_>>();
+        for id in ids {
+            self.initialize_plugin_input_activity(&id);
+        }
+    }
+
+    fn initialize_plugin_input_activity(&mut self, id: &str) {
+        let Some(read) = &self.input_activity else {
+            return;
+        };
+        let current = read();
+        self.manager
+            .initialize_input_activity(id, self.now_ms(), current);
+    }
+
     /// The elapsed monotonic clock a plugin counts with.
     fn now_ms(&self) -> u64 {
         self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
@@ -487,7 +512,15 @@ impl Worker {
                 let _ = reply.respond(self.center());
             }
             PluginCommand::SetEnabled { id, enabled, reply } => {
+                // Flush activity for plugins that are already running before a
+                // newly enabled plugin receives its baseline.
+                if enabled {
+                    self.dispatch_input_activity();
+                }
                 let result = self.set_enabled(&id, enabled);
+                if result.is_ok() && enabled {
+                    self.initialize_plugin_input_activity(&id);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::Install { bytes, reply } => {

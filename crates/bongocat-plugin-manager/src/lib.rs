@@ -136,6 +136,16 @@ impl PluginManager {
     ) {
         self.registry.input_activity(elapsed_ms, activity);
     }
+    /// Establish the cumulative input baseline for a plugin that just started.
+    pub fn initialize_input_activity(
+        &mut self,
+        id: &str,
+        elapsed_ms: u64,
+        activity: bongocat_plugin_sdk::InputActivity,
+    ) {
+        self.registry
+            .initialize_input_activity(id, elapsed_ms, activity);
+    }
     /// Tell every running plugin that localizes its own views which catalog tag
     /// the host is showing.
     pub fn set_locale(&mut self, locale: &str) {
