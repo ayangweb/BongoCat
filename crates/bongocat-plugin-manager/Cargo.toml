@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 atomic-write-file.workspace = true
+base64.workspace = true
 bongocat-plugin-sdk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -19,6 +20,9 @@ sha2 = "=0.11.1"
 tempfile.workspace = true
 thiserror.workspace = true
 zip.workspace = true
+
+[dev-dependencies]
+cargo-packager.workspace = true
 
 [lints]
 workspace = true

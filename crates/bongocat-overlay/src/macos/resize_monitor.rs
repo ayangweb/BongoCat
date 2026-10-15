@@ -90,8 +90,10 @@ pub(crate) fn install_context_menu_monitor(
                     objc2_app_kit::NSEventType::RightMouseDown => begin_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseDragged => drag_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseUp => finish_resize(&state),
-                    objc2_app_kit::NSEventType::LeftMouseDown => {
-                        handle_plugin_click(&state, event_ref);
+                    objc2_app_kit::NSEventType::LeftMouseDown
+                        if handle_plugin_click(&state, event_ref) =>
+                    {
+                        return std::ptr::null_mut();
                     }
                     _ => {}
                 }
@@ -178,35 +180,34 @@ pub(crate) fn request_context_menu(state: &ResizeMonitorState) {
     }
 }
 
-/// Report a left click that landed on one of a plugin's controls.
-///
-/// The panel is movable by its background and the window has no explicit hit
-/// test, so a click is the panel's unless a plugin drew a control under the
-/// pointer. The event's location is converted the same way the drag pointer is:
-/// AppKit's screen coordinates grow upwards, and the layer's device pixels grow
-/// downwards from the panel's top-left corner.
-///
-/// The event is forwarded either way: a click on a plugin's panel is not a
-/// window click, but it must not be swallowed either, because AppKit's window
-/// machinery still needs to see the mouse down.
-pub(crate) fn handle_plugin_click(state: &ResizeMonitorState, event: &NSEvent) {
+/// Resolve window-local AppKit coordinates through the actual content view.
+/// Returning true consumes the press instead of also beginning a background drag.
+pub(crate) fn handle_plugin_click(state: &ResizeMonitorState, event: &NSEvent) -> bool {
     let Some(sender) = state.plugin_interaction_sender.take() else {
-        return;
+        return false;
     };
     let targets = state.plugin_targets.take();
-    let location = event.locationInWindow();
-    let frame = state.panel.frame();
-    let scale = state.panel.backingScaleFactor().max(1.0);
-    let x = ((location.x - frame.origin.x) * scale) as f32;
-    let y = ((frame.origin.y + frame.size.height - location.y) * scale) as f32;
-    if let Some(interaction) = targets.interaction_at(x, y) {
-        // A plugin service that has gone away takes the control with it; the
-        // click then falls back to the window, which is what a plugin that
-        // unloaded mid-drag already sees.
-        let _ = sender.try_send(interaction);
-    }
+    let interaction = state.panel.contentView().and_then(|content| {
+        let location = content.convertPoint_fromView(event.locationInWindow(), None);
+        let bounds = content.bounds();
+        let (x, y) = crate::plugin_layer::content_point_to_device(
+            location.x - bounds.origin.x,
+            location.y - bounds.origin.y,
+            bounds.size.height,
+            state.panel.backingScaleFactor(),
+            content.isFlipped(),
+        );
+        targets.interaction_at(x, y)
+    });
+    let consumed = interaction.is_some_and(|interaction| match sender.try_send(interaction) {
+        Ok(()) => true,
+        // A full queue must not turn a button press into an accidental drag.
+        Err(std::sync::mpsc::TrySendError::Full(_)) => true,
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
+    });
     state.plugin_interaction_sender.set(Some(sender));
     state.plugin_targets.set(targets);
+    consumed
 }
 
 /// Apply one drag step to the panel, keeping the window's top edge where it is.

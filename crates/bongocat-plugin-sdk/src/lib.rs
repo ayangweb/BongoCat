@@ -31,6 +31,8 @@ pub enum Capability {
     ModelUi,
     Configuration,
     PersistentState,
+    /// Anonymous, coalesced keyboard-down activity; message contract version 1.
+    KeyboardActivityV1,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,6 +126,9 @@ pub enum HostMessage {
         state: Vec<u8>,
     },
     Tick {
+        elapsed_ms: u64,
+    },
+    KeyboardActivity {
         elapsed_ms: u64,
     },
     Action {

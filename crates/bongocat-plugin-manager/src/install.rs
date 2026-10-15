@@ -30,6 +30,28 @@ pub struct InstalledPackage {
     pub root: PathBuf,
 }
 
+/// Read bounded metadata without executing or extracting package code.
+pub fn inspect_package(bytes: &[u8]) -> Result<PluginManifest, PluginManagerError> {
+    use std::io::Read;
+    if bytes.len() > crate::catalog::MAX_DOWNLOAD_BYTES {
+        return Err(PluginManagerError::UnsafeManifest(
+            "package exceeds download limit".into(),
+        ));
+    }
+    let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))?;
+    let entry = archive.by_name(MANIFEST_FILE)?;
+    let mut bytes = Vec::new();
+    entry.take(64 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 64 * 1024 {
+        return Err(PluginManagerError::UnsafeManifest(
+            "manifest exceeds limit".into(),
+        ));
+    }
+    let manifest: PluginManifest = serde_json::from_slice(&bytes)?;
+    validate(&manifest)?;
+    Ok(manifest)
+}
+
 /// Install a verified plugin ZIP under `<root>/packages/<id>/<version>/`, then
 /// select it by writing `<root>/packages/<id>/current`.
 ///
@@ -66,17 +88,29 @@ pub fn install_package(
     let package_root = packages.join(&id);
     let destination = package_root.join(&version);
     fs::create_dir_all(&package_root)?;
-    let staged = staging.keep();
-    // A version already present is replaced rather than merged, so a reinstall
-    // of the same version cannot leave files from the previous package behind.
-    // `current` is written last, so a crash mid-replace leaves the previous
-    // selection pointing at a directory that no longer exists rather than at a
-    // half-written package.
-    if destination.exists() {
-        fs::remove_dir_all(&destination)?;
+    // Retain the previous complete tree until the pointer has committed. Neither
+    // extraction failure nor a failed pointer write may destroy the working copy.
+    let backup = tempfile::Builder::new()
+        .prefix(".previous-")
+        .tempdir_in(&package_root)?;
+    let old_tree = backup.path().join("package");
+    let replacing = destination.exists();
+    if replacing {
+        fs::rename(&destination, &old_tree)?;
     }
-    fs::rename(&staged, &destination)?;
-    write_current(&package_root, &version)?;
+    let commit = (|| -> Result<(), PluginManagerError> {
+        fs::rename(staging.path(), &destination)?;
+        write_current(&package_root, &version)
+    })();
+    if let Err(error) = commit {
+        if destination.exists() {
+            fs::remove_dir_all(&destination)?;
+        }
+        if replacing {
+            fs::rename(&old_tree, &destination)?;
+        }
+        return Err(error);
+    }
     Ok(InstalledPackage {
         id,
         version,
@@ -92,7 +126,8 @@ pub fn install_package(
 ///
 /// Returns whether anything was removed.
 pub fn uninstall_package(root: &Path, id: &str) -> Result<bool, PluginManagerError> {
-    let package_root = root.join(PACKAGES_DIRECTORY).join(sanitize(id));
+    validate_id(id)?;
+    let package_root = root.join(PACKAGES_DIRECTORY).join(id);
     if !package_root.is_dir() {
         return Ok(false);
     }
@@ -102,7 +137,8 @@ pub fn uninstall_package(root: &Path, id: &str) -> Result<bool, PluginManagerErr
 
 /// Drop a plugin's persisted data. The executable tree is untouched.
 pub fn reset_plugin_data(root: &Path, id: &str) -> Result<bool, PluginManagerError> {
-    let data_root = root.join(crate::DATA_DIRECTORY).join(sanitize(id));
+    validate_id(id)?;
+    let data_root = root.join(crate::DATA_DIRECTORY).join(id);
     if !data_root.is_dir() {
         return Ok(false);
     }
@@ -116,7 +152,8 @@ pub(crate) fn plugin_data_root(
     id: &str,
     create: bool,
 ) -> Result<PathBuf, PluginManagerError> {
-    let data_root = root.join(crate::DATA_DIRECTORY).join(sanitize(id));
+    validate_id(id)?;
+    let data_root = root.join(crate::DATA_DIRECTORY).join(id);
     if create {
         fs::create_dir_all(&data_root)?;
     }
@@ -126,17 +163,21 @@ pub(crate) fn plugin_data_root(
 /// The directory of the currently selected version of a plugin, if the pointer
 /// and its directory are both present.
 pub(crate) fn selected_root(root: &Path, id: &str) -> Option<PathBuf> {
-    let package_root = root.join(PACKAGES_DIRECTORY).join(sanitize(id));
+    validate_id(id).ok()?;
+    let package_root = root.join(PACKAGES_DIRECTORY).join(id);
     let version = fs::read_to_string(package_root.join(CURRENT_FILE)).ok()?;
     let version = version.trim();
-    if version.is_empty() {
+    if version.is_empty()
+        || !safe_relative_path(Path::new(version))
+        || version.contains(['/', '\\'])
+    {
         return None;
     }
     let directory = package_root.join(version);
     directory.is_dir().then_some(directory)
 }
 
-fn write_current(package_root: &Path, version: &str) -> Result<(), PluginManagerError> {
+pub(crate) fn write_current(package_root: &Path, version: &str) -> Result<(), PluginManagerError> {
     use std::io::Write as _;
     let mut file =
         atomic_write_file::AtomicWriteFile::options().open(package_root.join(CURRENT_FILE))?;
@@ -197,6 +238,15 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
     Ok(())
 }
 
+fn validate_id(id: &str) -> Result<(), PluginManagerError> {
+    if id.is_empty() || id == "." || id == ".." || id.len() > 128 || sanitize(id) != id {
+        return Err(PluginManagerError::UnsafeManifest(
+            "invalid plugin id".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn sanitize(value: &str) -> String {
     value
         .chars()
@@ -215,9 +265,18 @@ pub fn safe_relative_path(path: &Path) -> bool {
 
 fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
     let metadata: &PluginMetadata = &manifest.metadata;
+    validate_id(&metadata.id)?;
     if metadata.id.is_empty()
+        || metadata.id == "."
+        || metadata.id == ".."
+        || sanitize(&metadata.id) != metadata.id
+        || cargo_packager_updater::semver::Version::parse(&metadata.version).is_err()
+        || cargo_packager_updater::semver::VersionReq::parse(&metadata.app_versions).is_err()
         || metadata.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
         || metadata.entry.is_empty()
+        || metadata.entry == "."
+        || metadata.entry == ".."
+        || sanitize(&metadata.entry) != metadata.entry
         || metadata.entry.contains('/')
         || metadata.entry.contains('\\')
     {

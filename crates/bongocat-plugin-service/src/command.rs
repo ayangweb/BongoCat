@@ -24,6 +24,8 @@ pub struct PluginCard {
     pub failed: bool,
     /// The version the selected package names, when one is installed.
     pub version: Option<String>,
+    pub available_version: Option<String>,
+    pub update_available: bool,
     /// The controls the plugin publishes for the model window.
     pub actions: Vec<UiNode>,
     /// The controls the plugin publishes for the center.
@@ -120,6 +122,11 @@ pub enum PluginCommand {
         bytes: Vec<u8>,
         reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
     },
+    /// Install/update one entry from the current verified catalog.
+    InstallAvailable {
+        id: String,
+        reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
+    },
     /// Remove a plugin's executable package. Its data is kept.
     Uninstall {
         id: String,
@@ -205,6 +212,27 @@ impl PluginServiceClient {
     ) -> Result<PluginCenterSnapshot, PluginCommandError> {
         self.request(|reply| PluginCommand::Install { bytes, reply })
             .await
+    }
+
+    pub async fn install_available(
+        &self,
+        id: &str,
+    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
+        self.request(|reply| PluginCommand::InstallAvailable {
+            id: id.to_owned(),
+            reply,
+        })
+        .await
+    }
+
+    pub fn install_available_blocking(
+        &self,
+        id: &str,
+    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
+        self.request_blocking(|reply| PluginCommand::InstallAvailable {
+            id: id.to_owned(),
+            reply,
+        })
     }
 
     pub async fn uninstall(&self, id: &str) -> Result<PluginCenterSnapshot, PluginCommandError> {

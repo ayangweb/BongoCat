@@ -28,16 +28,16 @@ expected a fat trait-object pointer. Do not execute that loader; replace it.
 - #905: daily keyboard count and mouse travel. Defer until an exact aggregate input
   stream and local-day contract are available; pixels cannot be called kilometres.
 - #849: current input source. Defer: platform IME APIs and session semantics.
-- #90: meow on typing. Defer: licensed audio assets, rate policy and audio admission.
-  Existing motion sound is not equivalent to a general typing sound.
+- #90: meow on typing. Implemented as an independent process in ADR-0091;
+  the temporary evaluation audio still needs redistribution license review.
 - #74: held-key display. Defer: sensitive input consent, reset/reconcile semantics;
   existing model-authored key images are not a general key display.
 - #945: AI skills/agent. Defer: credentials, network, authentication and privacy.
 - #927: local AI hook monitoring. Defer: authenticated local IPC, multiple sessions
   and model action admission. No socket port is opened by this implementation.
 
-Only #996 is an acceptance example. Earlier typing-sounds/input-stats scaffolds
-are not shipped or claimed as working plugins.
+The acceptance examples are #996 and the independent #90 implementation in
+ADR-0091. Earlier input-stats scaffolds are not shipped as working plugins.
 
 ## Contract
 
@@ -87,8 +87,9 @@ Development scans its explicit local package directory and is not Production.
 crate independently builds each local package into a ZIP under `target/plugins`,
 exactly the shape a release ships, and stops there. The build tool never writes
 the application store — the store has one writer, the product's own install
-lifecycle, and a Development build side-loads those ZIPs through that same path
-after startup. App bundles still contain no plugins. Runtime directory overrides
+lifecycle. A Development build discovers those ZIPs after startup and offers
+explicit install/update actions through that same lifecycle; discovery does not
+reinstall a plugin the user uninstalled (ADR-0091). App bundles still contain no plugins. Runtime directory overrides
 are not accepted; Production and Development always use their respective storage
 roots. Discovery runs on the background executor and distinguishes loading,
 failure/retry and an empty list. The example's display name is Pomodoro and its

@@ -169,6 +169,22 @@ impl OverlayPluginLayer {
     }
 }
 
+/// AppKit event locations are content/window-local, never screen-relative.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn content_point_to_device(
+    x: f64,
+    y: f64,
+    height: f64,
+    scale: f64,
+    flipped: bool,
+) -> (f32, f32) {
+    let scale = scale.max(1.0);
+    (
+        (x * scale) as f32,
+        ((if flipped { y } else { height - y }) * scale) as f32,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +205,20 @@ mod tests {
                 rect,
             }],
         }
+    }
+
+    #[test]
+    fn content_coordinates_ignore_screen_origin_and_title_bar() {
+        // The window may be anywhere on a Retina display. Only its content
+        // coordinates participate; a 22-point title bar is outside this height.
+        assert_eq!(
+            content_point_to_device(20.0, 160.0, 200.0, 2.0, false),
+            (40.0, 80.0)
+        );
+        assert_eq!(
+            content_point_to_device(20.0, 40.0, 200.0, 1.5, true),
+            (30.0, 60.0)
+        );
     }
 
     #[test]

@@ -34,6 +34,7 @@ fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
         pressed_gamepad_button_count: 20,
         connected_gamepad_count: 21,
         diagnostics: InputDiagnostics {
+            keyboard_activity: 0,
             captured_down: 3,
             captured_up: 4,
             reconciled_release: 5,

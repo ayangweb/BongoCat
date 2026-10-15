@@ -40,3 +40,34 @@ fn a_release_with_nothing_pressed_is_counted_rather_than_ignored() {
     assert_eq!(snapshot.diagnostics.unmatched_release, 1);
     assert_eq!(snapshot.diagnostics.captured_up, 1);
 }
+
+#[test]
+fn anonymous_keyboard_activity_excludes_repeat_mouse_release_and_reconcile() {
+    let mut state = InputState::default();
+    state.apply(edge(0, 0, A, InputEdge::Down));
+    state.apply(edge(1, 1, A, InputEdge::Down));
+    state.apply(edge(
+        2,
+        2,
+        InputControl::Mouse(MouseButton::Left),
+        InputEdge::Down,
+    ));
+    state.apply(edge(3, 3, A, InputEdge::Up));
+    state.apply(SequencedInputEvent {
+        sequence: 4,
+        event: InputEvent::Reconcile {
+            pressed: [A].into(),
+            at: MonotonicMillis::new(4),
+        },
+    });
+    assert_eq!(state.snapshot().diagnostics.keyboard_activity, 1);
+    state.apply(SequencedInputEvent {
+        sequence: 5,
+        event: InputEvent::Reset {
+            reason: InputResetReason::SequenceGap,
+            at: MonotonicMillis::new(5),
+        },
+    });
+    state.apply(edge(6, 6, A, InputEdge::Down));
+    assert_eq!(state.snapshot().diagnostics.keyboard_activity, 2);
+}

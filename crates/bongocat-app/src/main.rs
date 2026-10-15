@@ -339,8 +339,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // consumer end before its first tick. A store that cannot be opened is not
     // fatal — the plugin center reports it and the cat still runs.
     let plugin_storage_root = application.storage_root().to_path_buf();
+    let activity_runtime = application.runtime_client();
     let (plugin_service, plugin_overlay_handles) =
-        match bongocat_plugin_service::PluginService::start(&plugin_storage_root, 16) {
+        match bongocat_plugin_service::PluginService::start_with_source(
+            &plugin_storage_root,
+            16,
+            dev_plugins::source(),
+            Some(Box::new(move || {
+                activity_runtime
+                    .snapshot()
+                    .input
+                    .diagnostics
+                    .keyboard_activity
+            })),
+        ) {
             Ok(started) => (Some(started.0), Some(started.1)),
             Err(error) => {
                 application.record_log_once(
@@ -352,20 +364,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (None, None)
             }
         };
-    // A Development build installs the ZIPs `just dev-plugins` just built, through
-    // the product's own lifecycle rather than the build tool writing into the
-    // store. A Production build has no such directory and installs nothing here.
-    if let Some(service) = plugin_service.as_ref() {
-        let installed = dev_plugins::side_load_development_packages(&service.client());
-        if !installed.is_empty() {
-            application.record_log_once(
-                ApplicationLogEvent::new(ApplicationLogCode::ServiceRecovered)
-                    .with_context(ApplicationLogContext::Service("plugin"))
-                    .with_context(ApplicationLogContext::Operation("dev_side_load"))
-                    .with_context(ApplicationLogContext::Count(installed.len() as u64)),
-            );
-        }
-    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),

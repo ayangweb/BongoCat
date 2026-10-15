@@ -139,6 +139,10 @@ impl InputState {
                                     pressed_sequence: sequence,
                                     last_reconciled_at: None,
                                 });
+                                if matches!(control, InputControl::Key(_)) {
+                                    self.diagnostics.keyboard_activity =
+                                        self.diagnostics.keyboard_activity.saturating_add(1);
+                                }
                                 self.diagnostics.captured_down =
                                     self.diagnostics.captured_down.saturating_add(1);
                             }

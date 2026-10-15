@@ -31,13 +31,6 @@ use objc2_app_kit::NSApplication;
 /// settings service validates the selected bytes themselves.
 const COVER_EXTENSIONS: [&str; 1] = ["png"];
 
-/// The file names the plugin package dialog offers.
-///
-/// Like the cover filter this is a convenience: the manager validates the ZIP
-/// bytes themselves, so a package named without the extension is still a
-/// selection the picker returns.
-const PLUGIN_PACKAGE_EXTENSIONS: [&str; 1] = ["zip"];
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModelSourcePickerOutcome {
     Selected(PathBuf),
@@ -204,64 +197,6 @@ pub(crate) fn validate_selected_folder(
 /// the source picker: whether the bytes are a usable PNG is the settings
 /// service's judgement, and it reports one stable code when they are not.
 pub(crate) fn validate_selected_image(
-    selected: PathBuf,
-) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
-    let canonical = canonicalize_selection(&selected)?;
-    if !canonical.is_file() {
-        return Err(ModelSourcePickerError::SelectionInvalid);
-    }
-    Ok(ModelSourcePickerOutcome::Selected(canonical))
-}
-
-/// Let the user choose a plugin package to install.
-///
-/// The selection vocabulary is shared with the model pickers: a chosen path is
-/// only "a real regular file", and whether the bytes are a valid package is the
-/// plugin manager's judgement, reported through its own error.
-#[cfg(target_os = "macos")]
-pub(crate) fn pick_plugin_package<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
-where
-    F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
-{
-    let mtm = MainThreadMarker::new().ok_or(ModelSourcePickerError::WrongThread)?;
-    if !asynchronous_sheet_is_available(mtm) {
-        return Err(ModelSourcePickerError::BackendUnavailable);
-    }
-
-    let task = autoreleasepool(|_| {
-        rfd::AsyncFileDialog::new()
-            .set_can_create_directories(false)
-            .add_filter("Plugin package", &PLUGIN_PACKAGE_EXTENSIONS)
-            .pick_file()
-    });
-    spawn_picker_worker(on_complete, move || match async_io::block_on(task) {
-        Some(handle) => validate_selected_package(handle.path().to_path_buf()),
-        None => Ok(ModelSourcePickerOutcome::Cancelled),
-    })
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn pick_plugin_package<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
-where
-    F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
-{
-    spawn_picker_worker(on_complete, || {
-        match rfd::FileDialog::new()
-            .set_can_create_directories(false)
-            .add_filter("Plugin package", &PLUGIN_PACKAGE_EXTENSIONS)
-            .pick_file()
-        {
-            Some(path) => validate_selected_package(path),
-            None => Ok(ModelSourcePickerOutcome::Cancelled),
-        }
-    })
-}
-
-/// Validate a selected plugin package file.
-///
-/// "A real regular file" is the whole rule; the manager decides whether the
-/// bytes are an installable package.
-pub(crate) fn validate_selected_package(
     selected: PathBuf,
 ) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
     let canonical = canonicalize_selection(&selected)?;

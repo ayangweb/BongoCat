@@ -31,7 +31,7 @@
     "plugins": {
       "title": "Centre de plugins",
       "subtitle": "Étendez la fenêtre du modèle avec des plugins.",
-      "empty": "Aucun plugin installé."
+      "empty": "Aucun plugin disponible."
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "Chargement des plugins…",
     "discovery_failed": "Impossible de charger la liste des plugins. Réessayez.",
     "retry": "Réessayer",
-    "install": "Installer le paquet…",
+    "install": "Installer",
+    "update": "Mettre à jour",
+    "refresh": "Actualiser",
+    "available_version": "Version disponible %{version}",
     "uninstall": "Désinstaller",
     "reset_data": "Réinitialiser les données",
     "version": "Version %{version}"

@@ -22,6 +22,10 @@ dev-smoke: dev-plugins
 dev-plugins:
     cargo run --locked -p bongocat-packaging -- --prepare-dev-plugins
 
+# Assemble signed plugin assets and plugins.json from per-platform package directories.
+plugin-catalog output *inputs:
+    cargo run --locked -p bongocat-packaging -- --plugin-catalog {{output}} {{inputs}}
+
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":
     cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"

@@ -73,6 +73,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod dev_plugins;
+mod plugin_catalog;
 // Only the macOS disk image has a Finder window to describe, so the encoder is
 // not compiled into any other platform's packaging run.
 #[cfg(target_os = "macos")]
@@ -415,6 +416,10 @@ impl ReleaseTarget {
 enum Invocation {
     /// Build standalone local plugins into the Development plugin directory.
     PrepareDevPlugins,
+    PluginCatalog {
+        output: PathBuf,
+        inputs: Vec<(ReleaseTarget, PathBuf)>,
+    },
     /// Build and package one release target.
     Package(Options),
     /// Merge the per-target fragments into the shared release manifest.
@@ -448,6 +453,9 @@ options:
                            target/plugins; installing them is the Development
                            product's own lifecycle. Takes no other option and
                            never modifies app bundles or the product's storage
+  --plugin-catalog <file> <platform> <directory> [<platform> <directory> ...]
+                           assemble and sign plugin ZIPs for GitHub releases;
+                           requires SIGNING_PRIVATE_KEY; does not publish
   --target <triple>        one of aarch64-apple-darwin,
                             x86_64-apple-darwin, x86_64-pc-windows-msvc;
                             defaults to the host target
@@ -479,6 +487,36 @@ environment:
                            and the passphrase used to unlock it when signing";
 
     fn parse(arguments: Vec<String>) -> Result<Self> {
+        if arguments
+            .iter()
+            .any(|argument| argument == "--plugin-catalog")
+        {
+            if arguments
+                .first()
+                .is_none_or(|argument| argument != "--plugin-catalog")
+                || arguments.len() < 4
+                || !arguments.len().is_multiple_of(2)
+            {
+                return failure(
+                    "--plugin-catalog <output> <platform> <package-directory> [<platform> <package-directory> ...]",
+                );
+            }
+            let mut inputs = Vec::new();
+            for pair in arguments[2..].chunks_exact(2) {
+                let target = ReleaseTarget::ALL
+                    .into_iter()
+                    .find(|target| target.manifest_platform() == pair[0])
+                    .ok_or("unknown plugin platform")?;
+                if pair[1].starts_with("--") {
+                    return failure("plugin catalog inputs cannot be build options");
+                }
+                inputs.push((target, PathBuf::from(&pair[1])));
+            }
+            return Ok(Self::PluginCatalog {
+                output: PathBuf::from(&arguments[1]),
+                inputs,
+            });
+        }
         if arguments
             .iter()
             .any(|argument| argument == "--prepare-dev-plugins")
@@ -651,6 +689,10 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
     match invocation {
         Invocation::PrepareDevPlugins => dev_plugins::prepare(&workspace_root()?)
             .map(|artifacts| ("Development plugins prepared successfully.", artifacts)),
+        Invocation::PluginCatalog { output, inputs } => {
+            plugin_catalog::publish(&output, &inputs, &signing_material())
+                .map(|artifacts| ("Signed plugin catalog prepared successfully.", artifacts))
+        }
         Invocation::Package(options) => {
             package(options).map(|artifacts| ("Build completed successfully.", artifacts))
         }

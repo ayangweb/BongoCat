@@ -481,6 +481,8 @@ pub struct SequencedInputEvent {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InputDiagnostics {
     pub captured_down: u64,
+    /// Unique captured keyboard downs, without identities or text.
+    pub keyboard_activity: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
     pub released_by_reset: u64,

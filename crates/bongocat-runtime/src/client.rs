@@ -38,6 +38,17 @@ impl RuntimeClient {
         self.with_transport_diagnostics(snapshot)
     }
 
+    /// Aggregate captured keyboard activity, without copying model or key data.
+    pub fn keyboard_activity(&self) -> u64 {
+        self.snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .input
+            .diagnostics
+            .keyboard_activity
+    }
+
     pub fn input_producer(&self) -> InputProducer {
         self.input_producer.clone()
     }

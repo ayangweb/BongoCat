@@ -31,7 +31,7 @@
     "plugins": {
       "title": "Plugin Center",
       "subtitle": "Extend the model window with plugins.",
-      "empty": "No plugins installed."
+      "empty": "No plugins available."
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "Loading plugins…",
     "discovery_failed": "Could not load the plugin list. Try again.",
     "retry": "Retry",
-    "install": "Install package…",
+    "install": "Install",
+    "update": "Update",
+    "refresh": "Refresh",
+    "available_version": "Available version %{version}",
     "uninstall": "Uninstall",
     "reset_data": "Reset data",
     "version": "Version %{version}"

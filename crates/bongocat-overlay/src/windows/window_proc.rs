@@ -130,7 +130,10 @@ pub(crate) unsafe fn handle_plugin_click(
     };
     // A plugin service that has gone away takes the control with it, and the
     // click then falls back to the window rather than being swallowed.
-    sender.try_send(interaction).is_ok()
+    match sender.try_send(interaction) {
+        Ok(()) | Err(std::sync::mpsc::TrySendError::Full(_)) => true,
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
+    }
 }
 
 pub(crate) unsafe extern "system" fn window_proc(
@@ -203,6 +206,21 @@ pub(crate) unsafe extern "system" fn window_proc(
             let style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
             if style & WS_EX_TRANSPARENT.0 as isize != 0 {
                 return LRESULT(HTTRANSPARENT as isize);
+            }
+            if !state.is_null() {
+                let mut point = POINT {
+                    x: (lparam.0 as u16 as i16) as i32,
+                    y: ((lparam.0 >> 16) as u16 as i16) as i32,
+                };
+                // SAFETY: the point and boxed hit-test state belong to this live HWND.
+                if unsafe { ScreenToClient(hwnd, &mut point) }.as_bool()
+                    && unsafe { &*state }
+                        .plugin_targets
+                        .interaction_at(point.x as f32, point.y as f32)
+                        .is_some()
+                {
+                    return LRESULT(HTCLIENT as isize);
+                }
             }
             if !state.is_null() && unsafe { (*state).window_mode } {
                 // SAFETY: let user32 retain caption buttons, borders and client hit testing.

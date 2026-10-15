@@ -58,6 +58,8 @@ pub(crate) struct PluginCardView {
     pub(crate) enabled: bool,
     pub(crate) failed: bool,
     pub(crate) version: Option<String>,
+    pub(crate) available_version: Option<String>,
+    pub(crate) update_available: bool,
     pub(crate) actions: Vec<bongocat_plugin_sdk::UiNode>,
     pub(crate) settings: Vec<bongocat_plugin_sdk::UiNode>,
 }
@@ -72,6 +74,8 @@ impl From<PluginCard> for PluginCardView {
             enabled: card.enabled,
             failed: card.failed,
             version: card.version,
+            available_version: card.available_version,
+            update_available: card.update_available,
             actions: card.actions,
             settings: card.settings,
         }
@@ -157,9 +161,8 @@ impl PluginHost {
         }
     }
 
-    /// Install a plugin package the user chose, then republish the cards.
-    pub(crate) fn install(&self, bytes: Vec<u8>) {
-        self.apply_command(|client| client.install_blocking(bytes));
+    pub(crate) fn install_available(&self, id: &str) {
+        self.apply_command(|client| client.install_available_blocking(id));
     }
 
     pub(crate) fn set_enabled(&self, id: &str, enabled: bool) {

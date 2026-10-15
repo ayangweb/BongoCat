@@ -31,7 +31,7 @@
     "plugins": {
       "title": "Central de plugins",
       "subtitle": "Amplie a janela do modelo com plugins.",
-      "empty": "Nenhum plugin instalado."
+      "empty": "Nenhum plugin disponível."
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "Carregando plugins…",
     "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
     "retry": "Tentar novamente",
-    "install": "Instalar pacote…",
+    "install": "Instalar",
+    "update": "Atualizar",
+    "refresh": "Atualizar lista",
+    "available_version": "Versão disponível %{version}",
     "uninstall": "Desinstalar",
     "reset_data": "Redefinir dados",
     "version": "Versão %{version}"

@@ -31,7 +31,7 @@
     "plugins": {
       "title": "外掛中心",
       "subtitle": "使用外掛擴充模型視窗。",
-      "empty": "尚未安裝任何外掛。"
+      "empty": "暫無可用外掛程式。"
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "正在載入外掛…",
     "discovery_failed": "無法載入外掛清單，請重試。",
     "retry": "重試",
-    "install": "安裝外掛包…",
+    "install": "安裝",
+    "update": "更新",
+    "refresh": "重新整理",
+    "available_version": "可用版本 %{version}",
     "uninstall": "卸載",
     "reset_data": "重設資料",
     "version": "版本 %{version}"

@@ -80,7 +80,13 @@ fn a_plugin_runs_and_keeps_running_without_a_window() {
     // The package tree is the store's, and the data root is separate from it.
     let plugins = plugin_directory(store.path());
     assert!(plugins.join("packages").join(PLUGIN_ID).is_dir());
-    assert!(!plugins.join("data").join(PLUGIN_ID).is_dir());
+    assert!(
+        plugins
+            .join("data")
+            .join(PLUGIN_ID)
+            .join("session.json")
+            .is_file()
+    );
 
     // The process is still there after a read that touched nothing.
     let again = client.read_center_blocking().unwrap();
@@ -276,5 +282,149 @@ fn an_unknown_plugin_is_refused_by_its_own_code() {
         .set_enabled_blocking("dev.example.missing", true)
         .unwrap_err();
     assert_eq!(error, bongocat_plugin_service::PluginCommandError::NotFound);
+    service.shutdown().unwrap();
+}
+
+fn settled(
+    client: &bongocat_plugin_service::PluginServiceClient,
+) -> bongocat_plugin_service::PluginCenterSnapshot {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let center = client.read_center_blocking().unwrap();
+        if !center.loading {
+            return center;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "catalog job must finish"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+fn versioned_package(bytes: &[u8], version: &str, broken: bool) -> Vec<u8> {
+    use std::io::Read;
+    let mut input = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut output = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for index in 0..input.len() {
+        let mut entry = input.by_index(index).unwrap();
+        let mut content = Vec::new();
+        entry.read_to_end(&mut content).unwrap();
+        if entry.name().unwrap() == "plugin.json" {
+            let mut manifest: serde_json::Value = serde_json::from_slice(&content).unwrap();
+            manifest["metadata"]["version"] = version.into();
+            content = serde_json::to_vec(&manifest).unwrap();
+        } else if broken {
+            content = b"not an executable".to_vec();
+        }
+        output
+            .start_file(
+                entry.name().unwrap(),
+                zip::write::SimpleFileOptions::default()
+                    .unix_permissions(entry.unix_mode().unwrap_or(0o644)),
+            )
+            .unwrap();
+        output.write_all(&content).unwrap();
+    }
+    output.finish().unwrap().into_inner()
+}
+
+#[test]
+fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecycle() {
+    let bytes =
+        plugin_package().expect("build Pomodoro with just dev-plugins before lifecycle tests");
+    let catalog = tempfile::tempdir().unwrap();
+    let store = tempfile::tempdir().unwrap();
+    std::fs::write(catalog.path().join("pomodoro.zip"), &bytes).unwrap();
+    let source = bongocat_plugin_service::PluginSource::Development(catalog.path().to_owned());
+    let (service, _) =
+        PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
+    let client = service.client();
+    let available = settled(&client);
+    assert!(available.error.is_none());
+    assert_eq!(available.cards.len(), 1);
+    assert!(
+        available.cards[0].version.is_none(),
+        "discovery must not install"
+    );
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    assert_eq!(settled(&client).cards[0].version.as_deref(), Some("1.0.0"));
+    client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    client
+        .configure_blocking(
+            PLUGIN_ID,
+            "minutes",
+            bongocat_plugin_sdk::ConfigValue::Integer(5),
+        )
+        .unwrap();
+
+    std::fs::write(
+        catalog.path().join("pomodoro.zip"),
+        versioned_package(&bytes, "1.1.0", false),
+    )
+    .unwrap();
+    client.refresh_blocking().unwrap();
+    let update = settled(&client);
+    assert!(update.cards[0].update_available);
+    assert_eq!(update.cards[0].available_version.as_deref(), Some("1.1.0"));
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    let updated = settled(&client);
+    assert!(updated.error.is_none(), "{:?}", updated.error);
+    assert_eq!(updated.cards[0].version.as_deref(), Some("1.1.0"));
+    assert!(updated.cards[0].enabled);
+    assert!(
+        updated.cards[0]
+            .settings
+            .iter()
+            .any(|node| matches!(node, bongocat_plugin_sdk::UiNode::Integer { value: 5, .. }))
+    );
+
+    std::fs::write(
+        catalog.path().join("pomodoro.zip"),
+        versioned_package(&bytes, "1.2.0", true),
+    )
+    .unwrap();
+    client.refresh_blocking().unwrap();
+    settled(&client);
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    let refused = settled(&client);
+    assert!(refused.error.is_some());
+    assert_eq!(refused.cards[0].version.as_deref(), Some("1.1.0"));
+    assert!(
+        refused.cards[0].enabled,
+        "failed startup must restore the working process"
+    );
+
+    service.shutdown().unwrap();
+    let (service, _) =
+        PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
+    let client = service.client();
+    let restarted = settled(&client);
+    assert!(
+        restarted.cards[0].enabled,
+        "enabled state must survive application shutdown"
+    );
+    client.uninstall_blocking(PLUGIN_ID).unwrap();
+    let removed = settled(&client);
+    assert_eq!(
+        removed.cards.len(),
+        1,
+        "uninstalled plugins stay available in the catalog"
+    );
+    assert!(removed.cards[0].version.is_none());
+    assert!(
+        plugin_directory(store.path())
+            .join("data")
+            .join(PLUGIN_ID)
+            .join("session.json")
+            .is_file()
+    );
+    service.shutdown().unwrap();
+
+    let (service, _) = PluginService::start_with_source(store.path(), 4, source, None).unwrap();
+    assert!(
+        settled(&service.client()).cards[0].version.is_none(),
+        "startup must not undo uninstall"
+    );
     service.shutdown().unwrap();
 }

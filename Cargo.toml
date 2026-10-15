@@ -26,6 +26,7 @@ members = [
     "crates/bongocat-ui",
     "crates/bongocat-update",
     "plugins/pomodoro",
+    "plugins/typing-sound",
 ]
 
 [workspace.package]
@@ -41,6 +42,7 @@ arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+base64 = "=0.23.1"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }

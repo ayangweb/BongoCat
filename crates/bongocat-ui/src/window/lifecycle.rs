@@ -83,7 +83,7 @@ pub fn open_settings_window(
                     // first frame rather than after its first poll: a window that
                     // opened onto an installed plugin must not flash an empty page.
                     if view.plugin_host.is_available() {
-                        view.plugin_host.refresh();
+                        view.update_plugin_host(|host| host.refresh(), cx);
                         view.start_plugin_center_polling(cx);
                         cx.notify();
                     }

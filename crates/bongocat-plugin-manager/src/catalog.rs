@@ -2,9 +2,9 @@
 //!
 //! Transport, HTTPS, proxy order and Minisign verification are the libraries the
 //! updater already uses; this module owns only the catalog shape and policy.
-use bongocat_plugin_sdk::{PROTOCOL_VERSION, PluginIcon};
+use bongocat_plugin_sdk::PluginIcon;
 use bongocat_update::GITHUB_PROXY_PREFIXES;
-use cargo_packager_updater::{reqwest, semver};
+use cargo_packager_updater::reqwest;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
 use thiserror::Error;
@@ -21,8 +21,6 @@ pub enum CatalogError {
     Signature,
     #[error("catalog is invalid")]
     Invalid,
-    #[error("no plugin release matches this build")]
-    NoMatch,
     #[error("plugin download failed")]
     Download,
 }
@@ -63,94 +61,27 @@ struct SignedCatalog {
 }
 
 pub fn parse_catalog(bytes: &[u8], public_key: &str) -> Result<Catalog, CatalogError> {
+    if bytes.len() > MAX_CATALOG_BYTES {
+        return Err(CatalogError::Invalid);
+    }
     let signed: SignedCatalog = serde_json::from_slice(bytes).map_err(|_| CatalogError::Invalid)?;
-    let key =
-        minisign_verify::PublicKey::from_base64(public_key).map_err(|_| CatalogError::Signature)?;
-    let signature = minisign_verify::Signature::decode(&signed.signature)
+    use base64::Engine;
+    let decode = |value: &str| -> Result<String, CatalogError> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .map_err(|_| CatalogError::Signature)?;
+        String::from_utf8(bytes).map_err(|_| CatalogError::Signature)
+    };
+    // Match cargo-packager's public-key and .sig encoding, exactly as the
+    // application updater does (base64 of the complete Minisign text boxes).
+    let key = minisign_verify::PublicKey::decode(&decode(public_key)?)
+        .map_err(|_| CatalogError::Signature)?;
+    let signature = minisign_verify::Signature::decode(&decode(&signed.signature)?)
         .map_err(|_| CatalogError::Signature)?;
     let canonical = serde_json::to_vec(&signed.catalog).map_err(|_| CatalogError::Invalid)?;
-    key.verify(&canonical, &signature, false)
+    key.verify(&canonical, &signature, true)
         .map_err(|_| CatalogError::Signature)?;
     Ok(signed.catalog)
-}
-
-/// The newest matching release for one platform. Entries are filtered by protocol
-/// major, the app range and a matching `<os>-<arch>` download.
-pub fn select_for_host(
-    catalog: &Catalog,
-    app_version: &str,
-    platform: &str,
-) -> Result<CatalogEntry, CatalogError> {
-    let version = semver::Version::parse(app_version.trim_start_matches('v'))
-        .map_err(|_| CatalogError::Invalid)?;
-    let mut matches = catalog
-        .plugins
-        .iter()
-        .filter(|entry| {
-            entry.protocol_version == PROTOCOL_VERSION
-                && entry.downloads.contains_key(platform)
-                && semver::VersionReq::parse(&entry.app_versions)
-                    .is_ok_and(|requirement| requirement.matches(&version))
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    matches.sort_by(|left, right| {
-        semver::Version::parse(left.version.trim_start_matches('v'))
-            .unwrap_or_else(|_| semver::Version::new(0, 0, 0))
-            .cmp(
-                &semver::Version::parse(right.version.trim_start_matches('v'))
-                    .unwrap_or_else(|_| semver::Version::new(0, 0, 0)),
-            )
-    });
-    matches.pop().ok_or(CatalogError::NoMatch)
-}
-
-/// Fetch, verify and select in one step, through the update proxies in order.
-pub async fn fetch_and_select(
-    repository_owner: &str,
-    repository_name: &str,
-    public_key: &str,
-    app_version: &str,
-    platform: &str,
-) -> Result<(CatalogEntry, String), CatalogError> {
-    let official = format!(
-        "https://github.com/{repository_owner}/{repository_name}/releases/latest/download/{CATALOG_NAME}"
-    );
-    let sources = catalog_sources(&official);
-    let client = reqwest::Client::new();
-    let mut last = CatalogError::Transport;
-    for (proxy, source) in sources {
-        let body = match client
-            .get(&source)
-            .timeout(Duration::from_secs(8))
-            .send()
-            .await
-            .and_then(|response| response.error_for_status())
-        {
-            Ok(response) => match response.bytes().await {
-                Ok(bytes) if bytes.len() <= MAX_CATALOG_BYTES => bytes,
-                _ => {
-                    last = CatalogError::Invalid;
-                    continue;
-                }
-            },
-            Err(_) => continue,
-        };
-        let catalog = match parse_catalog(&body, public_key) {
-            Ok(catalog) => catalog,
-            Err(error) => {
-                last = error;
-                continue;
-            }
-        };
-        let entry = resolve_downloads(
-            select_for_host(&catalog, app_version, platform)?,
-            proxy,
-            &official,
-        );
-        return Ok((entry, official.clone()));
-    }
-    Err(last)
 }
 
 /// Proxy prefixes first, the official endpoint last, each with a resolver that
@@ -196,40 +127,6 @@ fn resolve_downloads(
     entry
 }
 
-pub async fn download_verified(
-    url: &str,
-    sha256: Option<&str>,
-    public_key: Option<&str>,
-) -> Result<Vec<u8>, CatalogError> {
-    if !url.starts_with("https://") {
-        return Err(CatalogError::Download);
-    }
-    let response = reqwest::Client::new()
-        .get(url)
-        .timeout(Duration::from_secs(30))
-        .send()
-        .await
-        .map_err(|_| CatalogError::Download)?;
-    if !response.status().is_success() {
-        return Err(CatalogError::Download);
-    }
-    let bytes = response.bytes().await.map_err(|_| CatalogError::Download)?;
-    if bytes.len() > MAX_DOWNLOAD_BYTES {
-        return Err(CatalogError::Download);
-    }
-    if let Some(expected) = sha256
-        && sha256_of(&bytes) != expected.to_ascii_lowercase()
-    {
-        return Err(CatalogError::Signature);
-    }
-    if let Some(key) = public_key
-        && minisign_verify::PublicKey::from_base64(key).is_err()
-    {
-        return Err(CatalogError::Signature);
-    }
-    Ok(bytes.to_vec())
-}
-
 pub fn sha256_of(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(bytes)
@@ -238,43 +135,105 @@ pub fn sha256_of(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// Blocking transport for the catalog IO worker, not the runtime/UI executor.
+pub(crate) fn fetch_catalog_blocking(
+    owner: &str,
+    repository: &str,
+    key: &str,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<Catalog, CatalogError> {
+    let official =
+        format!("https://github.com/{owner}/{repository}/releases/latest/download/{CATALOG_NAME}");
+    let client = reqwest::blocking::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|_| CatalogError::Transport)?;
+    let mut last = CatalogError::Transport;
+    for (proxy, source) in catalog_sources(&official) {
+        if stop.load(std::sync::atomic::Ordering::Acquire) {
+            break;
+        }
+        let result = (|| {
+            let response = client
+                .get(source)
+                .timeout(Duration::from_secs(3))
+                .send()
+                .and_then(|response| response.error_for_status())
+                .map_err(|_| CatalogError::Transport)?;
+            let bytes = bounded_body(response, MAX_CATALOG_BYTES)?;
+            let mut catalog = parse_catalog(&bytes, key)?;
+            catalog.plugins = catalog
+                .plugins
+                .into_iter()
+                .map(|entry| resolve_downloads(entry, proxy, &official))
+                .collect();
+            Ok(catalog)
+        })();
+        match result {
+            Ok(catalog) => return Ok(catalog),
+            Err(error) => last = error,
+        }
+    }
+    Err(last)
+}
+
+fn bounded_body(
+    response: reqwest::blocking::Response,
+    limit: usize,
+) -> Result<Vec<u8>, CatalogError> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    response
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| CatalogError::Download)?;
+    if bytes.len() > limit {
+        return Err(CatalogError::Download);
+    }
+    Ok(bytes)
+}
+
+pub(crate) fn download_blocking(
+    url: &str,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<Vec<u8>, CatalogError> {
+    let client = reqwest::blocking::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|_| CatalogError::Download)?;
+    let official = GITHUB_PROXY_PREFIXES
+        .iter()
+        .find_map(|prefix| url.strip_prefix(&format!("{}/", prefix.trim_end_matches('/'))))
+        .unwrap_or(url);
+    let mut sources = vec![url.to_owned()];
+    if official.starts_with("https://github.com/") {
+        for (_, source) in catalog_sources(official) {
+            if !sources.contains(&source) {
+                sources.push(source);
+            }
+        }
+    }
+    for source in sources {
+        if stop.load(std::sync::atomic::Ordering::Acquire) {
+            break;
+        }
+        let result = client
+            .get(source)
+            .timeout(Duration::from_secs(3))
+            .send()
+            .and_then(|response| response.error_for_status());
+        if let Ok(response) = result
+            && let Ok(bytes) = bounded_body(response, MAX_DOWNLOAD_BYTES)
+        {
+            return Ok(bytes);
+        }
+    }
+    Err(CatalogError::Download)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn catalog() -> Catalog {
-        Catalog {
-            plugins: vec![CatalogEntry {
-                id: "com.bongocat.pomodoro".into(),
-                name: "Pomodoro".into(),
-                description: "A timer".into(),
-                version: "1.0.0".into(),
-                app_versions: ">=2.3.0, <3".into(),
-                protocol_version: PROTOCOL_VERSION,
-                icon: PluginIcon::Emoji("🍅".into()),
-                downloads: BTreeMap::from([(
-                    "macos".to_owned(),
-                    "pomodoro-1.0.0-macos.zip".to_owned(),
-                )]),
-                sha256: None,
-                homepage: None,
-            }],
-        }
-    }
-
-    #[test]
-    fn select_requires_protocol_app_window_and_platform() {
-        let catalog = catalog();
-        assert!(select_for_host(&catalog, "2.3.1", "macos").is_ok());
-        assert_eq!(
-            select_for_host(&catalog, "2.3.1", "windows"),
-            Err(CatalogError::NoMatch)
-        );
-        assert_eq!(
-            select_for_host(&catalog, "3.0.0", "macos"),
-            Err(CatalogError::NoMatch)
-        );
-    }
 
     #[test]
     fn an_unsigned_or_unknown_catalog_is_rejected() {
@@ -282,5 +241,56 @@ mod tests {
             parse_catalog(b"{}", "not-a-key"),
             Err(CatalogError::Invalid) | Err(CatalogError::Signature)
         ));
+    }
+}
+
+#[cfg(test)]
+mod signed_tests {
+    use super::*;
+    #[test]
+    fn accepts_updater_key_and_signature_boxes_and_rejects_tampering() {
+        let directory = tempfile::tempdir().unwrap();
+        let keys = cargo_packager::sign::generate_key(Some(String::new())).unwrap();
+        let catalog = Catalog {
+            plugins: Vec::new(),
+        };
+        let path = directory.path().join("catalog.json");
+        std::fs::write(&path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+        let signature_path = cargo_packager::sign::sign_file(
+            &cargo_packager::sign::SigningConfig::new()
+                .private_key(keys.sk)
+                .password(""),
+            &path,
+        )
+        .unwrap();
+        let signed = SignedCatalog {
+            catalog,
+            signature: std::fs::read_to_string(signature_path).unwrap(),
+        };
+        let mut bytes = serde_json::to_vec(&signed).unwrap();
+        assert_eq!(parse_catalog(&bytes, &keys.pk).unwrap().plugins.len(), 0);
+        let mut tampered: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        tampered["catalog"]["plugins"] = serde_json::json!([{
+            "id": "org.test.a", "name": "A", "description": "", "version": "1.0.0", "app_versions": ">=2", "protocol_version": 1,
+            "icon": { "type": "emoji", "value": "A" }, "downloads": {}
+        }]);
+        bytes = serde_json::to_vec(&tampered).unwrap();
+        assert_eq!(
+            parse_catalog(&bytes, &keys.pk),
+            Err(CatalogError::Signature)
+        );
+        let other_keys = cargo_packager::sign::generate_key(Some(String::new())).unwrap();
+        assert_eq!(
+            parse_catalog(&serde_json::to_vec(&signed).unwrap(), &other_keys.pk),
+            Err(CatalogError::Signature)
+        );
+    }
+    #[test]
+    fn compiled_release_key_uses_the_same_box_format() {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(bongocat_update::RELEASE_SIGNING_KEY.unwrap())
+            .unwrap();
+        assert!(minisign_verify::PublicKey::decode(std::str::from_utf8(&bytes).unwrap()).is_ok());
     }
 }

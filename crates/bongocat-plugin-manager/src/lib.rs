@@ -3,13 +3,12 @@
 mod catalog;
 mod loader;
 mod registry;
+mod source;
 use bongocat_plugin_sdk::PluginMetadata;
-pub use catalog::{
-    CATALOG_NAME, Catalog, CatalogEntry, CatalogError, download_verified, fetch_and_select,
-    parse_catalog, select_for_host, sha256_of,
-};
+pub use catalog::{CATALOG_NAME, Catalog, CatalogEntry, CatalogError, parse_catalog, sha256_of};
 pub use registry::{PluginRegistry, PluginState, RegistryError};
 use serde::{Deserialize, Serialize};
+pub use source::{AvailablePlugin, PluginSource, is_newer};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -73,11 +72,64 @@ impl PluginManager {
         bytes: &[u8],
         expected_sha256: Option<&str>,
     ) -> Result<install::InstalledPackage, PluginManagerError> {
-        let installed = install::install_package(&self.plugin_dir, expected_sha256, bytes)?;
-        // A running process keeps its own copy of the executable, so replacing the
-        // selected version does not disturb it; the next enable picks the new one.
+        if expected_sha256.is_some_and(|digest| sha256_of(bytes) != digest.to_ascii_lowercase()) {
+            return Err(PluginManagerError::UnsafeManifest(
+                "package digest does not match the catalog".into(),
+            ));
+        }
+        let manifest = install::inspect_package(bytes)?;
+        let id = &manifest.metadata.id;
+        if !cargo_packager_updater::semver::VersionReq::parse(&manifest.metadata.app_versions)
+            .is_ok_and(|range| {
+                cargo_packager_updater::semver::Version::parse(env!("CARGO_PKG_VERSION"))
+                    .is_ok_and(|version| range.matches(&version))
+            })
+        {
+            return Err(PluginManagerError::UnsafeManifest(
+                "plugin excludes this application version".into(),
+            ));
+        }
+        if self.installed_version(id).as_deref() == Some(&manifest.metadata.version) {
+            return Err(PluginManagerError::UnsafeManifest(
+                "installed versions are immutable; publish a newer version".into(),
+            ));
+        }
+        let previous = self.installed_version(id);
+        let running = self.registry.is_running(id);
+        if running {
+            self.registry.disable(id)?;
+        }
+        let result = install::install_package(&self.plugin_dir, expected_sha256, bytes);
+        let installed = match result {
+            Ok(installed) => installed,
+            Err(error) => {
+                if running {
+                    let _ = self.registry.enable(id);
+                }
+                return Err(error);
+            }
+        };
         self.discover_plugins()?;
+        // Validate the real process before accepting a replacement. The old
+        // version remains on disk so a refused startup can restore the pointer.
+        if running && let Err(error) = self.registry.enable(id) {
+            if let Some(previous) = previous {
+                install::write_current(
+                    &self.plugin_dir.join(PACKAGES_DIRECTORY).join(id),
+                    &previous,
+                )?;
+                self.discover_plugins()?;
+                let _ = self.registry.enable(id);
+            }
+            return Err(error.into());
+        }
         Ok(installed)
+    }
+    pub fn resume_enabled(&mut self) -> Result<(), PluginManagerError> {
+        self.registry.resume_enabled().map_err(Into::into)
+    }
+    pub fn keyboard_activity(&mut self, elapsed_ms: u64) {
+        self.registry.keyboard_activity(elapsed_ms);
     }
     /// Remove a plugin's executable package. Its data is kept (see [`Self::reset`]).
     pub fn uninstall(&mut self, id: &str) -> Result<bool, PluginManagerError> {
@@ -90,7 +142,17 @@ impl PluginManager {
     }
     /// Drop a plugin's persisted data. The installed package is untouched.
     pub fn reset(&mut self, id: &str) -> Result<bool, PluginManagerError> {
-        install::reset_plugin_data(&self.plugin_dir, id)
+        let running = self.registry.is_running(id);
+        if running {
+            self.registry.disable(id)?;
+        }
+        let removed = install::reset_plugin_data(&self.plugin_dir, id)?;
+        self.registry.forget(id);
+        self.discover_plugins()?;
+        if running {
+            self.registry.enable(id)?;
+        }
+        Ok(removed)
     }
     /// Where a plugin's persisted data lives, creating it when `create` is set.
     ///
@@ -216,34 +278,3 @@ mod tests {
 
 /// A verified plugin package, installed under its own versioned directory.
 pub mod install;
-
-/// Compatibility of an advertised release with this build.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Compatibility {
-    /// The plugin may be offered as an install or an update.
-    Compatible,
-    /// It names a protocol this build does not speak.
-    IncompatibleProtocol,
-    /// No advertised build matches this host.
-    MissingPlatform,
-    /// The advertised app range excludes this build.
-    IncompatibleAppVersion,
-}
-
-impl Compatibility {
-    pub fn is_compatible(&self) -> bool {
-        matches!(self, Self::Compatible)
-    }
-}
-
-/// One discoverable plugin as the center shows it.
-#[derive(Clone, Debug)]
-pub struct PluginCard {
-    pub metadata: PluginMetadata,
-    pub state: PluginState,
-    pub version: Option<String>,
-    pub compatibility: Compatibility,
-    /// `None` for a locally discovered package, `Some` for a catalog entry.
-    pub download_url: Option<String>,
-    pub sha256: Option<String>,
-}

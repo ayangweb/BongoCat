@@ -30,6 +30,32 @@ struct Entry {
     process: Option<Process>,
     config: Configuration,
     last_output: PluginOutput,
+    data_file: PathBuf,
+    enabled: bool,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedSession {
+    #[serde(default = "session_schema")]
+    schema_version: u32,
+    #[serde(default)]
+    config: Configuration,
+    #[serde(default)]
+    state: Vec<u8>,
+    #[serde(default)]
+    enabled: bool,
+}
+fn session_schema() -> u32 {
+    1
+}
+impl Default for SavedSession {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            config: Configuration::new(),
+            state: Vec::new(),
+            enabled: false,
+        }
+    }
 }
 pub struct PluginRegistry {
     entries: BTreeMap<String, Entry>,
@@ -45,9 +71,45 @@ impl PluginRegistry {
         metadata: PluginMetadata,
         root: PathBuf,
     ) -> Result<(), RegistryError> {
-        if self.entries.contains_key(&metadata.id) {
+        if let Some(entry) = self.entries.get_mut(&metadata.id) {
+            if entry.root != root || entry.metadata != metadata {
+                if entry.process.is_some() {
+                    return Err(RegistryError::AlreadyRunning(metadata.id));
+                }
+                entry.metadata = metadata;
+                entry.root = root;
+            }
             return Ok(());
         }
+        let data_file = root
+            .ancestors()
+            .nth(3)
+            .ok_or_else(|| std::io::Error::other("invalid package root"))?
+            .join(crate::DATA_DIRECTORY)
+            .join(&metadata.id)
+            .join("session.json");
+        let saved = match std::fs::read(&data_file) {
+            Ok(bytes) if bytes.len() <= bongocat_plugin_sdk::MAX_MESSAGE_BYTES => {
+                let saved: SavedSession =
+                    serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
+                if saved.schema_version != 1 {
+                    return Err(std::io::Error::other("unsupported plugin session schema").into());
+                }
+                if !(PluginOutput {
+                    config: saved.config.clone(),
+                    state: saved.state.clone(),
+                    ..Default::default()
+                })
+                .validate()
+                {
+                    return Err(std::io::Error::other("invalid saved plugin data").into());
+                }
+                saved
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => SavedSession::default(),
+            Err(error) => return Err(error.into()),
+            _ => return Err(std::io::Error::other("saved plugin data exceeds limit").into()),
+        };
         self.entries.insert(
             metadata.id.clone(),
             Entry {
@@ -55,8 +117,14 @@ impl PluginRegistry {
                 root,
                 state: PluginState::Discovered,
                 process: None,
-                config: Configuration::new(),
-                last_output: PluginOutput::default(),
+                config: saved.config.clone(),
+                last_output: PluginOutput {
+                    config: saved.config,
+                    state: saved.state,
+                    ..Default::default()
+                },
+                data_file,
+                enabled: saved.enabled,
             },
         );
         Ok(())
@@ -111,11 +179,14 @@ impl PluginRegistry {
         let mut process = Process::start(&entry.root, &entry.metadata)?;
         let output = process.exchange(HostMessage::Start {
             config: entry.config.clone(),
-            state: Vec::new(),
+            state: entry.last_output.state.clone(),
         })?;
+        entry.config = output.config.clone();
         entry.last_output = output.clone();
         entry.process = Some(process);
         entry.state = PluginState::Enabled;
+        entry.enabled = true;
+        persist(entry)?;
         Ok(output)
     }
     pub fn disable(&mut self, id: &str) -> Result<(), RegistryError> {
@@ -123,10 +194,15 @@ impl PluginRegistry {
             .entries
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        entry.enabled = false;
         if let Some(mut process) = entry.process.take() {
-            process.stop()?;
+            let output = process.stop()?;
+            entry.config = output.config.clone();
+            entry.last_output = output;
+            persist(entry)?;
         }
         entry.state = PluginState::Disabled;
+        persist(entry)?;
         Ok(())
     }
     pub fn configure(
@@ -138,12 +214,13 @@ impl PluginRegistry {
             .entries
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
-        entry.config = config.clone();
         let Some(process) = entry.process.as_mut() else {
             return Ok(entry.last_output.clone());
         };
         let output = process.exchange(HostMessage::Configure { config })?;
+        entry.config = output.config.clone();
         entry.last_output = output.clone();
+        persist(entry)?;
         Ok(output)
     }
     pub fn action(&mut self, id: &str, action: &str) -> Result<PluginOutput, RegistryError> {
@@ -183,11 +260,78 @@ impl PluginRegistry {
     }
     pub fn shutdown(&mut self) {
         for entry in self.entries.values_mut() {
-            if let Some(mut process) = entry.process.take() {
-                let _ = process.stop();
+            if let Some(mut process) = entry.process.take()
+                && let Ok(output) = process.stop()
+            {
+                entry.config = output.config.clone();
+                entry.last_output = output;
+                let _ = persist(entry);
             }
         }
     }
+
+    pub fn resume_enabled(&mut self) -> Result<(), RegistryError> {
+        let ids: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.enabled && entry.process.is_none())
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut failure = None;
+        for id in ids {
+            if let Err(error) = self.enable(&id) {
+                if let Some(entry) = self.entries.get_mut(&id) {
+                    entry.state = PluginState::Failed;
+                }
+                failure = Some(error);
+            }
+        }
+        failure.map_or(Ok(()), Err)
+    }
+
+    pub fn keyboard_activity(&mut self, elapsed_ms: u64) {
+        for entry in self.entries.values_mut() {
+            if !entry
+                .metadata
+                .capabilities
+                .contains(&bongocat_plugin_sdk::Capability::KeyboardActivityV1)
+            {
+                continue;
+            }
+            let Some(process) = entry.process.as_mut() else {
+                continue;
+            };
+            match process.exchange(HostMessage::KeyboardActivity { elapsed_ms }) {
+                Ok(output) => entry.last_output = output,
+                Err(_) => {
+                    entry.process.take();
+                    entry.state = PluginState::Failed;
+                }
+            }
+        }
+    }
+}
+
+fn persist(entry: &Entry) -> std::io::Result<()> {
+    use std::io::Write;
+    std::fs::create_dir_all(
+        entry
+            .data_file
+            .parent()
+            .ok_or_else(|| std::io::Error::other("invalid data root"))?,
+    )?;
+    let mut file = atomic_write_file::AtomicWriteFile::options().open(&entry.data_file)?;
+    serde_json::to_writer(
+        &mut file,
+        &SavedSession {
+            schema_version: 1,
+            config: entry.config.clone(),
+            state: entry.last_output.state.clone(),
+            enabled: entry.enabled,
+        },
+    )?;
+    file.flush()?;
+    file.commit()
 }
 impl Default for PluginRegistry {
     fn default() -> Self {

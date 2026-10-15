@@ -123,6 +123,7 @@ impl Plugin for Pomodoro {
                 self.configure(&config)?;
             }
             HostMessage::Configure { config } => self.configure(&config)?,
+            HostMessage::KeyboardActivity { .. } => {}
             HostMessage::Tick { elapsed_ms } => {
                 if self.running
                     && let Some(previous) = self.last_tick

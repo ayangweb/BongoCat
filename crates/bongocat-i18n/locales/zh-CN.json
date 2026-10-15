@@ -31,7 +31,7 @@
     "plugins": {
       "title": "插件中心",
       "subtitle": "使用插件扩展模型窗口。",
-      "empty": "暂无已安装的插件。"
+      "empty": "暂无可用插件。"
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "正在加载插件…",
     "discovery_failed": "无法加载插件列表，请重试。",
     "retry": "重试",
-    "install": "安装插件包…",
+    "install": "安装",
+    "update": "更新",
+    "refresh": "刷新",
+    "available_version": "可用版本 %{version}",
     "uninstall": "卸载",
     "reset_data": "重置数据",
     "version": "版本 %{version}"

@@ -45,3 +45,5 @@ pub(crate) const LOOP_INTERVAL: std::time::Duration = std::time::Duration::from_
 /// countdown counts at. Faster would spend a process round trip per frame for a
 /// label that changes once a second.
 pub(crate) const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+
+pub use bongocat_plugin_manager::PluginSource;

@@ -31,7 +31,7 @@
     "plugins": {
       "title": "플러그인 센터",
       "subtitle": "플러그인으로 모델 창을 확장하세요.",
-      "empty": "설치된 플러그인이 없습니다."
+      "empty": "사용 가능한 플러그인이 없습니다."
     }
   },
   "system_menu": {
@@ -553,7 +553,10 @@
     "loading": "플러그인 불러오는 중…",
     "discovery_failed": "플러그인 목록을 불러올 수 없습니다. 다시 시도하세요.",
     "retry": "다시 시도",
-    "install": "패키지 설치…",
+    "install": "설치",
+    "update": "업데이트",
+    "refresh": "새로 고침",
+    "available_version": "사용 가능한 버전 %{version}",
     "uninstall": "제거",
     "reset_data": "데이터 초기화",
     "version": "버전 %{version}"
