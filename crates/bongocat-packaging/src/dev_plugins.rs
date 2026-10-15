@@ -175,7 +175,13 @@ mod tests {
         let mut manager = PluginManager::new(store.path().to_path_buf()).unwrap();
         manager.install(&fs::read(&package).unwrap()).unwrap();
         assert_eq!(manager.list_plugins().len(), 1);
-        assert_eq!(manager.list_plugins()[0].0.name, "Pomodoro / 番茄钟");
+        let metadata = &manager.list_plugins()[0].0;
+        assert_eq!(metadata.name, "Pomodoro");
+        // The package carries the plugin's own localized copy, so the center can
+        // show the name in the language the window is already using.
+        assert_eq!(metadata.localized_copy("zh-CN").0, "番茄钟");
+        assert_eq!(metadata.localized_copy("zh-TW").0, "番茄鐘");
+        assert_eq!(metadata.localized_copy("fr-FR").0, "Pomodoro");
         assert_eq!(
             manager
                 .installed_version("com.bongocat.pomodoro")

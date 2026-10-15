@@ -559,6 +559,13 @@
     "available_version": "الإصدار المتاح %{version}",
     "uninstall": "إلغاء التثبيت",
     "reset_data": "إعادة تعيين البيانات",
+    "settings": {
+      "open": "الإعدادات",
+      "title": "إعدادات %{name}",
+      "empty": "لا توفّر هذه الإضافة أي إعدادات.",
+      "decrease": "تقليل",
+      "increase": "زيادة"
+    },
     "version": "الإصدار %{version}"
   }
 }

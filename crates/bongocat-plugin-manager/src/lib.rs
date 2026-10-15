@@ -131,6 +131,11 @@ impl PluginManager {
     pub fn keyboard_activity(&mut self, elapsed_ms: u64) {
         self.registry.keyboard_activity(elapsed_ms);
     }
+    /// Tell every running plugin that localizes its own views which catalog tag
+    /// the host is showing.
+    pub fn set_locale(&mut self, locale: &str) {
+        self.registry.set_locale(locale);
+    }
     /// Remove a plugin's executable package. Its data is kept (see [`Self::reset`]).
     pub fn uninstall(&mut self, id: &str) -> Result<bool, PluginManagerError> {
         if self.registry.is_running(id) {
@@ -265,6 +270,7 @@ mod tests {
             entry: "../x".into(),
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("x".into()),
             capabilities: vec![],
+            localizations: Default::default(),
         };
         assert!(
             validate_manifest(&PluginManifest {

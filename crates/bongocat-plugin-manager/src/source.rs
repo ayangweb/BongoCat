@@ -173,6 +173,9 @@ fn from_catalog(entry: &CatalogEntry, url: String, digest: String) -> AvailableP
             entry: String::new(),
             icon: entry.icon.clone(),
             capabilities: Vec::new(),
+            // The catalog carries the plugin's own localized copy, so an
+            // available card reads the same words an installed one does.
+            localizations: entry.localizations.clone(),
         },
         digest,
         location: PackageLocation::Https(url),
@@ -261,6 +264,7 @@ mod production_tests {
             id: id.into(),
             name: id.into(),
             description: String::new(),
+            localizations: Default::default(),
             version: version.into(),
             app_versions: app.into(),
             protocol_version: 1,

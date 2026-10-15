@@ -59,11 +59,20 @@ impl Default for SavedSession {
 }
 pub struct PluginRegistry {
     entries: BTreeMap<String, Entry>,
+    /// The catalog tag the host is showing, delivered to running plugins that
+    /// declare [`bongocat_plugin_sdk::Capability::LocalizedViewsV1`].
+    ///
+    /// The registry owns it rather than the caller because a plugin started
+    /// later — enable, upgrade, resume at startup — has to receive the tag the
+    /// host was already showing, and a value that lived in the command layer
+    /// would have to be replayed into every start path.
+    locale: Option<String>,
 }
 impl PluginRegistry {
     pub fn new() -> Self {
         Self {
             entries: BTreeMap::new(),
+            locale: None,
         }
     }
     pub fn register(
@@ -169,6 +178,7 @@ impl PluginRegistry {
         }
     }
     pub fn enable(&mut self, id: &str) -> Result<PluginOutput, RegistryError> {
+        let locale = self.locale.clone();
         let entry = self
             .entries
             .get_mut(id)
@@ -186,8 +196,12 @@ impl PluginRegistry {
         entry.process = Some(process);
         entry.state = PluginState::Enabled;
         entry.enabled = true;
+        // `Start` is answered before the locale is delivered, so a plugin that
+        // cannot localize still publishes its fallback copy for the first frame
+        // rather than failing the start. The reply replaces that frame.
+        deliver_locale(entry, locale.as_deref());
         persist(entry)?;
-        Ok(output)
+        Ok(entry.last_output.clone())
     }
     pub fn disable(&mut self, id: &str) -> Result<(), RegistryError> {
         let entry = self
@@ -258,6 +272,27 @@ impl PluginRegistry {
     pub fn output(&self, id: &str) -> Option<&PluginOutput> {
         self.entries.get(id).map(|e| &e.last_output)
     }
+
+    /// Show a newly resolved catalog tag to every plugin that declares it can
+    /// localize its own views.
+    ///
+    /// Plugins that were never told about `localized_views_v1` are skipped
+    /// rather than sent a message they cannot parse: the capability is the
+    /// contract, and an installed plugin built before the message existed keeps
+    /// running exactly as it did.
+    ///
+    /// The tag is remembered even when no plugin can use it, so a plugin
+    /// started later receives it on its own `Start`.
+    pub fn set_locale(&mut self, locale: &str) {
+        if self.locale.as_deref() == Some(locale) {
+            return;
+        }
+        self.locale = Some(locale.to_owned());
+        for entry in self.entries.values_mut() {
+            deliver_locale(entry, Some(locale));
+        }
+    }
+
     pub fn shutdown(&mut self) {
         for entry in self.entries.values_mut() {
             if let Some(mut process) = entry.process.take()
@@ -308,6 +343,42 @@ impl PluginRegistry {
                     entry.state = PluginState::Failed;
                 }
             }
+        }
+    }
+}
+
+/// Hand the host's current catalog tag to one running plugin.
+///
+/// A plugin that never declared [`Capability::LocalizedViewsV1`], or that is not
+/// running, is skipped: the capability is the contract that says the plugin
+/// understands the message, so an installed plugin built before it existed is
+/// never sent a frame it would fail to parse.
+///
+/// A plugin that declared the capability and then refuses the exchange is a
+/// fault like any other failed tick — the process is dropped and the card shows
+/// as failed — because a plugin that cannot answer a message it advertised is
+/// not one the host can keep driving.
+fn deliver_locale(entry: &mut Entry, locale: Option<&str>) {
+    let Some(locale) = locale else {
+        return;
+    };
+    if !entry
+        .metadata
+        .capabilities
+        .contains(&bongocat_plugin_sdk::Capability::LocalizedViewsV1)
+    {
+        return;
+    }
+    let Some(process) = entry.process.as_mut() else {
+        return;
+    };
+    match process.exchange(HostMessage::Locale {
+        locale: locale.to_owned(),
+    }) {
+        Ok(output) => entry.last_output = output,
+        Err(_) => {
+            entry.process.take();
+            entry.state = PluginState::Failed;
         }
     }
 }

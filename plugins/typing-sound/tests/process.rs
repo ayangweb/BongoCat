@@ -87,35 +87,36 @@ fn preview_and_keyboard_activity_use_the_real_audio_output() {
         id: "preview".into(),
     });
     assert!(
-        preview
-            .settings
-            .nodes
-            .iter()
-            .any(|node| matches!(node, UiNode::Text { text } if text == "Playing / 正在播放")),
+        previewing(&preview),
         "audio playback did not start: {:?}",
         preview.settings
     );
     process.exchange(HostMessage::Pause);
     let paused = process.exchange(HostMessage::KeyboardActivity { elapsed_ms: 500 });
-    assert!(
-        !paused
-            .settings
-            .nodes
-            .iter()
-            .any(|node| matches!(node, UiNode::Text { text } if text == "Playing / 正在播放"))
-    );
+    assert!(!previewing(&paused));
     process.exchange(HostMessage::Resume);
     let typed = process.exchange(HostMessage::KeyboardActivity { elapsed_ms: 1000 });
     assert!(
-        typed
-            .settings
-            .nodes
-            .iter()
-            .any(|node| matches!(node, UiNode::Text { text } if text == "Playing / 正在播放")),
+        previewing(&typed),
         "typing playback did not start: {:?}",
         typed.settings
     );
     std::thread::sleep(std::time::Duration::from_millis(300));
     process.exchange(HostMessage::Stop);
     assert!(process.child.wait().unwrap().success());
+}
+
+/// Whether the plugin reports its preview control as still carrying out the
+/// audition, which is what the host draws as a loading button.
+fn previewing(output: &PluginOutput) -> bool {
+    output.settings.nodes.iter().any(|node| {
+        matches!(
+            node,
+            UiNode::Button {
+                id,
+                loading: true,
+                ..
+            } if id == "preview"
+        )
+    })
 }

@@ -49,6 +49,7 @@ pub(super) fn publish(
                 id: metadata.id,
                 name: metadata.name,
                 description: metadata.description,
+                localizations: metadata.localizations,
                 version: metadata.version,
                 app_versions: metadata.app_versions,
                 protocol_version: metadata.protocol_version,

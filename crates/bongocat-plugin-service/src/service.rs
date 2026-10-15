@@ -291,7 +291,8 @@ impl Unavailable {
                 | PluginCommand::Uninstall { reply, .. }
                 | PluginCommand::ResetData { reply, .. }
                 | PluginCommand::Action { reply, .. }
-                | PluginCommand::Configure { reply, .. } => {
+                | PluginCommand::Configure { reply, .. }
+                | PluginCommand::SetLocale { reply, .. } => {
                     let _ = reply.respond(Err::<PluginCenterSnapshot, PluginCommandError>(
                         PluginCommandError::ServiceUnavailable,
                     ));
@@ -415,6 +416,7 @@ impl Worker {
                     id: metadata.id,
                     name: metadata.name,
                     description: metadata.description,
+                    localizations: metadata.localizations,
                     icon: metadata.icon,
                     enabled: state == PluginState::Enabled,
                     failed: state == PluginState::Failed,
@@ -434,6 +436,7 @@ impl Worker {
                 id: offer.metadata.id.clone(),
                 name: offer.metadata.name.clone(),
                 description: offer.metadata.description.clone(),
+                localizations: offer.metadata.localizations.clone(),
                 icon: offer.metadata.icon.clone(),
                 enabled: false,
                 failed: false,
@@ -559,6 +562,10 @@ impl Worker {
             } => {
                 let result = self.configure(&plugin, key, value);
                 self.respond(reply, result);
+            }
+            PluginCommand::SetLocale { locale, reply } => {
+                self.manager.set_locale(&locale);
+                self.respond(reply, Ok(()));
             }
             PluginCommand::Shutdown { reply } => {
                 self.catalog_stop.store(true, Ordering::Release);

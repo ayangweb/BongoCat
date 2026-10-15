@@ -72,6 +72,14 @@ documentation and docs.rs 0.7.3 before UI changes.
 
 ## Plugin Center cards
 
+> Amended by ADR-0092: the single-card-list layout, the shared generic action
+> glyph and the "Playing / 正在播放" placeholder line below are superseded. The
+> center is now a responsive grid shared with the model library, each button
+> carries the glyph its meaning calls for (declared by the plugin through the
+> protocol, never inferred by the host), in-flight work is drawn as a loading
+> button, and each plugin has its own settings modal. Lifecycle, storage and
+> catalog decisions in this ADR are unchanged.
+
 The center uses the existing GPUI Kit `Button`, `Switch` and theme tokens, not
 custom-painted controls. Each card groups its icon, name and version at the top,
 then description/status/configuration, then a shared footer: enable/disable on

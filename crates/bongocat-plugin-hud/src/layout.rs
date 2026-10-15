@@ -213,10 +213,7 @@ mod tests {
                 UiNode::Text {
                     text: "05:00".into(),
                 },
-                UiNode::Button {
-                    id: "toggle".into(),
-                    label: "Start".into(),
-                },
+                UiNode::button("toggle", "Start"),
             ],
         };
         let viewport = HudRect::new(0.0, 0.0, 300.0, 300.0);

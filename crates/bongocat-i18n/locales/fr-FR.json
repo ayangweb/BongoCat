@@ -559,6 +559,13 @@
     "available_version": "Version disponible %{version}",
     "uninstall": "Désinstaller",
     "reset_data": "Réinitialiser les données",
+    "settings": {
+      "open": "Paramètres",
+      "title": "Paramètres de %{name}",
+      "empty": "Ce plugin n’a aucun paramètre.",
+      "decrease": "Diminuer",
+      "increase": "Augmenter"
+    },
     "version": "Version %{version}"
   }
 }

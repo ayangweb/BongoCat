@@ -183,6 +183,8 @@ impl Render for SettingsView {
         let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
         self.sync_model_selection_dialog(window, cx);
         self.sync_mver_mode_dialog(window, cx);
+        self.sync_plugin_settings_dialog(window, cx);
+        self.sync_plugin_locale(language, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()
@@ -1639,10 +1641,10 @@ impl Render for SettingsView {
         let plugins_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
             SettingItem::render({
                 let view = view_entity.clone();
-                move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
                     let page_language = view.read(app).display_language();
                     view.update(app, move |view, cx| {
-                        plugins_page::content(view, page_language, cx)
+                        plugins_page::content(view, window, page_language, cx)
                     })
                     .into_any_element()
                 }

@@ -32,6 +32,13 @@ pub struct CatalogEntry {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// Per-locale name and description, keyed by locale tag.
+    ///
+    /// Optional, so a catalog published before local names existed keeps
+    /// verifying and reading: a signed manifest that omits the field is served
+    /// exactly as it was, and only a republished catalog can add copy.
+    #[serde(default)]
+    pub localizations: BTreeMap<String, bongocat_plugin_sdk::PluginCopy>,
     pub version: String,
     pub app_versions: String,
     pub protocol_version: u32,

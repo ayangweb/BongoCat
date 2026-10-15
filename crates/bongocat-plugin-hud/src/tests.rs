@@ -16,10 +16,7 @@ fn a_view_measures_to_its_widest_node_and_stacked_height() {
             UiNode::Text {
                 text: "05:00".into(),
             },
-            UiNode::Button {
-                id: "toggle".into(),
-                label: "Start / 开始".into(),
-            },
+            UiNode::button("toggle", "Start / 开始"),
         ],
     };
     let (width, height) = crate::measure_view(&view, &font);
@@ -41,10 +38,7 @@ fn a_point_inside_a_control_is_reported_and_a_point_outside_is_not() {
     let font = font();
     let view = PluginView {
         anchor: Anchor::TopLeft,
-        nodes: vec![UiNode::Button {
-            id: "restart".into(),
-            label: "Restart".into(),
-        }],
+        nodes: vec![UiNode::button("restart", "Restart")],
     };
     let viewport = HudRect::new(0.0, 0.0, 200.0, 200.0);
     let layout = crate::layout(&view, viewport, &font);

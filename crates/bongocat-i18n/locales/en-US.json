@@ -559,6 +559,13 @@
     "available_version": "Available version %{version}",
     "uninstall": "Uninstall",
     "reset_data": "Reset data",
+    "settings": {
+      "open": "Settings",
+      "title": "%{name} settings",
+      "empty": "This plugin has no settings.",
+      "decrease": "Decrease",
+      "increase": "Increase"
+    },
     "version": "Version %{version}"
   }
 }

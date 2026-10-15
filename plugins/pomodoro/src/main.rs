@@ -1,9 +1,63 @@
 //! Standalone Pomodoro plugin. The application knows no timer business rules.
 #![forbid(unsafe_code)]
 use bongocat_plugin_sdk::{
-    Anchor, ConfigValue, Configuration, HostMessage, Plugin, PluginOutput, PluginView, UiNode,
+    ActionIcon, Anchor, ConfigValue, Configuration, HostMessage, Plugin, PluginOutput, PluginView,
+    UiNode,
 };
 use serde::{Deserialize, Serialize};
+
+/// Every word this plugin publishes, in one language.
+///
+/// The copy lives here rather than in the host's catalog because the plugin owns
+/// its own controls: a host that translated them would be guessing at business
+/// rules it deliberately does not have, and a plugin update could not correct a
+/// mistranslation without shipping a new application build.
+struct Copy {
+    start: &'static str,
+    pause: &'static str,
+    restart: &'static str,
+    minutes: &'static str,
+}
+
+const ENGLISH: Copy = Copy {
+    start: "Start",
+    pause: "Pause",
+    restart: "Restart",
+    minutes: "Minutes",
+};
+const SIMPLIFIED_CHINESE: Copy = Copy {
+    start: "开始",
+    pause: "暂停",
+    restart: "重新计时",
+    minutes: "时长（分钟）",
+};
+const TRADITIONAL_CHINESE: Copy = Copy {
+    start: "開始",
+    pause: "暫停",
+    restart: "重新計時",
+    minutes: "時長（分鐘）",
+};
+
+/// The copy for a catalog tag, falling back to English.
+///
+/// The host sends a tag it already resolved, so this only has to pick a
+/// language out of the tags it knows; an unknown tag reads English rather than
+/// showing a raw locale to the user.
+fn copy_for(locale: &str) -> &'static Copy {
+    let normalized = locale.replace('_', "-").to_ascii_lowercase();
+    let mut subtags = normalized.split('-');
+    match subtags.next() {
+        Some("zh") => {
+            let traditional = subtags.any(|subtag| matches!(subtag, "hant" | "tw" | "hk" | "mo"));
+            if traditional {
+                &TRADITIONAL_CHINESE
+            } else {
+                &SIMPLIFIED_CHINESE
+            }
+        }
+        _ => &ENGLISH,
+    }
+}
 
 #[derive(Default, Serialize, Deserialize)]
 struct Pomodoro {
@@ -18,9 +72,22 @@ struct Pomodoro {
     last_tick: Option<u64>,
     #[serde(default = "default_minutes")]
     minutes: i64,
+    /// The catalog tag the host last named, or `None` before it names one.
+    ///
+    /// It is deliberately skipped by `serde`: the language a user is reading is
+    /// a property of the running session, not of the saved timer, and persisting
+    /// it would make a state file depend on the language it was written in.
+    #[serde(skip)]
+    locale: Option<String>,
 }
 fn default_minutes() -> i64 {
     25
+}
+impl Pomodoro {
+    /// The copy the panel and the settings panel should draw right now.
+    fn copy(&self) -> &'static Copy {
+        self.locale.as_deref().map_or(&ENGLISH, copy_for)
+    }
 }
 impl Pomodoro {
     fn configure(&mut self, config: &Configuration) -> Result<(), String> {
@@ -37,6 +104,7 @@ impl Pomodoro {
         // count down, so the duration is visible before the user presses Start.
         // Once it has run the panel shows what is left, and a finished session
         // stays at zero instead of reading as a fresh one.
+        let copy = self.copy();
         let text = match (self.started, self.remaining_ms) {
             (false, _) => format_clock(self.session_ms()),
             (_, remaining) => format_clock(remaining),
@@ -45,13 +113,24 @@ impl Pomodoro {
             anchor: Anchor::TopRight,
             nodes: vec![
                 UiNode::Text { text },
+                // The icon names what the button does in this frame, so the
+                // control does not read as one fixed glyph whatever the timer is
+                // doing: pause while it counts, start while it does not.
                 UiNode::Button {
                     id: "toggle".into(),
-                    label: if self.running { "Pause" } else { "Start" }.into(),
+                    label: if self.running { copy.pause } else { copy.start }.into(),
+                    icon: Some(if self.running {
+                        ActionIcon::Pause
+                    } else {
+                        ActionIcon::Play
+                    }),
+                    loading: false,
                 },
                 UiNode::Button {
                     id: "restart".into(),
-                    label: "Restart".into(),
+                    label: copy.restart.into(),
+                    icon: Some(ActionIcon::Restart),
+                    loading: false,
                 },
             ],
         };
@@ -60,7 +139,7 @@ impl Pomodoro {
             settings: PluginView {
                 nodes: vec![UiNode::Integer {
                     key: "minutes".into(),
-                    label: "Minutes".into(),
+                    label: copy.minutes.into(),
                     value: self.minutes,
                     min: 1,
                     max: 180,
@@ -100,6 +179,48 @@ fn clock_text(output: &PluginOutput) -> &str {
     }) {
         Some(text) => text,
         None => panic!("the panel always publishes a clock"),
+    }
+}
+
+/// The label one panel button carries, by the action it publishes.
+#[cfg(test)]
+fn button_label<'a>(output: &'a PluginOutput, id: &str) -> &'a str {
+    match output.model.nodes.iter().find_map(|node| match node {
+        UiNode::Button {
+            id: node_id, label, ..
+        } if node_id == id => Some(label.as_str()),
+        _ => None,
+    }) {
+        Some(label) => label,
+        None => panic!("the panel always publishes the {id} button"),
+    }
+}
+
+/// The glyph one panel button asks the host to draw.
+#[cfg(test)]
+fn button_icon(output: &PluginOutput, id: &str) -> Option<ActionIcon> {
+    output
+        .model
+        .nodes
+        .iter()
+        .find_map(|node| match node {
+            UiNode::Button {
+                id: node_id, icon, ..
+            } if node_id == id => Some(*icon),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the panel always publishes the {id} button"))
+}
+
+/// The label of the single numeric setting the settings panel publishes.
+#[cfg(test)]
+fn integer_label(output: &PluginOutput) -> &str {
+    match output.settings.nodes.iter().find_map(|node| match node {
+        UiNode::Integer { label, .. } => Some(label.as_str()),
+        _ => None,
+    }) {
+        Some(label) => label,
+        None => panic!("the settings panel always publishes the minutes field"),
     }
 }
 impl Plugin for Pomodoro {
@@ -152,6 +273,11 @@ impl Plugin for Pomodoro {
                 }
                 _ => return Err("Unknown pomodoro action".into()),
             },
+            // The host resolved the tag before sending it, and the plugin only
+            // republishes its own views, so nothing about the timer's own state
+            // changes: the clock, the remaining time and the running flag stay
+            // exactly as they were.
+            HostMessage::Locale { locale } => self.locale = Some(locale),
             HostMessage::Pause | HostMessage::Stop => {
                 self.running = false;
                 self.last_tick = None;
@@ -302,5 +428,100 @@ mod tests {
         .unwrap();
         assert_eq!(p.remaining_ms, 500);
         assert!(!p.running);
+    }
+
+    /// The panel's controls are its own copy, so switching language re-labels
+    /// them without touching the timer the user is watching.
+    #[test]
+    fn the_host_locale_relabels_the_controls_and_preserves_the_timer() {
+        let mut p = Pomodoro {
+            minutes: 25,
+            ..Default::default()
+        };
+        p.handle(HostMessage::Tick { elapsed_ms: 0 }).unwrap();
+        p.handle(HostMessage::Action {
+            id: "toggle".into(),
+        })
+        .unwrap();
+        p.handle(HostMessage::Tick { elapsed_ms: 5_000 }).unwrap();
+        assert_eq!(clock_text(&p.output().unwrap()), "24:55");
+        assert_eq!(button_label(&p.output().unwrap(), "toggle"), "Pause");
+
+        let localized = p
+            .handle(HostMessage::Locale {
+                locale: "zh-CN".into(),
+            })
+            .unwrap();
+        // The running timer and the clock it shows are the plugin's own state,
+        // so a language change cannot disturb them.
+        assert_eq!(clock_text(&localized), "24:55");
+        assert_eq!(button_label(&localized, "toggle"), "暂停");
+        assert_eq!(button_label(&localized, "restart"), "重新计时");
+        let minutes = integer_label(&localized);
+        assert_eq!(minutes, "时长（分钟）");
+
+        let traditional = p
+            .handle(HostMessage::Locale {
+                locale: "zh-TW".into(),
+            })
+            .unwrap();
+        assert_eq!(button_label(&traditional, "restart"), "重新計時");
+
+        // An unknown language reads English rather than the raw tag.
+        let unknown = p
+            .handle(HostMessage::Locale {
+                locale: "de-DE".into(),
+            })
+            .unwrap();
+        assert_eq!(button_label(&unknown, "restart"), "Restart");
+    }
+
+    /// The locale the host named is not part of the saved timer.
+    ///
+    /// A state file belongs to the timer, not to the language it was written in:
+    /// persisting the tag would make one user's language part of another
+    /// machine's saved session.
+    #[test]
+    fn the_locale_is_not_persisted_with_the_timer() {
+        let mut p = Pomodoro {
+            minutes: 25,
+            ..Default::default()
+        };
+        p.handle(HostMessage::Locale {
+            locale: "zh-CN".into(),
+        })
+        .unwrap();
+        let state = p.output().unwrap().state;
+        assert!(
+            !String::from_utf8_lossy(&state).contains("zh-CN"),
+            "the saved state must not carry the display language"
+        );
+    }
+
+    /// The button glyph follows what the control does in this frame, rather than
+    /// staying one fixed icon whatever the timer is doing.
+    #[test]
+    fn the_toggle_button_names_the_action_it_offers() {
+        use bongocat_plugin_sdk::ActionIcon;
+        let mut p = Pomodoro {
+            minutes: 25,
+            ..Default::default()
+        };
+        assert_eq!(
+            button_icon(&p.output().unwrap(), "toggle"),
+            Some(ActionIcon::Play)
+        );
+        p.handle(HostMessage::Action {
+            id: "toggle".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            button_icon(&p.output().unwrap(), "toggle"),
+            Some(ActionIcon::Pause)
+        );
+        assert_eq!(
+            button_icon(&p.output().unwrap(), "restart"),
+            Some(ActionIcon::Restart)
+        );
     }
 }

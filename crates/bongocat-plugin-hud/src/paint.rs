@@ -385,10 +385,7 @@ mod tests {
                 UiNode::Text {
                     text: "05:00".into(),
                 },
-                UiNode::Button {
-                    id: "toggle".into(),
-                    label: "Start".into(),
-                },
+                UiNode::button("toggle", "Start"),
             ],
         }
     }

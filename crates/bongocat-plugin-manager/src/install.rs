@@ -304,6 +304,7 @@ mod tests {
             entry: "plugin".into(),
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("🍅".into()),
             capabilities: vec![bongocat_plugin_sdk::Capability::ModelUi],
+            localizations: Default::default(),
         }
     }
 

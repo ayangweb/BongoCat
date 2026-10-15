@@ -8,7 +8,8 @@
 //! the same plugins.
 
 use async_channel::{Receiver, Sender};
-use bongocat_plugin_sdk::{ConfigValue, PluginIcon, UiNode};
+use bongocat_plugin_sdk::{ConfigValue, PluginCopy, PluginIcon, UiNode};
+use std::collections::BTreeMap;
 
 /// One plugin as the center shows it.
 ///
@@ -17,8 +18,17 @@ use bongocat_plugin_sdk::{ConfigValue, PluginIcon, UiNode};
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginCard {
     pub id: String,
+    /// The name and description the plugin shows when its locale map has no
+    /// entry for the language on screen.
     pub name: String,
     pub description: String,
+    /// The plugin's own name and description per locale.
+    ///
+    /// They travel with the card rather than being resolved here because the
+    /// window is what knows which language it is showing, and it switches
+    /// without the service having to republish anything: the map is a property
+    /// of the plugin, and picking from it is presentation.
+    pub localizations: BTreeMap<String, PluginCopy>,
     pub icon: PluginIcon,
     pub enabled: bool,
     pub failed: bool,
@@ -148,6 +158,16 @@ pub enum PluginCommand {
         plugin: String,
         key: String,
         value: ConfigValue,
+        reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
+    },
+    /// Tell every running plugin that localizes its views which catalog tag the
+    /// host is showing.
+    ///
+    /// It is a suggestion rather than a control: a plugin that declares no
+    /// localization keeps the copy it has always published, so the service never
+    /// fails a command because one plugin cannot be localized.
+    SetLocale {
+        locale: String,
         reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
     },
     /// Stop every plugin and leave the worker.
@@ -371,6 +391,16 @@ impl PluginServiceClient {
             plugin: plugin.to_owned(),
             key: key.to_owned(),
             value,
+            reply,
+        })
+    }
+
+    pub fn set_locale_blocking(
+        &self,
+        locale: &str,
+    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
+        self.request_blocking(|reply| PluginCommand::SetLocale {
+            locale: locale.to_owned(),
             reply,
         })
     }

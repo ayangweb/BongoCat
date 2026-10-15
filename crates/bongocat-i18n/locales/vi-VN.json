@@ -559,6 +559,13 @@
     "available_version": "Phiên bản có sẵn %{version}",
     "uninstall": "Gỡ cài đặt",
     "reset_data": "Đặt lại dữ liệu",
+    "settings": {
+      "open": "Cài đặt",
+      "title": "Cài đặt %{name}",
+      "empty": "Tiện ích này không có cài đặt nào.",
+      "decrease": "Giảm",
+      "increase": "Tăng"
+    },
     "version": "Phiên bản %{version}"
   }
 }

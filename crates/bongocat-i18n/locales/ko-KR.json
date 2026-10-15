@@ -559,6 +559,13 @@
     "available_version": "사용 가능한 버전 %{version}",
     "uninstall": "제거",
     "reset_data": "데이터 초기화",
+    "settings": {
+      "open": "설정",
+      "title": "%{name} 설정",
+      "empty": "이 플러그인에는 설정이 없습니다.",
+      "decrease": "줄이기",
+      "increase": "늘리기"
+    },
     "version": "버전 %{version}"
   }
 }

@@ -1,21 +1,32 @@
 {
   "metadata": {
     "id": "com.bongocat.pomodoro",
-    "name": "Pomodoro / \u756a\u8304\u949f",
-    "description": "A focus timer with pause and restart / \u652f\u6301\u6682\u505c\u548c\u91cd\u65b0\u8ba1\u65f6\u7684\u4e13\u6ce8\u8ba1\u65f6\u5668",
+    "name": "Pomodoro",
+    "description": "A focus timer you can pause and restart",
     "version": "1.0.0",
     "app_versions": ">=2.3.1, <3.0.0",
     "protocol_version": 1,
     "entry": "bongocat-pomodoro",
     "icon": {
       "type": "emoji",
-      "value": "\ud83c\udf45"
+      "value": "🍅"
     },
     "capabilities": [
       "model_ui",
       "configuration",
-      "persistent_state"
-    ]
+      "persistent_state",
+      "localized_views_v1"
+    ],
+    "localizations": {
+      "zh-CN": {
+        "name": "番茄钟",
+        "description": "支持暂停和重新计时的专注计时器"
+      },
+      "zh-TW": {
+        "name": "番茄鐘",
+        "description": "支援暫停與重新計時的專注計時器"
+      }
+    }
   },
   "sha256": null
 }

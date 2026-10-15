@@ -559,6 +559,13 @@
     "available_version": "可用版本 %{version}",
     "uninstall": "卸载",
     "reset_data": "重置数据",
+    "settings": {
+      "open": "设置",
+      "title": "%{name} 设置",
+      "empty": "该插件没有可配置项。",
+      "decrease": "减少",
+      "increase": "增加"
+    },
     "version": "版本 %{version}"
   }
 }

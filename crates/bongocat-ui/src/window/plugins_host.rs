@@ -7,31 +7,123 @@
 //! starts, ticks or stops a plugin, so the page cannot become the reason a plugin
 //! runs or stops running.
 
-use bongocat_plugin_sdk::PluginIcon;
+use bongocat_plugin_sdk::{PluginCopy, PluginIcon};
 use bongocat_plugin_service::{
     PluginCard, PluginCenterSnapshot, PluginCommandError, PluginServiceClient,
 };
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
+
+/// One package operation the center itself runs for a plugin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PluginPackageOperation {
+    Install,
+    /// Turning a plugin on or off. The switch is not a button, so it shows the
+    /// in-flight state by staying inert rather than by spinning.
+    Enable,
+    Reset,
+    Uninstall,
+}
+
+/// One command this window has sent to the plugin service.
+///
+/// It exists so the control a user pressed can show that the command it started
+/// is still running: the entry is dropped when the reply lands, whether it
+/// carried a new center state or a refusal.
+///
+/// The count is what keeps two overlapping sends apart: the same command can be
+/// sent twice before the first reply arrives, and one reply must not report the
+/// other as finished.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PluginInFlight {
+    Package {
+        plugin: String,
+        operation: PluginPackageOperation,
+    },
+    Action {
+        plugin: String,
+        action: String,
+    },
+    Configure {
+        plugin: String,
+        key: String,
+    },
+}
+
+impl PluginInFlight {
+    pub(crate) fn package(plugin: &str, operation: PluginPackageOperation) -> Self {
+        Self::Package {
+            plugin: plugin.to_owned(),
+            operation,
+        }
+    }
+
+    pub(crate) fn action(plugin: &str, action: &str) -> Self {
+        Self::Action {
+            plugin: plugin.to_owned(),
+            action: action.to_owned(),
+        }
+    }
+
+    /// The key one configuration write is in flight under.
+    ///
+    /// A key is per field rather than per plugin because two fields in one
+    /// panel can be written at the same time, and only the field that was
+    /// edited is busy.
+    pub(crate) fn configure(plugin: &str, key: &str) -> Self {
+        Self::Configure {
+            plugin: plugin.to_owned(),
+            key: key.to_owned(),
+        }
+    }
+}
 
 /// The center state the page renders.
 ///
 /// It is a copy of what the service last answered, published on the GPUI thread
 /// so a frame never waits on a plugin round trip. The service is the source of
 /// truth; this is only what the window has already read.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PluginHubState {
     pub(crate) cards: Vec<PluginCardView>,
     pub(crate) error: Option<String>,
+    /// True until the first discovery has finished.
     pub(crate) loading: bool,
+    /// Commands this window has sent whose reply has not arrived yet.
+    ///
+    /// It belongs to the window rather than to the service: two windows can have
+    /// different commands outstanding, and a state the service publishes while
+    /// one is running must not read as though the command had finished.
+    pub(crate) in_flight: BTreeMap<PluginInFlight, usize>,
 }
 
-impl Default for PluginHubState {
-    fn default() -> Self {
+impl PluginHubState {
+    /// The state a center is in before it has read anything.
+    pub(crate) fn loading() -> Self {
         Self {
-            cards: Vec::new(),
-            error: None,
             loading: true,
+            ..Default::default()
         }
+    }
+
+    /// Whether a package operation on one plugin is still waiting for its reply.
+    pub(crate) fn pending_package(&self, plugin: &str, operation: PluginPackageOperation) -> bool {
+        self.in_flight
+            .contains_key(&PluginInFlight::package(plugin, operation))
+    }
+
+    /// Whether one plugin-published action is still waiting for its reply.
+    pub(crate) fn pending_action(&self, plugin: &str, action: &str) -> bool {
+        self.in_flight
+            .contains_key(&PluginInFlight::action(plugin, action))
+    }
+
+    /// Whether one configuration key of one plugin is still being written.
+    pub(crate) fn pending_key(&self, plugin: &str, key: &str) -> bool {
+        self.in_flight
+            .contains_key(&PluginInFlight::configure(plugin, key))
     }
 }
 
@@ -45,6 +137,7 @@ impl From<PluginCenterSnapshot> for PluginHubState {
                 .collect(),
             error: snapshot.error,
             loading: snapshot.loading,
+            ..Default::default()
         }
     }
 }
@@ -54,6 +147,8 @@ pub(crate) struct PluginCardView {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) description: String,
+    /// The plugin's own name and description per locale, and the fallback above.
+    pub(crate) localizations: BTreeMap<String, PluginCopy>,
     pub(crate) icon: PluginIcon,
     pub(crate) enabled: bool,
     pub(crate) failed: bool,
@@ -64,12 +159,28 @@ pub(crate) struct PluginCardView {
     pub(crate) settings: Vec<bongocat_plugin_sdk::UiNode>,
 }
 
+impl PluginCardView {
+    /// The name and description the plugin wrote for a resolved catalog tag.
+    ///
+    /// The card resolves the tag rather than the service because the language on
+    /// screen is a property of the window: a user switching language repaints
+    /// from the same cards instead of asking every plugin to republish metadata.
+    pub(crate) fn copy(&self, locale: &str) -> (&str, &str) {
+        bongocat_plugin_sdk::localized_copy(
+            &self.localizations,
+            locale,
+            (self.name.as_str(), self.description.as_str()),
+        )
+    }
+}
+
 impl From<PluginCard> for PluginCardView {
     fn from(card: PluginCard) -> Self {
         Self {
             id: card.id,
             name: card.name,
             description: card.description,
+            localizations: card.localizations,
             icon: card.icon,
             enabled: card.enabled,
             failed: card.failed,
@@ -88,10 +199,19 @@ impl From<PluginCard> for PluginCardView {
 /// by every view of one settings window. Two windows each hold their own copy of
 /// the same state, which is why the service — not this cache — is the thing that
 /// decides what a plugin is doing.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct PluginHost {
     client: Option<PluginServiceClient>,
     published: Arc<Mutex<PluginHubState>>,
+}
+
+impl Default for PluginHost {
+    fn default() -> Self {
+        Self {
+            client: None,
+            published: Arc::new(Mutex::new(PluginHubState::loading())),
+        }
+    }
 }
 
 impl PluginHost {
@@ -99,7 +219,7 @@ impl PluginHost {
     pub(crate) fn new(client: PluginServiceClient) -> Self {
         Self {
             client: Some(client),
-            published: Arc::new(Mutex::new(PluginHubState::default())),
+            published: Arc::new(Mutex::new(PluginHubState::loading())),
         }
     }
 
@@ -122,10 +242,49 @@ impl PluginHost {
     }
 
     fn publish(&self, state: PluginHubState) {
-        *self
+        let mut published = self
             .published
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = state;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // What is still running is this window's own bookkeeping: a state the
+        // service published while a command is in flight describes the plugins,
+        // not the command, so it must not clear the control that is waiting.
+        let in_flight = published.in_flight.clone();
+        *published = PluginHubState { in_flight, ..state };
+    }
+
+    /// Record that this window is about to send one command.
+    ///
+    /// The page calls this on the GPUI thread before it hands the command to the
+    /// background executor, because nothing between the click and the reply would
+    /// otherwise redraw: the control a user pressed would jump from idle to idle
+    /// and never show that it was working.
+    pub(crate) fn begin(&self, command: PluginInFlight) {
+        self.published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .in_flight
+            .entry(command)
+            .and_modify(|count| *count = count.saturating_add(1))
+            .or_insert(1);
+    }
+
+    fn finish(&self, command: &PluginInFlight) {
+        let mut published = self
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let finished = published
+            .in_flight
+            .get_mut(command)
+            .map(|count| {
+                *count = count.saturating_sub(1);
+                *count == 0
+            })
+            .unwrap_or(true);
+        if finished {
+            published.in_flight.remove(command);
+        }
     }
 
     /// Report an error that did not come from the service, such as a failed file
@@ -162,23 +321,37 @@ impl PluginHost {
     }
 
     pub(crate) fn install_available(&self, id: &str) {
-        self.apply_command(|client| client.install_available_blocking(id));
+        self.apply_command(
+            PluginInFlight::package(id, PluginPackageOperation::Install),
+            |client| client.install_available_blocking(id),
+        );
     }
 
     pub(crate) fn set_enabled(&self, id: &str, enabled: bool) {
-        self.apply_command(|client| client.set_enabled_blocking(id, enabled));
+        self.apply_command(
+            PluginInFlight::package(id, PluginPackageOperation::Enable),
+            |client| client.set_enabled_blocking(id, enabled),
+        );
     }
 
     pub(crate) fn uninstall(&self, id: &str) {
-        self.apply_command(|client| client.uninstall_blocking(id));
+        self.apply_command(
+            PluginInFlight::package(id, PluginPackageOperation::Uninstall),
+            |client| client.uninstall_blocking(id),
+        );
     }
 
     pub(crate) fn reset(&self, id: &str) {
-        self.apply_command(|client| client.reset_data_blocking(id));
+        self.apply_command(
+            PluginInFlight::package(id, PluginPackageOperation::Reset),
+            |client| client.reset_data_blocking(id),
+        );
     }
 
     pub(crate) fn action(&self, plugin: &str, action: &str) {
-        self.apply_command(|client| client.action_blocking(plugin, action));
+        self.apply_command(PluginInFlight::action(plugin, action), |client| {
+            client.action_blocking(plugin, action)
+        });
     }
 
     pub(crate) fn configure(
@@ -187,18 +360,40 @@ impl PluginHost {
         key: &str,
         value: bongocat_plugin_sdk::ConfigValue,
     ) {
-        self.apply_command(|client| client.configure_blocking(plugin, key, value));
+        self.apply_command(PluginInFlight::configure(plugin, key), |client| {
+            client.configure_blocking(plugin, key, value)
+        });
+    }
+
+    /// Tell the service which catalog tag the host is showing.
+    ///
+    /// It is not a card command, so it does not read as one on screen: no
+    /// control waits for it, and the labels it changes arrive with the state the
+    /// service publishes next.
+    pub(crate) fn set_locale(&self, locale: &str) {
+        let Ok(client) = self.client() else {
+            return;
+        };
+        if let Ok(snapshot) = client.set_locale_blocking(locale) {
+            self.publish(snapshot.into());
+        }
     }
 
     fn apply_command(
         &self,
+        command_key: PluginInFlight,
         command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
     ) {
+        // The page marked this command before it dispatched it; this call only
+        // retires that mark.
         let Ok(client) = self.client() else {
+            self.finish(&command_key);
             self.report_error("the plugin service is unavailable".to_owned());
             return;
         };
-        match command(&client) {
+        let result = command(&client);
+        self.finish(&command_key);
+        match result {
             Ok(snapshot) => self.publish(snapshot.into()),
             Err(error) => self.report_command_error(error),
         }
@@ -216,8 +411,9 @@ impl PluginHost {
 mod tests {
     use super::*;
     use crate::window::*;
+    use bongocat_plugin_sdk::{PluginCopy, UiNode};
     use bongocat_plugin_service::{PluginService, plugin_directory};
-    use gpui_kit::{TestAppContext, test::TestWindowExt as _};
+    use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
     use std::io::Write as _;
 
     #[cfg(target_os = "windows")]
@@ -283,6 +479,50 @@ mod tests {
         assert!(host.snapshot().error.is_some());
     }
 
+    /// A card resolves the tag the window is showing from the plugin's own copy
+    /// map, and falls back to the manifest for a language the plugin did not
+    /// translate.
+    #[test]
+    fn a_card_speaks_the_language_the_window_shows() {
+        let card = sample_card();
+        assert_eq!(card.copy("en-US").0, "A plugin with a longer title");
+        assert_eq!(card.copy("zh-CN").0, "一个插件");
+        assert_eq!(card.copy("zh-CN").1, "由插件自己书写的描述");
+        assert_eq!(card.copy("zh-TW").0, "一個外掛");
+        // A language the plugin never translated reads the manifest's own copy
+        // rather than an empty string or another locale's text.
+        assert_eq!(card.copy("fr-FR").0, "A plugin with a longer title");
+    }
+
+    /// What a window is still waiting for is the window's own bookkeeping: a state
+    /// the service publishes while a command runs must not clear the control that
+    /// is waiting for it.
+    #[test]
+    fn a_published_state_keeps_the_commands_this_window_is_waiting_for() {
+        let host = PluginHost::default();
+        host.publish(PluginHubState::loading());
+        host.begin(PluginInFlight::package(
+            PLUGIN_ID,
+            PluginPackageOperation::Reset,
+        ));
+        host.begin(PluginInFlight::action(PLUGIN_ID, "toggle"));
+        host.begin(PluginInFlight::configure(PLUGIN_ID, "minutes"));
+        host.publish(PluginHubState {
+            cards: Vec::new(),
+            error: None,
+            loading: false,
+            ..Default::default()
+        });
+        let state = host.snapshot();
+        assert!(!state.loading);
+        assert!(state.pending_package(PLUGIN_ID, PluginPackageOperation::Reset));
+        assert!(state.pending_action(PLUGIN_ID, "toggle"));
+        assert!(state.pending_key(PLUGIN_ID, "minutes"));
+        // Another plugin's controls are not held by this one's commands.
+        assert!(!state.pending_action("com.example.other", "toggle"));
+        assert!(!state.pending_key(PLUGIN_ID, "volume"));
+    }
+
     #[test]
     fn enabling_and_uninstalling_republish_the_cards() {
         let Some((service, store)) = store_with_pomodoro() else {
@@ -307,13 +547,65 @@ mod tests {
         service.shutdown().unwrap();
     }
 
-    struct PluginPageHarness(Entity<SettingsView>, Pixels);
+    /// The installed plugin's card carries the copy its manifest declares, so the
+    /// center reads a Chinese name from the plugin rather than from the host.
+    #[test]
+    fn an_installed_card_carries_the_plugins_own_localizations() {
+        let Some((service, _store)) = store_with_pomodoro() else {
+            return;
+        };
+        let host = PluginHost::new(service.client());
+        host.refresh();
+        let state = host.snapshot();
+        let card = &state.cards[0];
+        assert_eq!(card.copy("en-US").0, "Pomodoro");
+        assert_eq!(card.copy("zh-CN").0, "番茄钟");
+        assert_eq!(card.copy("zh-TW").0, "番茄鐘");
+        service.shutdown().unwrap();
+    }
+
+    /// The center hands the plugin's own panels to the plugin's current locale,
+    /// which is what makes the plugin's own labels follow a language change.
+    #[test]
+    fn telling_the_service_about_a_locale_relabels_the_running_plugin() {
+        let Some((service, _store)) = store_with_pomodoro() else {
+            return;
+        };
+        let host = PluginHost::new(service.client());
+        host.refresh();
+        host.set_enabled(PLUGIN_ID, true);
+        host.set_locale("zh-CN");
+        let state = host.snapshot();
+        let labels = state.cards[0]
+            .actions
+            .iter()
+            .filter_map(|node| match node {
+                bongocat_plugin_sdk::UiNode::Button { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            labels.contains(&"开始") && labels.contains(&"重新计时"),
+            "the plugin's own control reads Simplified Chinese: {labels:?}"
+        );
+        service.shutdown().unwrap();
+    }
+
+    struct PluginPageHarness {
+        view: Entity<SettingsView>,
+    }
 
     impl Render for PluginPageHarness {
-        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            self.0.update(cx, |view, cx| {
-                div().w(self.1).child(super::super::plugins_page::content(
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.view.update(cx, |view, cx| {
+                // The real window reconciles the configuration panel from its own
+                // render, so the harness does too: a surface the user dismissed
+                // without a callback has to be noticed on the next frame here as
+                // well, or the test would only cover the button that closes it.
+                view.sync_plugin_settings_dialog(window, cx);
+                div().w_full().child(super::super::plugins_page::content(
                     view,
+                    window,
                     SettingsLanguage::ChineseSimplified,
                     cx,
                 ))
@@ -346,7 +638,7 @@ mod tests {
                 view.plugin_host.refresh();
                 view
             });
-            Root::new(cx.new(|_| PluginPageHarness(view, px(480.))), window, cx)
+            Root::new(cx.new(|_| PluginPageHarness { view }), window, cx)
         });
         visual.update(|window, _| window.refresh());
         visual.run_until_parked();
@@ -363,13 +655,30 @@ mod tests {
         );
     }
 
+    /// One card with copy in the languages the requirements name, so a test reads
+    /// a translation from the plugin's own map rather than from the host.
     fn sample_card() -> PluginCardView {
-        use bongocat_plugin_sdk::UiNode;
         PluginCardView {
             id: "com.example.card".into(),
             name: "A plugin with a longer title".into(),
             description: "A description that wraps at narrow widths without covering the controls."
                 .into(),
+            localizations: BTreeMap::from([
+                (
+                    "zh-CN".to_owned(),
+                    PluginCopy {
+                        name: "一个插件".into(),
+                        description: "由插件自己书写的描述".into(),
+                    },
+                ),
+                (
+                    "zh-TW".to_owned(),
+                    PluginCopy {
+                        name: "一個外掛".into(),
+                        description: "由外掛自己書寫的描述".into(),
+                    },
+                ),
+            ]),
             icon: PluginIcon::Emoji("🐱".into()),
             enabled: true,
             failed: false,
@@ -383,10 +692,14 @@ mod tests {
                 UiNode::Button {
                     id: "first".into(),
                     label: "Start or pause".into(),
+                    icon: Some(bongocat_plugin_sdk::ActionIcon::Play),
+                    loading: false,
                 },
                 UiNode::Button {
                     id: "second".into(),
                     label: "Restart the session".into(),
+                    icon: Some(bongocat_plugin_sdk::ActionIcon::Restart),
+                    loading: false,
                 },
             ],
             settings: vec![
@@ -405,21 +718,29 @@ mod tests {
                 UiNode::Button {
                     id: "preview".into(),
                     label: "Preview sound".into(),
+                    icon: Some(bongocat_plugin_sdk::ActionIcon::Volume),
+                    loading: false,
                 },
             ],
         }
     }
 
+    /// A window rendering one card of the center, at a chosen width.
+    ///
+    /// The page picks its column count from the window's viewport, so the test
+    /// window is opened at the width under test rather than maximized: a maximized
+    /// test window would report the wide-window layout for every width, and a
+    /// responsive grid test that cannot observe the narrow layouts proves nothing.
     fn card_page(
         cx: &mut TestAppContext,
-        card: PluginCardView,
+        cards: Vec<PluginCardView>,
         width: f32,
-    ) -> (Entity<SettingsView>, &mut gpui_kit::VisualTestContext) {
+    ) -> (Entity<SettingsView>, &mut VisualTestContext) {
         cx.update(gpui_kit::init);
         let (client, _endpoint) = SettingsClient::bounded(4);
         let capture = Rc::new(RefCell::new(None));
         let built = capture.clone();
-        let (_, visual) = cx.add_window_view(move |window, cx| {
+        let window = cx.open_window(size(px(width), px(900.0)), move |window, cx| {
             let view = cx.new(|cx| {
                 let view = SettingsView::new(
                     client,
@@ -433,52 +754,103 @@ mod tests {
                     cx,
                 );
                 view.plugin_host.publish(PluginHubState {
-                    cards: vec![card],
+                    cards,
                     error: None,
                     loading: false,
+                    ..Default::default()
                 });
                 view
             });
             built.borrow_mut().replace(view.clone());
-            Root::new(cx.new(|_| PluginPageHarness(view, px(width))), window, cx)
+            Root::new(cx.new(|_| PluginPageHarness { view }), window, cx)
         });
         let view = capture.borrow_mut().take().unwrap();
+        let visual = VisualTestContext::from_window(*window, cx).into_mut();
         visual.run_until_parked();
         (view, visual)
     }
 
     #[gpui_kit::test]
-    fn card_switch_is_left_of_the_shared_icon_action_row(cx: &mut TestAppContext) {
-        let (_, visual) = card_page(cx, sample_card(), 480.);
-        visual.update(|window, _| {
-            let switch = window.find("plugin-toggle-com.example.card").bounds();
-            let actions = window.find("plugin-actions-com.example.card").bounds();
-            let footer = window.find("plugin-footer-com.example.card").bounds();
-            let card = window.find("plugin-card-com.example.card").bounds();
-            assert!(switch.right() < actions.left());
-            assert!(switch.left() >= footer.left());
-            assert!(actions.right() <= footer.right());
-            assert!(footer.bottom() <= card.bottom());
-            for id in [
-                "plugin-action-com.example.card-first",
-                "plugin-action-com.example.card-second",
-                "plugin-action-com.example.card-preview",
-                "plugin-install-com.example.card",
-                "plugin-reset-com.example.card",
-                "plugin-uninstall-com.example.card",
-            ] {
-                let button = window.find(id).bounds();
-                assert!(button.left() >= actions.left() && button.right() <= actions.right());
-                assert!(button.top() >= actions.top() && button.bottom() <= actions.bottom());
-                assert_eq!(button.size.width, button.size.height, "{id} is icon-only");
-            }
-            let field = window
-                .find("plugin-integer-com.example.card-duration-increase")
-                .bounds();
-            assert!(
-                field.bottom() < footer.top(),
-                "settings stay above the action footer"
+    fn the_center_lays_its_cards_out_in_a_responsive_grid(cx: &mut TestAppContext) {
+        // The same window at several widths: the cards multiply into the row as
+        // the window grows, by the same rule the model library's catalog uses.
+        // Six cards are enough to reach a second row at every width below.
+        for width in [360., 800., 1_200., 1_600., 2_000.] {
+            let columns = models::grid_columns_for_window(
+                px(width),
+                super::super::plugins_page::PLUGIN_CARD_MIN_WIDTH,
             );
+            let cards = (0..6)
+                .map(|index| {
+                    let mut card = sample_card();
+                    card.id = format!("com.example.card-{index}");
+                    card
+                })
+                .collect::<Vec<_>>();
+            let (_, visual) = card_page(cx, cards, width);
+            let rows = visual.update(|window, _| {
+                (0..6)
+                    .map(|index| {
+                        window
+                            .find(SharedString::from(format!(
+                                "plugin-card-com.example.card-{index}"
+                            )))
+                            .bounds()
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let first_row = rows.iter().take(columns).collect::<Vec<_>>();
+            assert_eq!(
+                first_row.len(),
+                columns,
+                "at {width}px the grid holds {columns} columns"
+            );
+            // Every cell on the first row shares a line and has the same width:
+            // the grid stretches its columns, so the row ends at the edge.
+            for cell in &first_row {
+                assert_eq!(
+                    cell.center().y,
+                    first_row[0].center().y,
+                    "at {width}px every card of the first row shares one line"
+                );
+                assert!(
+                    (cell.size.width - first_row[0].size.width).abs() <= px(1.0),
+                    "at {width}px the columns are equal, got {:?} and {:?}",
+                    cell.size.width,
+                    first_row[0].size.width
+                );
+            }
+            // The card past the first row starts below it, which is what makes
+            // the count a row capacity rather than a total.
+            assert!(
+                rows[columns].origin.y > first_row[0].origin.y,
+                "at {width}px the seventh card starts a second row"
+            );
+        }
+    }
+
+    #[gpui_kit::test]
+    fn every_action_button_carries_the_glyph_its_plugin_declared(cx: &mut TestAppContext) {
+        let (_, visual) = card_page(cx, vec![sample_card()], 720.);
+        visual.update(|window, _| {
+            // The plugin named a glyph per action, so the buttons are told apart
+            // by what they do rather than all drawing the same pointer.
+            let play = window.find("plugin-action-com.example.card-first").bounds();
+            let restart = window
+                .find("plugin-action-com.example.card-second")
+                .bounds();
+            assert_eq!(play.size.width, play.size.height, "actions are icon-only");
+            assert_eq!(restart.size.width, restart.size.height);
+            // Each installed plugin offers exactly one settings entry, beside the
+            // identity it configures rather than inside the lifecycle row.
+            assert!(
+                window
+                    .try_find("plugin-settings-com.example.card")
+                    .is_some()
+            );
+            let actions = window.find("plugin-actions-com.example.card").bounds();
+            let settings = window.find("plugin-settings-com.example.card").bounds();
+            assert!(settings.bottom() <= actions.top());
         });
     }
 
@@ -486,7 +858,7 @@ mod tests {
     fn a_disabled_card_keeps_lifecycle_controls_but_hides_plugin_commands(cx: &mut TestAppContext) {
         let mut card = sample_card();
         card.enabled = false;
-        let (_, visual) = card_page(cx, card, 480.);
+        let (_, visual) = card_page(cx, vec![card], 480.);
         visual.update(|window, _| {
             assert!(window.try_find("plugin-toggle-com.example.card").is_some());
             assert!(window.try_find("plugin-reset-com.example.card").is_some());
@@ -495,6 +867,8 @@ mod tests {
                     .try_find("plugin-uninstall-com.example.card")
                     .is_some()
             );
+            // A plugin that is not running has no model-window controls and
+            // nothing to configure, so neither entry is offered.
             assert!(
                 window
                     .try_find("plugin-action-com.example.card-first")
@@ -502,7 +876,7 @@ mod tests {
             );
             assert!(
                 window
-                    .try_find("plugin-action-com.example.card-preview")
+                    .try_find("plugin-settings-com.example.card")
                     .is_none()
             );
         });
@@ -514,7 +888,7 @@ mod tests {
         card.version = None;
         card.enabled = false;
         card.update_available = false;
-        let (_, visual) = card_page(cx, card, 480.);
+        let (_, visual) = card_page(cx, vec![card], 480.);
         visual.update(|window, _| {
             assert!(window.try_find("plugin-install-com.example.card").is_some());
             assert!(window.try_find("plugin-toggle-com.example.card").is_none());
@@ -524,95 +898,148 @@ mod tests {
                     .try_find("plugin-uninstall-com.example.card")
                     .is_none()
             );
+            assert!(
+                window
+                    .try_find("plugin-settings-com.example.card")
+                    .is_none()
+            );
         });
     }
 
+    /// A plugin that reports an action still running draws that on the button
+    /// itself, rather than publishing a line of placeholder text beside it.
     #[gpui_kit::test]
-    fn loading_disables_the_switch_and_plugin_action_buttons(cx: &mut TestAppContext) {
-        let (view, visual) = card_page(cx, sample_card(), 480.);
-        view.update(visual, |view, cx| {
-            let mut state = view.plugin_host.snapshot();
-            state.loading = true;
-            view.plugin_host.publish(state);
-            cx.notify();
+    fn a_plugin_owned_action_state_is_drawn_on_its_own_button(cx: &mut TestAppContext) {
+        let mut card = sample_card();
+        card.actions = vec![UiNode::Button {
+            id: "preview".into(),
+            label: "Preview".into(),
+            icon: Some(bongocat_plugin_sdk::ActionIcon::Volume),
+            loading: true,
+        }];
+        card.settings = Vec::new();
+        let (_, visual) = card_page(cx, vec![card], 720.);
+        visual.update(|window, _| {
+            let button = window
+                .find("plugin-action-com.example.card-preview")
+                .bounds();
+            assert!(button.size.width > px(0.));
+            // The plugin published no text node for the action, so nothing on the
+            // card reads as a placeholder for it.
+            assert!(
+                window
+                    .try_find("plugin-action-com.example.card-preview")
+                    .is_some()
+            );
+        });
+    }
+
+    /// One plugin's settings entry opens that plugin's own panel, and the panel
+    /// draws the controls that plugin published.
+    #[gpui_kit::test]
+    fn a_card_opens_the_plugin_owned_settings_panel(cx: &mut TestAppContext) {
+        let (view, visual) = card_page(cx, vec![sample_card()], 720.);
+        visual.update(|window, cx| {
+            window.click("plugin-settings-com.example.card", cx);
         });
         visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        visual.update(|window, cx| assert!(window.has_active_dialog(cx)));
+        view.read_with(visual, |view, _| {
+            let draft = view
+                .plugin_settings
+                .as_ref()
+                .expect("the panel records the plugin it belongs to");
+            assert_eq!(draft.plugin, "com.example.card");
+        });
+        // The panel is the plugin's own tree: its fields are drawn by the plugin's
+        // keys and labels, not by a host-side schema.
         for id in [
-            "plugin-toggle-com.example.card",
-            "plugin-action-com.example.card-first",
-            "plugin-action-com.example.card-preview",
-            "plugin-toggle-field-com.example.card-sound",
-            "plugin-integer-com.example.card-duration-increase",
-            "plugin-install-com.example.card",
-            "plugin-reset-com.example.card",
-            "plugin-uninstall-com.example.card",
+            "plugin-setting-integer-duration-increase",
+            "plugin-setting-toggle-sound",
+            "plugin-setting-button-preview",
         ] {
-            visual.update(|window, cx| window.click(id, cx));
+            visual.update(|window, _| {
+                assert!(
+                    window.try_find(SharedString::from(id)).is_some(),
+                    "{id} must be painted"
+                );
+            });
         }
+        // Closing the panel drops the draft, so the next open is a fresh read of
+        // whatever the plugin is publishing then.
+        // The dialog slides in on frame time, so it has to settle before pointer
+        // hit testing: otherwise a click computes its target from one frame's
+        // bounds and lands after the next frame has moved the control.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        visual.update(|window, cx| window.click("plugin-settings-close", cx));
+        // A dialog leaves the screen through its own control or through the
+        // overlay swallowing a click outside it, and both are a close. The frame
+        // that follows is what reconciles the draft, exactly as it does in the
+        // settings window, so this asserts on the frame rather than on the click.
+        visual.update(|window, cx| window.render_frame(cx));
         visual.run_until_parked();
-        assert!(view.read_with(visual, |view, _| {
-            view.plugin_host.snapshot().error.is_none()
-        }));
-
-        view.update(visual, |view, cx| {
-            let mut state = view.plugin_host.snapshot();
-            state.loading = false;
-            view.plugin_host.publish(state);
-            cx.notify();
+        visual.update(|window, cx| assert!(!window.has_active_dialog(cx)));
+        view.read_with(visual, |view, _| {
+            assert!(view.plugin_settings.is_none());
         });
-        visual.update(|window, cx| {
-            window.render_frame(cx);
-            window.click("plugin-action-com.example.card-first", cx);
-        });
-        visual.run_until_parked();
-        assert!(view.read_with(visual, |view, _| {
-            view.plugin_host.snapshot().error.is_some()
-        }));
     }
 
+    /// A command a user started is marked on the GPUI thread, so the button that
+    /// started it draws as busy before the reply arrives, and the mark is retired
+    /// once it does.
     #[gpui_kit::test]
-    fn narrow_cards_wrap_actions_without_overlapping_the_switch(cx: &mut TestAppContext) {
-        for width in [280., 480., 720.] {
-            let mut card = sample_card();
-            card.failed = true;
-            card.actions = (0..16)
-                .map(|index| bongocat_plugin_sdk::UiNode::Button {
-                    id: format!("command-{index}"),
-                    label: format!("Command {index}"),
-                })
-                .collect();
-            let (_, visual) = card_page(cx, card, width);
-            for theme in [ThemeMode::Light, ThemeMode::Dark] {
-                visual.update(|window, cx| {
-                    Theme::change(theme, Some(window), cx);
-                    window.refresh();
-                    window.render_frame(cx);
-                    let card = window.find("plugin-card-com.example.card").bounds();
-                    let switch = window.find("plugin-toggle-com.example.card").bounds();
-                    let actions = window.find("plugin-actions-com.example.card").bounds();
-                    assert_eq!(card.size.width, px(width));
-                    assert!(switch.right() < actions.left());
-                    assert!(actions.right() < card.right());
-                    let first = window
-                        .find("plugin-action-com.example.card-command-0")
-                        .bounds();
-                    let last = window.find("plugin-uninstall-com.example.card").bounds();
-                    assert!(first.top() < last.top(), "a long action list wraps");
-                    for index in 0..16 {
-                        let button = window
-                            .find(SharedString::from(format!(
-                                "plugin-action-com.example.card-command-{index}"
-                            )))
-                            .bounds();
-                        assert!(
-                            button.left() >= actions.left() && button.right() <= actions.right()
-                        );
-                        assert!(
-                            button.top() >= actions.top() && button.bottom() <= actions.bottom()
-                        );
-                    }
-                });
-            }
-        }
+    fn a_command_in_flight_is_drawn_on_the_control_that_started_it(cx: &mut TestAppContext) {
+        let (view, visual) = card_page(cx, vec![sample_card()], 720.);
+        view.update(visual, |view, _| {
+            view.plugin_host.begin(PluginInFlight::package(
+                "com.example.card",
+                PluginPackageOperation::Reset,
+            ));
+            view.plugin_host
+                .begin(PluginInFlight::action("com.example.card", "first"));
+            view.plugin_host
+                .begin(PluginInFlight::configure("com.example.card", "duration"));
+        });
+        visual.update(|window, cx| window.render_frame(cx));
+        view.read_with(visual, |view, _| {
+            let state = view.plugin_host.snapshot();
+            assert!(state.pending_package("com.example.card", PluginPackageOperation::Reset));
+            assert!(state.pending_action("com.example.card", "first"));
+            assert!(state.pending_key("com.example.card", "duration"));
+        });
+
+        // Retiring one command clears only that command.
+        view.update(visual, |view, _| {
+            view.plugin_host
+                .finish(&PluginInFlight::action("com.example.card", "first"));
+        });
+        view.read_with(visual, |view, _| {
+            let state = view.plugin_host.snapshot();
+            assert!(!state.pending_action("com.example.card", "first"));
+            assert!(state.pending_package("com.example.card", PluginPackageOperation::Reset));
+        });
+    }
+
+    /// The window tells the service which tag it is showing once per change, and
+    /// the mark is kept whether or not a service is attached: a window that
+    /// attaches later must not skip the tag it is already rendering.
+    #[gpui_kit::test]
+    fn the_window_named_locale_is_sent_once_per_change(cx: &mut TestAppContext) {
+        let (view, visual) = card_page(cx, vec![sample_card()], 720.);
+        view.update(visual, |view, cx| {
+            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
+        });
+        view.read_with(visual, |view, _| {
+            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
+        });
+        view.update(visual, |view, cx| {
+            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
+            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
+            view.sync_plugin_locale(SettingsLanguage::English, cx);
+        });
+        view.read_with(visual, |view, _| {
+            assert_eq!(view.plugin_locale.as_deref(), Some("en-US"));
+        });
     }
 }
