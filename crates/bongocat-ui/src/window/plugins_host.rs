@@ -307,12 +307,16 @@ mod tests {
         service.shutdown().unwrap();
     }
 
-    struct PluginPageHarness(Entity<SettingsView>);
+    struct PluginPageHarness(Entity<SettingsView>, Pixels);
 
     impl Render for PluginPageHarness {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             self.0.update(cx, |view, cx| {
-                super::super::plugins_page::content(view, SettingsLanguage::ChineseSimplified, cx)
+                div().w(self.1).child(super::super::plugins_page::content(
+                    view,
+                    SettingsLanguage::ChineseSimplified,
+                    cx,
+                ))
             })
         }
     }
@@ -342,7 +346,7 @@ mod tests {
                 view.plugin_host.refresh();
                 view
             });
-            Root::new(cx.new(|_| PluginPageHarness(view)), window, cx)
+            Root::new(cx.new(|_| PluginPageHarness(view, px(480.))), window, cx)
         });
         visual.update(|window, _| window.refresh());
         visual.run_until_parked();
@@ -357,5 +361,258 @@ mod tests {
             bongocat_i18n::text("zh-CN", "navigation.plugins.title"),
             "插件中心"
         );
+    }
+
+    fn sample_card() -> PluginCardView {
+        use bongocat_plugin_sdk::UiNode;
+        PluginCardView {
+            id: "com.example.card".into(),
+            name: "A plugin with a longer title".into(),
+            description: "A description that wraps at narrow widths without covering the controls."
+                .into(),
+            icon: PluginIcon::Emoji("🐱".into()),
+            enabled: true,
+            failed: false,
+            version: Some("1.0.0".into()),
+            available_version: Some("1.1.0".into()),
+            update_available: true,
+            actions: vec![
+                UiNode::Text {
+                    text: "25:00".into(),
+                },
+                UiNode::Button {
+                    id: "first".into(),
+                    label: "Start or pause".into(),
+                },
+                UiNode::Button {
+                    id: "second".into(),
+                    label: "Restart the session".into(),
+                },
+            ],
+            settings: vec![
+                UiNode::Integer {
+                    key: "duration".into(),
+                    label: "A longer setting label that may need more than one line".into(),
+                    value: 25,
+                    min: 1,
+                    max: 180,
+                },
+                UiNode::Toggle {
+                    key: "sound".into(),
+                    label: "Sound".into(),
+                    value: true,
+                },
+                UiNode::Button {
+                    id: "preview".into(),
+                    label: "Preview sound".into(),
+                },
+            ],
+        }
+    }
+
+    fn card_page(
+        cx: &mut TestAppContext,
+        card: PluginCardView,
+        width: f32,
+    ) -> (Entity<SettingsView>, &mut gpui_kit::VisualTestContext) {
+        cx.update(gpui_kit::init);
+        let (client, _endpoint) = SettingsClient::bounded(4);
+        let capture = Rc::new(RefCell::new(None));
+        let built = capture.clone();
+        let (_, visual) = cx.add_window_view(move |window, cx| {
+            let view = cx.new(|cx| {
+                let view = SettingsView::new(
+                    client,
+                    SettingsWindowSeed {
+                        language: SettingsLanguage::ChineseSimplified,
+                        appearance_theme: SettingsTheme::System,
+                    },
+                    Rc::new(|_| {}),
+                    Rc::new(|_| {}),
+                    window,
+                    cx,
+                );
+                view.plugin_host.publish(PluginHubState {
+                    cards: vec![card],
+                    error: None,
+                    loading: false,
+                });
+                view
+            });
+            built.borrow_mut().replace(view.clone());
+            Root::new(cx.new(|_| PluginPageHarness(view, px(width))), window, cx)
+        });
+        let view = capture.borrow_mut().take().unwrap();
+        visual.run_until_parked();
+        (view, visual)
+    }
+
+    #[gpui_kit::test]
+    fn card_switch_is_left_of_the_shared_icon_action_row(cx: &mut TestAppContext) {
+        let (_, visual) = card_page(cx, sample_card(), 480.);
+        visual.update(|window, _| {
+            let switch = window.find("plugin-toggle-com.example.card").bounds();
+            let actions = window.find("plugin-actions-com.example.card").bounds();
+            let footer = window.find("plugin-footer-com.example.card").bounds();
+            let card = window.find("plugin-card-com.example.card").bounds();
+            assert!(switch.right() < actions.left());
+            assert!(switch.left() >= footer.left());
+            assert!(actions.right() <= footer.right());
+            assert!(footer.bottom() <= card.bottom());
+            for id in [
+                "plugin-action-com.example.card-first",
+                "plugin-action-com.example.card-second",
+                "plugin-action-com.example.card-preview",
+                "plugin-install-com.example.card",
+                "plugin-reset-com.example.card",
+                "plugin-uninstall-com.example.card",
+            ] {
+                let button = window.find(id).bounds();
+                assert!(button.left() >= actions.left() && button.right() <= actions.right());
+                assert!(button.top() >= actions.top() && button.bottom() <= actions.bottom());
+                assert_eq!(button.size.width, button.size.height, "{id} is icon-only");
+            }
+            let field = window
+                .find("plugin-integer-com.example.card-duration-increase")
+                .bounds();
+            assert!(
+                field.bottom() < footer.top(),
+                "settings stay above the action footer"
+            );
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_disabled_card_keeps_lifecycle_controls_but_hides_plugin_commands(cx: &mut TestAppContext) {
+        let mut card = sample_card();
+        card.enabled = false;
+        let (_, visual) = card_page(cx, card, 480.);
+        visual.update(|window, _| {
+            assert!(window.try_find("plugin-toggle-com.example.card").is_some());
+            assert!(window.try_find("plugin-reset-com.example.card").is_some());
+            assert!(
+                window
+                    .try_find("plugin-uninstall-com.example.card")
+                    .is_some()
+            );
+            assert!(
+                window
+                    .try_find("plugin-action-com.example.card-first")
+                    .is_none()
+            );
+            assert!(
+                window
+                    .try_find("plugin-action-com.example.card-preview")
+                    .is_none()
+            );
+        });
+    }
+
+    #[gpui_kit::test]
+    fn an_available_card_only_offers_installation(cx: &mut TestAppContext) {
+        let mut card = sample_card();
+        card.version = None;
+        card.enabled = false;
+        card.update_available = false;
+        let (_, visual) = card_page(cx, card, 480.);
+        visual.update(|window, _| {
+            assert!(window.try_find("plugin-install-com.example.card").is_some());
+            assert!(window.try_find("plugin-toggle-com.example.card").is_none());
+            assert!(window.try_find("plugin-reset-com.example.card").is_none());
+            assert!(
+                window
+                    .try_find("plugin-uninstall-com.example.card")
+                    .is_none()
+            );
+        });
+    }
+
+    #[gpui_kit::test]
+    fn loading_disables_the_switch_and_plugin_action_buttons(cx: &mut TestAppContext) {
+        let (view, visual) = card_page(cx, sample_card(), 480.);
+        view.update(visual, |view, cx| {
+            let mut state = view.plugin_host.snapshot();
+            state.loading = true;
+            view.plugin_host.publish(state);
+            cx.notify();
+        });
+        visual.update(|window, cx| window.render_frame(cx));
+        for id in [
+            "plugin-toggle-com.example.card",
+            "plugin-action-com.example.card-first",
+            "plugin-action-com.example.card-preview",
+            "plugin-toggle-field-com.example.card-sound",
+            "plugin-integer-com.example.card-duration-increase",
+            "plugin-install-com.example.card",
+            "plugin-reset-com.example.card",
+            "plugin-uninstall-com.example.card",
+        ] {
+            visual.update(|window, cx| window.click(id, cx));
+        }
+        visual.run_until_parked();
+        assert!(view.read_with(visual, |view, _| {
+            view.plugin_host.snapshot().error.is_none()
+        }));
+
+        view.update(visual, |view, cx| {
+            let mut state = view.plugin_host.snapshot();
+            state.loading = false;
+            view.plugin_host.publish(state);
+            cx.notify();
+        });
+        visual.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("plugin-action-com.example.card-first", cx);
+        });
+        visual.run_until_parked();
+        assert!(view.read_with(visual, |view, _| {
+            view.plugin_host.snapshot().error.is_some()
+        }));
+    }
+
+    #[gpui_kit::test]
+    fn narrow_cards_wrap_actions_without_overlapping_the_switch(cx: &mut TestAppContext) {
+        for width in [280., 480., 720.] {
+            let mut card = sample_card();
+            card.failed = true;
+            card.actions = (0..16)
+                .map(|index| bongocat_plugin_sdk::UiNode::Button {
+                    id: format!("command-{index}"),
+                    label: format!("Command {index}"),
+                })
+                .collect();
+            let (_, visual) = card_page(cx, card, width);
+            for theme in [ThemeMode::Light, ThemeMode::Dark] {
+                visual.update(|window, cx| {
+                    Theme::change(theme, Some(window), cx);
+                    window.refresh();
+                    window.render_frame(cx);
+                    let card = window.find("plugin-card-com.example.card").bounds();
+                    let switch = window.find("plugin-toggle-com.example.card").bounds();
+                    let actions = window.find("plugin-actions-com.example.card").bounds();
+                    assert_eq!(card.size.width, px(width));
+                    assert!(switch.right() < actions.left());
+                    assert!(actions.right() < card.right());
+                    let first = window
+                        .find("plugin-action-com.example.card-command-0")
+                        .bounds();
+                    let last = window.find("plugin-uninstall-com.example.card").bounds();
+                    assert!(first.top() < last.top(), "a long action list wraps");
+                    for index in 0..16 {
+                        let button = window
+                            .find(SharedString::from(format!(
+                                "plugin-action-com.example.card-command-{index}"
+                            )))
+                            .bounds();
+                        assert!(
+                            button.left() >= actions.left() && button.right() <= actions.right()
+                        );
+                        assert!(
+                            button.top() >= actions.top() && button.bottom() <= actions.bottom()
+                        );
+                    }
+                });
+            }
+        }
     }
 }

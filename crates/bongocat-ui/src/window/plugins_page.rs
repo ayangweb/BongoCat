@@ -4,9 +4,7 @@
 //! tree each plugin publishes and forwards typed commands to the host cache.
 use super::*;
 use bongocat_plugin_sdk::ConfigValue;
-use gpui_kit::AnyElement;
-#[cfg(test)]
-use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::{AnyElement, assets::IconName, base::TestSupportExt as _};
 use plugins_host::{PluginCardView, PluginHubState};
 
 pub(super) fn content(
@@ -16,42 +14,65 @@ pub(super) fn content(
 ) -> AnyElement {
     let state: PluginHubState = view.plugin_host.snapshot();
     let handle = cx.entity();
+    let refresh_view = handle.clone();
     let mut column = div().flex().flex_col().gap_4().w_full().child(
         div()
-            .text_sm()
-            .text_color(cx.theme().muted_foreground)
-            .child(bongocat_i18n::text(
-                locale(language),
-                "navigation.plugins.subtitle",
-            )),
-    );
-    let refresh_view = handle.clone();
-    column = column.child(
-        Button::new("plugin-refresh")
-            .label(bongocat_i18n::text(locale(language), "plugins.refresh"))
-            .disabled(state.loading)
-            .on_click(move |_, _, cx| {
-                refresh_view.update(cx, |view, cx| {
-                    view.update_plugin_host(|host| host.rescan(), cx)
-                });
-            }),
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_1()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(bongocat_i18n::text(
+                        locale(language),
+                        "navigation.plugins.subtitle",
+                    )),
+            )
+            .child(
+                Button::new("plugin-refresh")
+                    .icon(IconName::RefreshCw)
+                    .tooltip(bongocat_i18n::text(locale(language), "plugins.refresh"))
+                    .loading(state.loading)
+                    .disabled(state.loading)
+                    .on_click(move |_, _, cx| {
+                        refresh_view.update(cx, |view, cx| {
+                            view.update_plugin_host(|host| host.rescan(), cx)
+                        });
+                    }),
+            ),
     );
     if state.error.is_some() {
         let retry_view = handle.clone();
-        column = column
-            .child(div().text_sm().child(bongocat_i18n::text(
-                locale(language),
-                "plugins.discovery_failed",
-            )))
-            .child(
-                Button::new("plugin-retry")
-                    .label(bongocat_i18n::text(locale(language), "plugins.retry"))
-                    .on_click(move |_, _, cx| {
-                        retry_view.update(cx, |view, cx| {
-                            view.update_plugin_host(move |host| host.rescan(), cx);
-                        });
-                    }),
-            );
+        column = column.child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .text_sm()
+                        .child(bongocat_i18n::text(
+                            locale(language),
+                            "plugins.discovery_failed",
+                        )),
+                )
+                .child(
+                    Button::new("plugin-retry")
+                        .icon(IconName::RefreshCw)
+                        .tooltip(bongocat_i18n::text(locale(language), "plugins.retry"))
+                        .disabled(state.loading)
+                        .on_click(move |_, _, cx| {
+                            retry_view.update(cx, |view, cx| {
+                                view.update_plugin_host(move |host| host.rescan(), cx);
+                            });
+                        }),
+                ),
+        );
     }
     if state.loading {
         column = column.child(
@@ -60,12 +81,21 @@ pub(super) fn content(
                 .child(bongocat_i18n::text(locale(language), "plugins.loading")),
         );
     } else if state.cards.is_empty() && state.error.is_none() {
-        column = column.child(div().p_4().rounded_lg().border_1().text_sm().child(
-            bongocat_i18n::text(locale(language), "navigation.plugins.empty"),
-        ));
+        column = column.child(
+            div()
+                .p_4()
+                .rounded(cx.theme().radius)
+                .border_1()
+                .border_color(cx.theme().border)
+                .text_sm()
+                .child(bongocat_i18n::text(
+                    locale(language),
+                    "navigation.plugins.empty",
+                )),
+        );
     }
     for card in state.cards {
-        column = column.child(card_view(card, handle.clone(), language, state.loading));
+        column = column.child(card_view(card, handle.clone(), language, state.loading, cx));
     }
     column.into_any_element()
 }
@@ -79,10 +109,10 @@ fn card_view(
     view: Entity<SettingsView>,
     language: SettingsLanguage,
     busy: bool,
+    cx: &App,
 ) -> impl IntoElement {
     let installed = card.version.is_some();
     let enabled = card.enabled;
-    let next_enabled = !enabled;
     let icon = match &card.icon {
         bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => emoji.clone(),
         bongocat_plugin_sdk::PluginIcon::LocalImage(path) => path.clone(),
@@ -94,41 +124,118 @@ fn card_view(
     let reset_id = card.id.clone();
     let uninstall_view = view.clone();
     let uninstall_id = card.id.clone();
-    let mut body = div()
-        .id(SharedString::from(format!("plugin-card-{}", card.id)))
-        .map(|body| {
-            #[cfg(test)]
-            let body = body.test_support();
-            body
-        })
-        .w_full()
-        .p_4()
-        .rounded_lg()
-        .border_1()
+    let mut heading = div()
+        .min_w_0()
+        .flex_1()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap_1()
+        .child(div().font_semibold().child(card.name.clone()));
+    if let Some(version) = card.version.clone() {
+        heading = heading.child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(bongocat_i18n::format_text(
+                    locale(language),
+                    "plugins.version",
+                    &[("version", version)],
+                )),
+        );
+    }
+    if let Some(version) = card
+        .available_version
+        .filter(|_| !installed || card.update_available)
+    {
+        heading = heading.child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(bongocat_i18n::format_text(
+                    locale(language),
+                    "plugins.available_version",
+                    &[("version", version)],
+                )),
+        );
+    }
+    let mut body = div()
+        .id(SharedString::from(format!("plugin-card-{}", card.id)))
+        .test_support()
+        .w_full()
+        .min_w_0()
+        .p_4()
+        .rounded(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background)
+        .flex()
+        .flex_col()
+        .gap_3()
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap_2()
-                .child(div().text_xl().child(icon))
+                .gap_3()
                 .child(
                     div()
+                        .size_12()
+                        .flex_shrink_0()
                         .flex()
-                        .flex_col()
-                        .gap_1()
-                        .child(div().font_semibold().child(card.name.clone()))
-                        .child(div().text_sm().child(card.description.clone())),
-                ),
+                        .items_center()
+                        .justify_center()
+                        .rounded(cx.theme().radius)
+                        .bg(cx.theme().secondary)
+                        .text_xl()
+                        .child(icon),
+                )
+                .child(heading),
+        )
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(card.description),
         );
+    if card.failed {
+        body = body.child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().danger)
+                .child(bongocat_i18n::text(locale(language), "plugins.failed")),
+        );
+    }
+    let mut actions = div()
+        .id(SharedString::from(format!("plugin-actions-{}", card.id)))
+        .test_support()
+        .min_w_0()
+        .flex_1()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .justify_end()
+        .gap_2();
+    // Keep plugin-authored commands opaque: their labels supply the tooltips,
+    // not a host-side guess about an action ID or translated text.
+    if enabled {
+        for node in card.actions.into_iter().chain(card.settings) {
+            if matches!(node, bongocat_plugin_sdk::UiNode::Button { .. }) {
+                actions = actions.child(node_view(node, card.id.clone(), view.clone(), busy));
+            } else {
+                body = body.child(node_view(node, card.id.clone(), view.clone(), busy));
+            }
+        }
+    }
     if !installed || card.update_available {
         let install_view = view.clone();
         let id = card.id.clone();
-        body = body.child(
+        actions = actions.child(
             Button::new(SharedString::from(format!("plugin-install-{}", card.id)))
-                .label(bongocat_i18n::text(
+                .icon(if installed {
+                    IconName::RefreshCw
+                } else {
+                    IconName::Download
+                })
+                .tooltip(bongocat_i18n::text(
                     locale(language),
                     if installed {
                         "plugins.update"
@@ -145,102 +252,73 @@ fn card_view(
                 }),
         );
     }
+    let mut footer = div()
+        .id(SharedString::from(format!("plugin-footer-{}", card.id)))
+        .test_support()
+        .mt_auto()
+        .pt_3()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3();
     if installed {
-        body = body
+        footer = footer.child(
+            Switch::new(SharedString::from(format!("plugin-toggle-{}", card.id)))
+                .flex_shrink_0()
+                .checked(enabled)
+                .disabled(busy)
+                .tooltip(bongocat_i18n::text(
+                    locale(language),
+                    if enabled {
+                        "plugins.disable"
+                    } else {
+                        "plugins.enable"
+                    },
+                ))
+                .on_click(move |checked, _, cx| {
+                    let id = toggle_id.clone();
+                    let enabled = *checked;
+                    toggle_view.update(cx, |view, cx| {
+                        view.update_plugin_host(move |host| host.set_enabled(&id, enabled), cx);
+                    });
+                }),
+        );
+        actions = actions
             .child(
-                Button::new(SharedString::from(format!("plugin-toggle-{}", card.id)))
+                Button::new(SharedString::from(format!("plugin-reset-{}", card.id)))
                     .disabled(busy)
-                    .label(bongocat_i18n::text(
-                        locale(language),
-                        if enabled {
-                            "plugins.disable"
-                        } else {
-                            "plugins.enable"
-                        },
-                    ))
+                    .icon(IconName::RotateCcw)
+                    .tooltip(bongocat_i18n::text(locale(language), "plugins.reset_data"))
                     .on_click(move |_, _, cx| {
-                        let id = toggle_id.clone();
-                        toggle_view.update(cx, |view, cx| {
-                            view.update_plugin_host(
-                                move |host| host.set_enabled(&id, next_enabled),
-                                cx,
-                            );
+                        let id = reset_id.clone();
+                        reset_view.update(cx, |view, cx| {
+                            view.update_plugin_host(move |host| host.reset(&id), cx);
                         });
                     }),
             )
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Button::new(SharedString::from(format!("plugin-reset-{}", card.id)))
-                            .disabled(busy)
-                            .label(bongocat_i18n::text(locale(language), "plugins.reset_data"))
-                            .on_click(move |_, _, cx| {
-                                let id = reset_id.clone();
-                                reset_view.update(cx, |view, cx| {
-                                    view.update_plugin_host(move |host| host.reset(&id), cx);
-                                });
-                            }),
-                    )
-                    .child(
-                        Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
-                            .disabled(busy)
-                            .label(bongocat_i18n::text(locale(language), "plugins.uninstall"))
-                            .on_click(move |_, _, cx| {
-                                let id = uninstall_id.clone();
-                                uninstall_view.update(cx, |view, cx| {
-                                    view.update_plugin_host(move |host| host.uninstall(&id), cx);
-                                });
-                            }),
-                    ),
+                Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
+                    .disabled(busy)
+                    .icon(IconName::Trash)
+                    .tooltip(bongocat_i18n::text(locale(language), "plugins.uninstall"))
+                    .on_click(move |_, _, cx| {
+                        let id = uninstall_id.clone();
+                        uninstall_view.update(cx, |view, cx| {
+                            view.update_plugin_host(move |host| host.uninstall(&id), cx);
+                        });
+                    }),
             );
     }
-    if let Some(version) = card.version.clone() {
-        body = body.child(div().text_xs().child(bongocat_i18n::format_text(
-            locale(language),
-            "plugins.version",
-            &[("version", version)],
-        )));
-    }
-    if let Some(version) = card
-        .available_version
-        .filter(|_| !installed || card.update_available)
-    {
-        body = body.child(div().text_xs().child(bongocat_i18n::format_text(
-            locale(language),
-            "plugins.available_version",
-            &[("version", version)],
-        )));
-    }
-    if card.failed {
-        body = body.child(
-            div()
-                .text_sm()
-                .child(bongocat_i18n::text(locale(language), "plugins.failed")),
-        );
-    }
-    // A plugin's controls are its own: the center renders the bounded tree the
-    // plugin published, and each control sends one typed command back to the
-    // plugin. Nothing here decides what a control means.
-    for node in card.actions {
-        if enabled {
-            body = body.child(node_view(node, card.id.clone(), view.clone()));
-        }
-    }
-    for node in card.settings {
-        if enabled {
-            body = body.child(node_view(node, card.id.clone(), view.clone()));
-        }
-    }
-    body
+    body.child(footer.child(actions))
 }
 
 fn node_view(
     node: bongocat_plugin_sdk::UiNode,
     plugin: String,
     view: Entity<SettingsView>,
+    busy: bool,
 ) -> impl IntoElement {
     match node {
         bongocat_plugin_sdk::UiNode::Text { text } => {
@@ -249,7 +327,9 @@ fn node_view(
         bongocat_plugin_sdk::UiNode::Button { id, label } => {
             let target = view.clone();
             Button::new(SharedString::from(format!("plugin-action-{plugin}-{id}")))
-                .label(label)
+                .icon(IconName::MousePointerClick)
+                .tooltip(label)
+                .disabled(busy)
                 .on_click(move |_, _, cx| {
                     let plugin = plugin.clone();
                     let id = id.clone();
@@ -265,13 +345,17 @@ fn node_view(
             div()
                 .flex()
                 .items_center()
+                .justify_between()
                 .gap_2()
-                .child(div().text_sm().child(label))
+                .child(div().min_w_0().flex_1().text_sm().child(label.clone()))
                 .child(
                     Switch::new(SharedString::from(format!(
                         "plugin-toggle-field-{plugin}-{key}"
                     )))
+                    .flex_shrink_0()
                     .checked(value)
+                    .tooltip(label)
+                    .disabled(busy)
                     .on_click(move |checked, _, cx| {
                         let key = key.clone();
                         let plugin = plugin_id.clone();
@@ -300,23 +384,33 @@ fn node_view(
             // than a free-text field keeps the value inside `min..=max` by
             // construction, which is the same guarantee the model's own number
             // fields get from their engine.
-            let mut row = div()
+            let row = div()
                 .flex()
                 .items_center()
+                .justify_between()
                 .gap_2()
-                .child(div().text_sm().child(label));
+                .child(div().min_w_0().flex_1().text_sm().child(label.clone()));
+            let mut controls = div().flex().flex_shrink_0().items_center().gap_2();
             for (suffix, delta) in [("decrease", -1), ("increase", 1)] {
                 let target = view.clone();
                 let plugin_id = plugin.clone();
                 let step_key = key.clone();
-                let next = (value + delta).clamp(min, max);
+                let next = value.saturating_add(delta).clamp(min, max);
                 let enabled = next != value;
-                row = row.child(
+                if delta > 0 {
+                    controls = controls.child(div().text_sm().child(value.to_string()));
+                }
+                controls = controls.child(
                     Button::new(SharedString::from(format!(
                         "plugin-integer-{plugin}-{key}-{suffix}"
                     )))
-                    .label(if delta < 0 { "−" } else { "+" })
-                    .disabled(!enabled)
+                    .icon(if delta < 0 {
+                        IconName::Minus
+                    } else {
+                        IconName::Plus
+                    })
+                    .tooltip(format!("{label} {} 1", if delta < 0 { "−" } else { "+" }))
+                    .disabled(busy || !enabled)
                     .on_click(move |_, _, cx| {
                         let key = step_key.clone();
                         let plugin = plugin_id.clone();
@@ -331,8 +425,7 @@ fn node_view(
                     }),
                 );
             }
-            row = row.child(div().text_sm().child(value.to_string()));
-            row.into_any_element()
+            row.child(controls).into_any_element()
         }
     }
 }

@@ -1,7 +1,7 @@
 # Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-10-14
+最后更新：2026-10-15
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -68,6 +68,10 @@ Rust 2024 edition application
   action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
 - 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板；Emoji 图标来自清单，
   本地/网络图片是后续扩展。主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
+- 插件中心使用统一卡片：图标、名称和版本在顶部，描述与配置在中部，底部左侧使用 GPUI Kit
+  `Switch` 启用/禁用，右侧集中展示带 Tooltip 的图标操作按钮。插件发布的按钮（包括设置中的
+  按钮）使用原标签作为 Tooltip，不从插件 ID、action ID 或标签推断业务语义；窄卡片中的
+  操作区允许换行。颜色、圆角和控件尺寸来自现有主题与组件默认值。
 - 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
   画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、

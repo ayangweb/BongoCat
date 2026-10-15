@@ -70,6 +70,24 @@ UI framework or private GPUI renderer integration. Actual component reuse inside
 the model overlay is not claimed. Consulted gpui-kit repository, component Button
 documentation and docs.rs 0.7.3 before UI changes.
 
+## Plugin Center cards
+
+The center uses the existing GPUI Kit `Button`, `Switch` and theme tokens, not
+custom-painted controls. Each card groups its icon, name and version at the top,
+then description/status/configuration, then a shared footer: enable/disable on
+the left and icon-only commands on the right. The command group wraps within
+narrow cards. Install/update, data reset and uninstall have standard host icons;
+plugin-authored buttons from either view join the same footer and use a generic
+action icon with the original label as the tooltip. The current protocol has no
+action-icon metadata: do not infer semantics from IDs or translated labels, or
+add per-plugin rules to the host. Model-window rendering is unchanged.
+
+Loading disables both lifecycle and plugin-authored controls. This presentation
+change does not alter the protocol, config/state formats or lifecycle ownership.
+Regression tests cover footer alignment, enabled/disabled/available cards and
+loading-time command gating. The repository, component Button/Switch/Tooltip
+documentation and docs.rs 0.7.3 were consulted before implementation.
+
 ## Acceptance
 
 - Automated catalog/lifecycle, previous-data, activity/privacy and cooldown

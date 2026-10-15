@@ -4,26 +4,7 @@
 
 ### ✨ Features
 
-- Added a plugin system: plugins run as separate processes and extend the model window through a versioned protocol.
-- Added a plugin center under Settings that lists, enables, disables and configures discovered plugins.
-- The plugin center automatically discovers available plugins, with install, update, uninstall and separate data-reset controls. Development uses locally built packages; Production uses the signed GitHub release catalog.
-- The Pomodoro plugin now shows its countdown in the model window, staying in sync with starting, pausing and resetting the timer.
-- Plugins keep running when the settings window is closed, and preserve configuration and enabled status across application restarts.
-- Added an independent typing-sound plugin with meow audio, adjustable volume, playback interval and a preview button. It receives anonymous keyboard activity, never key identities or typed text.
-
-### 🎨 Interface
-
-- Added a "Plugin Center" destination to the settings sidebar, with localized plugin-list messages.
-- Renamed the focus timer plugin to "Pomodoro".
-- The Pomodoro panel now shows the session length before the timer starts, so the duration is visible before counting down begins.
-- Model-window plugin panels now use the same button size, corner radius and colors as the settings window.
-
-### 🐛 Bug Fixes
-
-- Fixed Pomodoro controls in both pet and window modes: macOS now maps clicks to content coordinates correctly on Retina displays and prevents button presses from also dragging the model; Windows preserves client hit testing over plugin controls.
-- Fixed plugin updates continuing to use the previous executable; an enabled plugin now restarts on its new version and a failed update restores the working version.
-- Fixed uninstalled development plugins being installed again automatically at the next launch.
-- Fixed unreadable characters in model-window plugin panels: labels containing non-Latin text no longer show a slash followed by a row of empty boxes.
+- Added a plugin system and Plugin Center to manage plugins and extend the model window, with Pomodoro and typing-sound plugins.
 
 ## 2.3.1 - 2026-10-13
 
