@@ -10,16 +10,43 @@ use crate::settings::endpoint::PreparedModelImport;
 
 #[derive(Clone)]
 pub struct SettingsClient {
+    pub(crate) online: Arc<std::sync::Mutex<Option<crate::OnlineSettingsHandle>>>,
     pub(crate) commands: Sender<SettingsCommand>,
     pub(crate) next_operation_id: Arc<AtomicU64>,
 }
 
 impl SettingsClient {
+    pub fn set_online_client(&self, client: crate::OnlineSettingsHandle) {
+        *self
+            .online
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(client);
+    }
+    pub fn online_client(&self) -> Option<crate::OnlineSettingsHandle> {
+        self.online
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+    pub async fn set_online_server(
+        &self,
+        expected_config_revision: u64,
+        address: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetOnlineServer {
+            expected_config_revision,
+            address,
+            reply,
+        })
+        .await
+    }
+
     pub fn bounded(capacity: usize) -> (Self, SettingsServiceEndpoint) {
         assert!(capacity > 0, "settings command capacity must be positive");
         let (commands, receiver) = async_channel::bounded(capacity);
         (
             Self {
+                online: Arc::new(std::sync::Mutex::new(None)),
                 commands,
                 next_operation_id: Arc::new(AtomicU64::new(1)),
             },

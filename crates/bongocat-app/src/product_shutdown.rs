@@ -181,22 +181,32 @@ pub(crate) struct ProductShutdown {
 
 impl ProductShutdown {
     pub(crate) async fn finish(self) -> Arc<Mutex<Vec<String>>> {
-        let failures = Arc::clone(&self.coordinator.failures);
+        #[cfg(target_os = "windows")]
+        let mut this = self;
+        #[cfg(target_os = "macos")]
+        let this = self;
+        let failures = Arc::clone(&this.coordinator.failures);
         // The update worker is joined first: it is the only thing that touches the
         // installation, and it must not be mid-install while the runtime tears down.
-        if let Some(update_service) = self.update_service
+        if let Some(update_service) = this.update_service
             && let Err(error) = update_service.join()
         {
             record_failure(&failures, error.to_string());
         }
-        if !self.coordinator.frame_source_shutdown.wait_for_stop().await {
+        if !this.coordinator.frame_source_shutdown.wait_for_stop().await {
             record_failure(
                 &failures,
                 "product frame source did not stop before runtime shutdown",
             );
         }
-        let settings_client = self.settings_service.client();
-        if let Ok(bounds) = self.overlay.window_bounds() {
+        #[cfg(target_os = "windows")]
+        if let Some(desktop) = this.coordinator.online_desktop.take()
+            && let Err(error) = desktop.shutdown()
+        {
+            record_failure(&failures, error);
+        }
+        let settings_client = this.settings_service.client();
+        if let Ok(bounds) = this.overlay.window_bounds() {
             for _ in 0..20 {
                 if settings_client
                     .update_overlay_window_placement(
@@ -215,11 +225,11 @@ impl ProductShutdown {
         if let Err(error) = settings_client.shutdown().await {
             record_failure(&failures, error.to_string());
         }
-        if let Err(error) = self.settings_service.join() {
+        if let Err(error) = this.settings_service.join() {
             record_failure(&failures, error.to_string());
         }
-        match self.overlay.finish_after_runtime_shutdown() {
-            Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
+        match this.overlay.finish_after_runtime_shutdown() {
+            Ok(report) if this.coordinator.expect_visible_frame && report.frames_presented == 0 => {
                 record_failure(&failures, "product overlay presented no frames");
             }
             Ok(report) if !report.placement_fully_visible => {
@@ -236,6 +246,10 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
     coordinator.frame_source_shutdown.request_stop();
+    #[cfg(target_os = "windows")]
+    if let Some(desktop) = &mut coordinator.online_desktop {
+        desktop.request_stop();
+    }
     #[cfg(target_os = "windows")]
     if let Some(single_instance) = coordinator.single_instance.take()
         && let Err(error) = single_instance.shutdown()

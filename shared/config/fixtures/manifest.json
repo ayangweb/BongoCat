@@ -295,6 +295,21 @@
       "id": "behavior-name-model-id",
       "file": "invalid-behavior-name-model-id.json",
       "expected": "reject"
+    },
+    {
+      "id": "online-before-field",
+      "file": "accept-before-online.json",
+      "expected": "accept"
+    },
+    {
+      "id": "online",
+      "file": "accept-online.json",
+      "expected": "accept"
+    },
+    {
+      "id": "online-invalid-address",
+      "file": "invalid-online-address.json",
+      "expected": "reject"
     }
   ]
 }

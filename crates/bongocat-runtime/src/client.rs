@@ -9,6 +9,7 @@ use crate::*;
 
 #[derive(Clone)]
 pub struct RuntimeClient {
+    pub(crate) activity_signal: bongocat_online_protocol::ActivitySignal,
     pub(crate) producer: Arc<Producer>,
     pub(crate) snapshot: Arc<SnapshotCell>,
     pub(crate) input_producer: InputProducer,
@@ -20,6 +21,10 @@ pub struct RuntimeClient {
 }
 
 impl RuntimeClient {
+    pub fn activity_signal(&self) -> bongocat_online_protocol::ActivitySignal {
+        self.activity_signal.clone()
+    }
+
     pub fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
         self.producer.send(command)
     }

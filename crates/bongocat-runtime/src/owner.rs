@@ -271,7 +271,9 @@ impl RuntimeOwner {
             GamepadAxisProducer::with_capacity(DEFAULT_GAMEPAD_AXIS_CAPACITY);
         let shutdown = Arc::new(ShutdownSignal::default());
         let worker_shutdown = Arc::clone(&shutdown);
+        let activity_signal = bongocat_online_protocol::ActivitySignal::default();
         let client = RuntimeClient {
+            activity_signal: activity_signal.clone(),
             producer,
             snapshot: Arc::clone(&snapshot),
             input_producer,
@@ -287,6 +289,7 @@ impl RuntimeOwner {
                 run_worker(
                     receiver,
                     RuntimeWorkerBootstrap {
+                        activity_signal,
                         snapshot,
                         cursor_producer,
                         gamepad_axis_producer,

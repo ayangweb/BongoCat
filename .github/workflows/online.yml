@@ -1,0 +1,30 @@
+name: Online room
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - uses: taiki-e/install-action@just
+      - run: just room-server-test
+      - run: docker compose build
+      - run: docker compose up -d --wait
+      - run: curl -f http://127.0.0.1:8080/health
+      - if: always()
+        run: docker compose down
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - uses: taiki-e/install-action@just
+      - run: just online-smoke

@@ -48,6 +48,8 @@ pub use updates::UpdateConfig;
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {
+    #[serde(default)]
+    pub online: OnlineConfig,
     #[cfg_attr(
         any(test, feature = "schema-generation"),
         schemars(range(min = 1, max = 1))
@@ -66,6 +68,7 @@ pub struct NativeConfig {
 impl Default for NativeConfig {
     fn default() -> Self {
         Self {
+            online: OnlineConfig::default(),
             schema_version: SCHEMA_VERSION,
             appearance: AppearanceConfig {
                 theme: Theme::System,
@@ -134,6 +137,12 @@ impl NativeConfig {
         if self.schema_version != SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
         }
+        if !self.online.server_address.is_empty()
+            && !bongocat_online_protocol::valid_server_address(&self.online.server_address)
+        {
+            return Err(ConfigError::InvalidValue("online.server_address"));
+        }
+
         if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
             .contains(&self.updates.check_interval_hours)
         {
@@ -291,4 +300,19 @@ impl NativeConfig {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct OnlineConfig {
+    #[serde(default)]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(
+            length(max = 512),
+            regex(pattern = r"^(?:|ws://(?:\[[0-9a-fA-F:]+\]|[^\s/?#@:]+)(?::[0-9]+)?/ws)$")
+        )
+    )]
+    pub server_address: String,
 }

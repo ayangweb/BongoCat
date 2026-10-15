@@ -74,5 +74,8 @@
   "updates": {
     "check_automatically": false,
     "check_interval_hours": 24
+  },
+  "online": {
+    "server_address": ""
   }
 }

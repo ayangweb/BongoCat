@@ -525,3 +525,7 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 `Development` 与 `Production` 使用同一 schema、默认值和相对目录结构，只由数据根目录区分。配置内容不保存环境字段，也不能引用另一环境的绝对路径。
 
 路径与构建约束见 ADR-0008。
+
+## Online room preferences
+
+`online` is optional in v1 and defaults to `{ "server_address": "" }`. Its only persisted field is an optional `server_address`; empty means no configured server. A non-empty value must be a plain `ws://host[:port]/ws` endpoint without credentials, query, or fragment, up to 512 bytes. Reading a stored address never joins a room. IDs, members, actions, and connection state are session-only. Environment isolation and the separate update transport rules still apply.

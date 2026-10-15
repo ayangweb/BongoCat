@@ -84,3 +84,9 @@ just schema
 重构前的实现仅保留在受保护的
 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支中。该分支仅供历史参考；
 请勿修改或重新接入其中的实现。
+
+## 联机验证
+
+用 `just room-server-test` 验证协议与真实 WebSocket 回归；用 `just room-server-build` 单独构建服务端。Ubuntu CI 还会构建、启动 Docker 镜像并验证 `/health`。
+
+Windows x64 上运行 `just online-smoke`，以八个成员验证七只带 ID 的桌面猫，复用产品的窗口 owner。该程序只读取内置模型，不打开持久化应用数据。Windows 10/11 实机、显示缩放、双真实客户端和八小时 soak 仍须单独记录证据。

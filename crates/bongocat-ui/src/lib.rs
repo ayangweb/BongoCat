@@ -149,6 +149,7 @@ pub(crate) mod tests {
         motion_audio_enabled: bool,
     ) -> SettingsSnapshot {
         SettingsSnapshot {
+            online_server_address: String::new(),
             revision,
             config_revision: Some(revision),
             build_info: SettingsBuildInfo {

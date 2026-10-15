@@ -16,6 +16,11 @@ impl<T> SettingsReply<T> {
 }
 
 pub enum SettingsCommand {
+    SetOnlineServer {
+        expected_config_revision: u64,
+        address: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SettingsWindowPlacementChanged,
     OverlayWindowPlacementChanged {
         x: i32,

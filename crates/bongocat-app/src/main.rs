@@ -23,6 +23,8 @@
 mod binary_tests;
 mod gamepad_observer;
 mod model_cover;
+#[cfg(target_os = "windows")]
+mod online_desktop;
 mod overlay_placement;
 mod preset_root;
 mod product_icons;
@@ -187,6 +189,8 @@ async fn settle_taskbar_icon(
 }
 
 struct ProductCoordinator {
+    #[cfg(target_os = "windows")]
+    online_desktop: Option<online_desktop::OnlineDesktop>,
     _core_log: CoreLogHandle,
     #[cfg(target_os = "macos")]
     overlay: Option<ProductOverlaySession>,
@@ -604,7 +608,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let overlay = Rc::new(RefCell::new(Some(overlay)));
         #[cfg(target_os = "windows")]
         let frame_overlay = Rc::clone(&overlay);
+        #[cfg(target_os = "windows")]
+        let online_desktop = match online_desktop::OnlineDesktop::new(&frame_runtime_client, preset_root()) {
+            Ok(desktop) => { settings_client.set_online_client(desktop.settings_handle()); Some(desktop) },
+            Err(error) => { record_failure(&run_failures, error); None },
+        };
         cx.set_global(ProductCoordinator {
+            #[cfg(target_os = "windows")]
+            online_desktop,
             _core_log: core_log,
             #[cfg(target_os = "macos")]
             overlay: Some(overlay),
@@ -1258,6 +1269,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     retry_delay = next_retry_delay;
                 }
+                #[cfg(target_os = "windows")]
+                cx.update(|cx| {
+                    if cx.has_global::<ProductCoordinator>() {
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        if coordinator.frame_source_running && let Some(desktop) = &mut coordinator.online_desktop { desktop.tick(); }
+                    }
+                });
                 #[cfg(target_os = "windows")]
                 let (tick_result, system_termination_requested) = if frame_active {
                     let mut overlay = frame_overlay.borrow_mut();

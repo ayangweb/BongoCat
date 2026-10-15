@@ -1,0 +1,11 @@
+.git
+target
+.codex
+.agents
+resources
+vendor
+spikes
+docs
+tools
+shared
+*.md

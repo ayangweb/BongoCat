@@ -194,6 +194,7 @@ impl NativeOverlay {
 }
 
 pub(crate) struct ProductOverlaySession {
+    pub(crate) member_label: Option<super::member_label::MemberLabel>,
     pub(crate) overlay: NativeOverlay,
     pub(crate) runtime_client: RuntimeClient,
     pub(crate) render_consumer: RenderConsumer,
@@ -245,6 +246,40 @@ impl ProductOverlaySession {
         options: OverlaySessionOptions,
         interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
+        Self::start_inner(
+            runtime_client,
+            render_consumer,
+            options,
+            interaction_sinks,
+            Some((input_producer, cursor_producer, gamepad_axis_producer)),
+        )
+    }
+
+    pub(crate) fn start_passive(
+        runtime_client: RuntimeClient,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+    ) -> Result<Self, OverlayError> {
+        Self::start_inner(
+            runtime_client,
+            render_consumer,
+            options,
+            OverlayInteractionSinks {
+                context_menu_sender: None,
+                resize_sender: None,
+            },
+            None,
+        )
+    }
+
+    fn start_inner(
+        runtime_client: RuntimeClient,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        interaction_sinks: OverlayInteractionSinks,
+        inputs: Option<(InputProducer, CursorProducer, GamepadAxisProducer)>,
+    ) -> Result<Self, OverlayError> {
+        let passive = inputs.is_none();
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
@@ -278,23 +313,37 @@ impl ProductOverlaySession {
             }
             frames_presented = 1;
         }
-        report_model_commit(
-            &runtime_client,
-            &render_consumer,
-            token,
-            ModelCommitOutcome::Prepared,
-        )?;
+        if passive {
+            render_consumer
+                .report_model_commit(ModelCommitFeedback {
+                    token,
+                    outcome: ModelCommitOutcome::Prepared,
+                })
+                .map_err(|error| OverlayError::new(error.to_string()))?;
+        } else {
+            report_model_commit(
+                &runtime_client,
+                &render_consumer,
+                token,
+                ModelCommitOutcome::Prepared,
+            )?;
+        }
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
-            crate::start_platform_input(&diagnostics_producer, || {
-                WindowsInputService::start_with_diagnostics(
-                    input_producer,
-                    cursor_producer,
-                    gamepad_axis_producer,
-                    diagnostics_producer.clone(),
-                )
-            });
+            if let Some((input_producer, cursor_producer, gamepad_axis_producer)) = inputs {
+                crate::start_platform_input(&diagnostics_producer, || {
+                    WindowsInputService::start_with_diagnostics(
+                        input_producer,
+                        cursor_producer,
+                        gamepad_axis_producer,
+                        diagnostics_producer.clone(),
+                    )
+                })
+            } else {
+                (None, None)
+            };
         Ok(Self {
+            member_label: None,
             overlay,
             runtime_client,
             render_consumer,
@@ -302,7 +351,7 @@ impl ProductOverlaySession {
             input_service,
             input_start_error,
             input_diagnostics: None,
-            input_stopped: false,
+            input_stopped: passive,
             frames_presented,
             dynamic_snapshots: 0,
             model_commit_rejections: 0,

@@ -77,6 +77,40 @@ pub struct OverlayInteractionSinks {
 }
 
 impl ProductOverlaySession {
+    #[cfg(target_os = "windows")]
+    pub fn hide_remote(&mut self) -> Result<(), OverlayError> {
+        self.inner.overlay.set_visible(false)?;
+        let bounds = self.inner.window_bounds()?;
+        if let Some(label) = &mut self.inner.member_label {
+            label.sync(bounds, false)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn start_remote(
+        runtime_client: RuntimeClient,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        member_id: u64,
+    ) -> Result<Self, OverlayError> {
+        let mut inner = windows::ProductOverlaySession::start_passive(
+            runtime_client,
+            render_consumer,
+            options,
+        )?;
+        inner.member_label = Some(windows::member_label::MemberLabel::create(
+            inner.overlay.window.hwnd,
+            member_id,
+        )?);
+        Ok(Self { inner })
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn remote_initial_bounds(index: usize) -> OverlayWindowBounds {
+        windows::member_label::initial_bounds(index)
+    }
+
     pub fn start(
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
@@ -157,7 +191,13 @@ impl ProductOverlaySession {
 
         #[cfg(target_os = "windows")]
         {
-            self.inner.tick()
+            let outcome = self.inner.tick()?;
+            let bounds = self.inner.window_bounds()?;
+            let visible = self.inner.is_visible();
+            if let Some(label) = &mut self.inner.member_label {
+                label.sync(bounds, visible)?;
+            }
+            Ok(outcome)
         }
     }
 

@@ -210,6 +210,7 @@ pub(super) fn snapshot(
     // reader would double the most expensive part of building a snapshot.
     let model_catalog = settings_model_catalog(application);
     SettingsSnapshot {
+        online_server_address: application.config().online.server_address.clone(),
         revision: clock.revision,
         config_revision: application.config_revision(),
         build_info: SettingsBuildInfo {

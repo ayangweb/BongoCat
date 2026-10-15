@@ -152,3 +152,11 @@ Contributions are very welcome. Please read the [contributing guide](CONTRIBUTIN
 ## License
 
 BongoCat is open source under the [Apache License 2.0](LICENSE) license.
+
+## Online room (Windows)
+
+Open **Settings → Online**, enter `ws://YOUR_PUBLIC_IP:8080/ws`, and click **Join**. The public room supports eight people. Remote members appear as desktop cats with temporary IDs and the built-in standard model. Joining is manual.
+
+Keyboard and mouse button presses trigger random paw actions. Actual keys, pointer coordinates, and model files stay on your computer. Activity timing remains observable, and the connection is unencrypted. No accounts, chat, or macOS online client are included. Use **Leave** to disconnect and remove remote cats.
+
+Host your own room on Ubuntu with Docker Compose; see [the hosting guide](docs/online-hosting.md).

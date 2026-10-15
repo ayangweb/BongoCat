@@ -94,3 +94,9 @@ signing keys in issues, pull requests, logs, screenshots, or test fixtures.
 The previous implementation remains available on the protected
 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) branch. Use it
 only as a historical reference; do not modify or reintroduce that implementation.
+
+## Online room checks
+
+Run `just room-server-test` for protocol and real WebSocket regressions, and `just room-server-build` to build only the server. Ubuntu CI also builds and starts the Docker image and verifies `/health`.
+
+On Windows x64, run `just online-smoke` to exercise eight members and seven labeled desktop cats using the same presentation owner as the product. The harness reads bundled models without opening persistent application storage. Windows 10/11, scaling, two real clients, and an eight-hour soak still need separate acceptance evidence.

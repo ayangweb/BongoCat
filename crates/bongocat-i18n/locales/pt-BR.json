@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "Sobre"
+    },
+    "online": {
+      "title": "Online"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "A inicialização automática não está disponível neste sistema operacional",
         "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
       }
+    }
+  },
+  "online": {
+    "address": "Endereço do servidor",
+    "privacy": "Apenas movimentos aleatórios são enviados. Teclas e coordenadas ficam neste computador. O ritmo de atividade permanece visível; a conexão não é criptografada.",
+    "room": "Sala pública (até 8 membros)",
+    "join": "Entrar",
+    "leave": "Sair",
+    "cancel": "Cancelar",
+    "retry": "Tentar novamente",
+    "retry_render": "Exibir gatos novamente",
+    "status": "Conexão",
+    "members": "Membros",
+    "empty": "Entre para ver os membros online",
+    "you": "(você)",
+    "phase": {
+      "offline": "Offline",
+      "connecting": "Conectando…",
+      "connected": "Conectado",
+      "reconnecting": "Reconectando…",
+      "failed": "Falha na conexão"
+    },
+    "error": {
+      "invalid_address": "Digite um endereço como ws://203.0.113.10:8080/ws",
+      "unavailable": "Serviço online indisponível",
+      "connection": "Não foi possível conectar; tentando novamente",
+      "protocol": "Protocolo da sala incompatível ou inválido",
+      "full": "Sala cheia; tente após a saída de um membro",
+      "rate": "Muitas solicitações; tente mais tarde",
+      "render": "Falha ao exibir o gato; tente novamente"
     }
   }
 }

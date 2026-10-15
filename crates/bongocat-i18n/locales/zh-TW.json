@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "關於"
+    },
+    "online": {
+      "title": "連線"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "目前作業系統不支援開機自動啟動",
         "unsupported_build": "開發版本不支援開機自動啟動"
       }
+    }
+  },
+  "online": {
+    "address": "伺服器位址",
+    "privacy": "只傳送隨機拍爪動作，實際按鍵和游標座標留在本機。動作仍會反映操作節奏；連線未加密。",
+    "room": "公共房間（最多 8 人）",
+    "join": "加入",
+    "leave": "離開",
+    "cancel": "取消",
+    "retry": "重試",
+    "retry_render": "重試顯示貓",
+    "status": "連線狀態",
+    "members": "房間成員",
+    "empty": "加入後查看線上成員",
+    "you": "（你）",
+    "phase": {
+      "offline": "未連線",
+      "connecting": "連線中…",
+      "connected": "已加入",
+      "reconnecting": "重新連線中…",
+      "failed": "連線失敗"
+    },
+    "error": {
+      "invalid_address": "請輸入如 ws://203.0.113.10:8080/ws 的位址",
+      "unavailable": "連線服務無法使用",
+      "connection": "無法連線房間，正在重試",
+      "protocol": "房間協定不相容或訊息無效",
+      "full": "房間已滿，請在成員離開後重試",
+      "rate": "請求過於頻繁，請稍後重試",
+      "render": "貓顯示失敗，請重試顯示貓"
     }
   }
 }

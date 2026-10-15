@@ -29,6 +29,7 @@ use random_behavior::maybe_trigger_random_behavior;
 use renderer::{evaluate_renderer, start_motion};
 
 pub(crate) struct RuntimeWorkerBootstrap {
+    pub(crate) activity_signal: bongocat_online_protocol::ActivitySignal,
     pub(crate) snapshot: Arc<SnapshotCell>,
     pub(crate) cursor_producer: CursorProducer,
     pub(crate) gamepad_axis_producer: GamepadAxisProducer,
@@ -45,6 +46,7 @@ pub(crate) struct RuntimeWorkerBootstrap {
 
 pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
     let RuntimeWorkerBootstrap {
+        activity_signal,
         snapshot,
         cursor_producer,
         gamepad_axis_producer,
@@ -63,6 +65,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     let mut active_motions = Vec::new();
     let mut active_expression = None;
     let mut input_state = InputState::default();
+    let mut remote_paws: Option<bongocat_online_protocol::RemotePaws> = None;
     let mut input_bindings = InputBindings::default();
     let mut cursor_smoother = CursorSmoother::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
@@ -210,6 +213,14 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                 let sequence = envelope.sequence;
                 let mut evaluate_after_command = true;
                 match envelope.command {
+                    WorkerCommand::Product(RuntimeCommand::PlayRemotePaw(action)) => {
+                        remote_paws
+                            .get_or_insert_default()
+                            .play(action, clock.now());
+                        publish(&snapshot, |current| {
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
                     WorkerCommand::Product(RuntimeCommand::Tick) => {
                         publish(&snapshot, |current| {
                             current.last_command_failure = None;
@@ -398,7 +409,19 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
+                        let activity = matches!(
+                            envelope.event,
+                            InputEvent::Edge {
+                                control: InputControl::Key(_) | InputControl::Mouse(_),
+                                edge: InputEdge::Down,
+                                ..
+                            }
+                        );
+                        let captured_before = input_state.diagnostics.captured_down;
                         let disposition = input_state.apply(envelope);
+                        if activity && input_state.diagnostics.captured_down > captured_before {
+                            activity_signal.mark();
+                        }
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {
@@ -729,13 +752,17 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                 if evaluate_after_command && overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
-                        compose_model_input(
-                            &input_state,
-                            &input_bindings,
-                            normalized_cursor,
-                            &gamepad_axis_values,
-                            gamepad_axis_settings,
-                            model_settings,
+                        apply_remote_paws(
+                            compose_model_input(
+                                &input_state,
+                                &input_bindings,
+                                normalized_cursor,
+                                &gamepad_axis_values,
+                                gamepad_axis_settings,
+                                model_settings,
+                            ),
+                            remote_paws.as_ref(),
+                            clock.now(),
                         ),
                         &snapshot,
                         clock.now(),
@@ -808,13 +835,17 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                 if overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
-                        compose_model_input(
-                            &input_state,
-                            &input_bindings,
-                            normalized_cursor,
-                            &gamepad_axis_values,
-                            gamepad_axis_settings,
-                            model_settings,
+                        apply_remote_paws(
+                            compose_model_input(
+                                &input_state,
+                                &input_bindings,
+                                normalized_cursor,
+                                &gamepad_axis_values,
+                                gamepad_axis_settings,
+                                model_settings,
+                            ),
+                            remote_paws.as_ref(),
+                            clock.now(),
                         ),
                         &snapshot,
                         clock.now(),
@@ -875,4 +906,15 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     if panic_after_stopped {
         panic!("runtime worker panic injection");
     }
+}
+
+fn apply_remote_paws(
+    mut input: ModelInputSnapshot,
+    paws: Option<&bongocat_online_protocol::RemotePaws>,
+    now: Duration,
+) -> ModelInputSnapshot {
+    if let Some(paws) = paws {
+        (input.left_hand_down, input.right_hand_down) = paws.hands(now);
+    }
+    input
 }

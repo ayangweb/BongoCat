@@ -22,6 +22,7 @@ pub struct AutomaticUpdateSettings {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
+    pub online_server_address: String,
     pub revision: u64,
     pub config_revision: Option<u64>,
     pub build_info: SettingsBuildInfo,

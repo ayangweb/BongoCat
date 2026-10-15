@@ -891,3 +891,51 @@ fn shutdown_flushes_a_pending_cursor_before_stopped_state() {
     assert_eq!(stopped.cursor.transport.consumed, 1);
     assert_eq!(stopped.cursor.transport.pending, 0);
 }
+
+#[test]
+fn online_activity_observes_only_new_keyboard_and_mouse_downs() {
+    let owner = RuntimeOwner::start(true, 16);
+    let client = owner.client();
+    let signal = client.activity_signal();
+    signal.enable(true);
+    let controls = [
+        (InputControl::Key(PhysicalKey::KEY_A), InputEdge::Down, true),
+        (
+            InputControl::Key(PhysicalKey::KEY_A),
+            InputEdge::Down,
+            false,
+        ),
+        (InputControl::Key(PhysicalKey::KEY_A), InputEdge::Up, false),
+    ];
+    for (sequence, (control, edge, expected)) in controls.into_iter().enumerate() {
+        let command = client
+            .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+                sequence: sequence as u64,
+                event: InputEvent::Edge {
+                    control,
+                    edge,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(sequence as u64),
+                },
+            })))
+            .unwrap();
+        client.wait_for_command(command, TIMEOUT).unwrap();
+        assert_eq!(signal.take(), expected);
+    }
+    signal.enable(false);
+    let command = client
+        .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+            sequence: 3,
+            event: InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(3),
+            },
+        })))
+        .unwrap();
+    client.wait_for_command(command, TIMEOUT).unwrap();
+    signal.enable(true);
+    assert!(!signal.take());
+    owner.shutdown(TIMEOUT).unwrap();
+}

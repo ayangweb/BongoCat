@@ -89,6 +89,8 @@ use navigation::{SettingsNavigationPage, model_library_search_keywords};
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;
+#[cfg(target_os = "windows")]
+mod online;
 mod settings;
 mod shortcuts;
 mod shortcuts_page;
@@ -215,6 +217,19 @@ pub struct SettingsWindowSeed {
 }
 
 pub struct SettingsView {
+    #[cfg(target_os = "windows")]
+    online_address: Entity<InputState>,
+    #[cfg(target_os = "windows")]
+    online_address_initialized: bool,
+    #[cfg(target_os = "windows")]
+    online_join_pending: bool,
+    #[cfg(target_os = "windows")]
+    online_request_generation: u64,
+    #[cfg(target_os = "windows")]
+    online_error: Option<bongocat_ui_protocol::OnlineError>,
+    #[cfg(target_os = "windows")]
+    last_online_error: Option<bongocat_ui_protocol::OnlineError>,
+
     #[cfg(target_os = "windows")]
     pub(crate) window_background_color: Entity<gpui_kit::component::color_picker::ColorPickerState>,
     #[cfg(target_os = "windows")]

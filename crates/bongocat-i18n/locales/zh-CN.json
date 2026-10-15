@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "关于"
+    },
+    "online": {
+      "title": "联机"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "当前操作系统不支持开机自启动",
         "unsupported_build": "开发版本不支持开机自启动"
       }
+    }
+  },
+  "online": {
+    "address": "服务器地址",
+    "privacy": "只发送随机拍爪动作，实际按键和鼠标坐标保留在本机。动作仍会反映操作节奏；连接未加密。",
+    "room": "公共房间（最多 8 人）",
+    "join": "加入",
+    "leave": "退出",
+    "cancel": "取消",
+    "retry": "重试",
+    "retry_render": "重试显示猫",
+    "status": "连接状态",
+    "members": "房间成员",
+    "empty": "加入后查看在线成员",
+    "you": "（你）",
+    "phase": {
+      "offline": "未联机",
+      "connecting": "连接中…",
+      "connected": "已加入",
+      "reconnecting": "重连中…",
+      "failed": "连接失败"
+    },
+    "error": {
+      "invalid_address": "请输入形如 ws://203.0.113.10:8080/ws 的地址",
+      "unavailable": "联机服务不可用",
+      "connection": "无法连接房间，正在重试",
+      "protocol": "房间协议不兼容或消息无效",
+      "full": "房间已满，请在成员退出后重试",
+      "rate": "请求过于频繁，请稍后重试",
+      "render": "猫显示失败，请使用“重试显示猫”"
     }
   }
 }

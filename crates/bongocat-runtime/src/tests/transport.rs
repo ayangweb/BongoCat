@@ -28,6 +28,7 @@ fn full_queue_returns_the_original_typed_command() {
         accepting: Arc::new(AtomicBool::new(true)),
     });
     let client = RuntimeClient {
+        activity_signal: bongocat_online_protocol::ActivitySignal::default(),
         input_producer: InputProducer::new(Arc::new(RuntimeInputSubmitter {
             producer: Arc::clone(&producer),
         })),
@@ -107,6 +108,7 @@ fn input_producer_overflow_is_observable_and_recovery_resets_state() {
         accepting: Arc::new(AtomicBool::new(true)),
     });
     let client = RuntimeClient {
+        activity_signal: bongocat_online_protocol::ActivitySignal::default(),
         producer: Arc::clone(&runtime_producer),
         snapshot: Arc::new(SnapshotCell {
             value: Mutex::new(RuntimeSnapshot::starting(

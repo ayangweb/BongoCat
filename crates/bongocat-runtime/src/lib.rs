@@ -460,6 +460,7 @@ pub struct PendingModelSnapshot {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
+    PlayRemotePaw(bongocat_online_protocol::PawAction),
     /// Drive one deterministic runtime evaluation using the injected clock.
     Tick,
     SetOverlayVisible(bool),

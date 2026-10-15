@@ -146,3 +146,11 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 ## 开源协议
 
 BongoCat 基于 [Apache License 2.0](LICENSE) 开源。
+
+## 联机房间（Windows）
+
+打开 **设置 → 联机**，输入 `ws://你的公网IP:8080/ws`，点击**加入**。公共房间最多八人，其他成员以带临时 ID 的桌面猫显示，统一使用内置标准模型。每次都需手动加入。
+
+键盘和鼠标按钮按下时触发随机拍爪。实际按键、鼠标坐标和模型文件保留在本机；动作仍会反映操作节奏，连接未加密。初版不提供账号、聊天或 macOS 联机客户端。点击**退出**即可断开并移除远端猫。
+
+可通过 Docker Compose 在 Ubuntu 自行部署房间，见[部署说明](docs/online-hosting.zh-CN.md)。

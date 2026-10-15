@@ -132,9 +132,18 @@ pub fn platform_layout(
     Ok(StorageLayout::under_application_root(base, environment))
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct OnlineConfig {
+    #[serde(default)]
+    pub server_address: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {
+    #[serde(default)]
+    pub online: OnlineConfig,
     pub schema_version: u32,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
@@ -479,6 +488,7 @@ pub struct ModelBehaviorBinding {
 impl Default for NativeConfig {
     fn default() -> Self {
         Self {
+            online: OnlineConfig::default(),
             schema_version: SCHEMA_VERSION,
             appearance: AppearanceConfig {
                 theme: Theme::System,
@@ -546,6 +556,11 @@ impl NativeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
+        }
+        if !self.online.server_address.is_empty()
+            && !bongocat_online_protocol::valid_server_address(&self.online.server_address)
+        {
+            return Err(ConfigError::InvalidValue("online.server_address"));
         }
         if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
             .contains(&self.updates.check_interval_hours)

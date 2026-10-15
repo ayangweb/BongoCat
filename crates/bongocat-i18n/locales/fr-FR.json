@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "À propos"
+    },
+    "online": {
+      "title": "En ligne"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "Le lancement au démarrage n’est pas disponible sur ce système d’exploitation",
         "unsupported_build": "Le lancement au démarrage n’est pas disponible dans les versions de développement"
       }
+    }
+  },
+  "online": {
+    "address": "Adresse du serveur",
+    "privacy": "Seuls des gestes aléatoires sont envoyés. Les touches et coordonnées restent sur cet ordinateur. Le rythme d’activité reste visible ; la connexion n’est pas chiffrée.",
+    "room": "Salon public (8 membres maximum)",
+    "join": "Rejoindre",
+    "leave": "Quitter",
+    "cancel": "Annuler",
+    "retry": "Réessayer",
+    "retry_render": "Réafficher les chats",
+    "status": "Connexion",
+    "members": "Membres",
+    "empty": "Rejoignez le salon pour voir les membres",
+    "you": "(vous)",
+    "phase": {
+      "offline": "Hors ligne",
+      "connecting": "Connexion…",
+      "connected": "Connecté",
+      "reconnecting": "Reconnexion…",
+      "failed": "Échec de connexion"
+    },
+    "error": {
+      "invalid_address": "Saisissez une adresse comme ws://203.0.113.10:8080/ws",
+      "unavailable": "Service en ligne indisponible",
+      "connection": "Connexion impossible ; nouvel essai en cours",
+      "protocol": "Protocole du salon incompatible ou invalide",
+      "full": "Salon complet ; réessayez après un départ",
+      "rate": "Trop de requêtes ; réessayez plus tard",
+      "render": "Affichage du chat impossible ; réessayez"
     }
   }
 }

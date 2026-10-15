@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "About"
+    },
+    "online": {
+      "title": "Online"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "Running at startup is unavailable on this operating system",
         "unsupported_build": "Running at startup is unavailable in development builds"
       }
+    }
+  },
+  "online": {
+    "address": "Server address",
+    "privacy": "Only random paw actions are sent. Actual keys and pointer coordinates stay on this computer. Activity timing is still visible; this connection is unencrypted.",
+    "room": "Public room (up to 8 members)",
+    "join": "Join",
+    "leave": "Leave",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "retry_render": "Retry cat display",
+    "status": "Connection",
+    "members": "Members",
+    "empty": "Join to see online members",
+    "you": "(you)",
+    "phase": {
+      "offline": "Offline",
+      "connecting": "Connecting…",
+      "connected": "Connected",
+      "reconnecting": "Reconnecting…",
+      "failed": "Connection failed"
+    },
+    "error": {
+      "invalid_address": "Enter an address such as ws://203.0.113.10:8080/ws",
+      "unavailable": "Online service is unavailable",
+      "connection": "Cannot connect to the room; retrying",
+      "protocol": "Room protocol is incompatible or invalid",
+      "full": "The room is full; retry when a member leaves",
+      "rate": "Too many requests; please retry later",
+      "render": "Cat display failed; use Retry cat display"
     }
   }
 }

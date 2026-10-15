@@ -407,6 +407,18 @@
       },
       "type": "object"
     },
+    "OnlineConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "server_address": {
+          "default": "",
+          "maxLength": 512,
+          "pattern": "^(?:|ws://(?:\\[[0-9a-fA-F:]+\\]|[^\\s/?#@:]+)(?::[0-9]+)?/ws)$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "OverlayConfig": {
       "additionalProperties": false,
       "properties": {
@@ -649,6 +661,12 @@
     },
     "model": {
       "$ref": "#/$defs/ModelConfig"
+    },
+    "online": {
+      "$ref": "#/$defs/OnlineConfig",
+      "default": {
+        "server_address": ""
+      }
     },
     "overlay": {
       "$ref": "#/$defs/OverlayConfig"

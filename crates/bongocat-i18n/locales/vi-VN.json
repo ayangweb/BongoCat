@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "Giới thiệu"
+    },
+    "online": {
+      "title": "Trực tuyến"
     }
   },
   "system_menu": {
@@ -539,6 +542,36 @@
         "unsupported_os": "Tính năng tự động khởi động không khả dụng trên hệ điều hành này",
         "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
       }
+    }
+  },
+  "online": {
+    "address": "Địa chỉ máy chủ",
+    "privacy": "Chỉ gửi động tác ngẫu nhiên. Phím và tọa độ con trỏ được giữ trên máy này. Nhịp hoạt động vẫn hiển thị; kết nối không được mã hóa.",
+    "room": "Phòng công khai (tối đa 8 người)",
+    "join": "Tham gia",
+    "leave": "Rời phòng",
+    "cancel": "Hủy",
+    "retry": "Thử lại",
+    "retry_render": "Hiển thị mèo lại",
+    "status": "Kết nối",
+    "members": "Thành viên",
+    "empty": "Tham gia để xem thành viên trực tuyến",
+    "you": "(bạn)",
+    "phase": {
+      "offline": "Ngoại tuyến",
+      "connecting": "Đang kết nối…",
+      "connected": "Đã kết nối",
+      "reconnecting": "Đang kết nối lại…",
+      "failed": "Kết nối thất bại"
+    },
+    "error": {
+      "invalid_address": "Nhập địa chỉ như ws://203.0.113.10:8080/ws",
+      "unavailable": "Dịch vụ trực tuyến không khả dụng",
+      "connection": "Không thể kết nối; đang thử lại",
+      "protocol": "Giao thức phòng không tương thích hoặc không hợp lệ",
+      "full": "Phòng đầy; thử lại khi có người rời đi",
+      "rate": "Quá nhiều yêu cầu; thử lại sau",
+      "render": "Không thể hiển thị mèo; hãy thử lại"
     }
   }
 }

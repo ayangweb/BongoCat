@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/bongocat-online-protocol",
+    "crates/bongocat-online-client",
+    "crates/bongocat-room-server",
     "crates/bongocat-app",
     "crates/bongocat-audio",
     "crates/bongocat-i18n",
@@ -32,6 +35,13 @@ repository = "https://github.com/ayangweb/BongoCat"
 publish = false
 
 [workspace.dependencies]
+axum = { version = "=0.8.9", default-features = false }
+futures-util = { version = "=0.3.34", features = ["sink"] }
+rand = "=0.10.3"
+tokio = { version = "=1.53.3", default-features = false }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "handshake"] }
+bongocat-online-protocol = { path = "crates/bongocat-online-protocol" }
+bongocat-online-client = { path = "crates/bongocat-online-client" }
 arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"

@@ -19,6 +19,8 @@ pub(super) enum SettingsNavigationPage {
     InputInteraction,
     Shortcuts,
     AppSystem,
+    #[cfg(target_os = "windows")]
+    Online,
     About,
 }
 
@@ -77,10 +79,31 @@ impl SettingsNavigationPage {
             Self::InputInteraction => 4,
             Self::Shortcuts => 5,
             Self::AppSystem => 6,
-            Self::About => 7,
+            #[cfg(target_os = "windows")]
+            Self::Online => 7,
+            Self::About => {
+                if cfg!(target_os = "windows") {
+                    8
+                } else {
+                    7
+                }
+            }
         }
     }
 
+    #[cfg(target_os = "windows")]
+    pub(super) const ALL: [Self; 9] = [
+        Self::Appearance,
+        Self::ModelLibrary,
+        Self::ModelBehavior,
+        Self::ModelWindow,
+        Self::InputInteraction,
+        Self::Shortcuts,
+        Self::AppSystem,
+        Self::Online,
+        Self::About,
+    ];
+    #[cfg(target_os = "macos")]
     pub(super) const ALL: [Self; 8] = [
         Self::Appearance,
         Self::ModelLibrary,
@@ -101,6 +124,8 @@ impl SettingsNavigationPage {
             Self::InputInteraction => "navigation.input_interaction.title",
             Self::Shortcuts => "navigation.shortcuts.title",
             Self::AppSystem => "navigation.app_system.title",
+            #[cfg(target_os = "windows")]
+            Self::Online => "navigation.online.title",
             Self::About => "navigation.about.title",
         }
     }
@@ -118,6 +143,8 @@ impl SettingsNavigationPage {
             Self::InputInteraction => IconName::MousePointer2,
             Self::Shortcuts => IconName::Keyboard,
             Self::AppSystem => IconName::Cog,
+            #[cfg(target_os = "windows")]
+            Self::Online => IconName::Cat,
             Self::About => IconName::Info,
         }
     }
@@ -171,6 +198,8 @@ impl SettingsNavigationPage {
                 "System icons",
                 "系统图标",
             ],
+            #[cfg(target_os = "windows")]
+            Self::Online => &["Online", "Room", "联机", "房间"],
             Self::About => &["About BongoCat", "关于 BongoCat"],
         }
     }
@@ -227,6 +256,8 @@ mod tests {
                 SettingsNavigationPage::InputInteraction,
                 SettingsNavigationPage::Shortcuts,
                 SettingsNavigationPage::AppSystem,
+                #[cfg(target_os = "windows")]
+                SettingsNavigationPage::Online,
                 SettingsNavigationPage::About,
             ]
         );

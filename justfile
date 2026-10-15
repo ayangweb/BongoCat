@@ -40,6 +40,7 @@ check:
     cargo clippy --locked --workspace --all-targets --all-features --exclude bongocat-app -- -D warnings
     cargo clippy --locked -p bongocat-app --all-targets --features storage-test-injection -- -D warnings
     cargo clippy --locked -p bongocat-app --all-targets --features production -- -D warnings
+    cargo clippy --locked -p bongocat-app --all-targets --features online-smoke -- -D warnings
     cargo test --locked --workspace
     cargo check --locked --workspace --release
 
@@ -88,3 +89,16 @@ release-manifest directory notes *fragments:
 # sponsor list are constants in `crates/bongocat-packaging`, not changelog text.
 release-notes file:
     cargo run --locked -p bongocat-packaging -- --extract-release-notes {{file}}
+
+# Build only the platform-independent room server.
+room-server-build:
+    cargo build --locked --release -p bongocat-room-server
+
+# Test the room contract and real WebSocket connections.
+room-server-test:
+    cargo test --locked -p bongocat-online-protocol -p bongocat-online-client -p bongocat-room-server
+    cargo clippy --locked -p bongocat-online-protocol -p bongocat-online-client -p bongocat-room-server --all-targets -- -D warnings
+
+# Windows only: eight-member room using the real remote desktop owner.
+online-smoke:
+    cargo run --locked -p bongocat-app --features online-smoke --bin bongocat-online-smoke

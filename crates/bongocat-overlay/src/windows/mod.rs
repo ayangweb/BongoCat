@@ -8,6 +8,7 @@
 
 mod cover_capture;
 mod geometry;
+pub(crate) mod member_label;
 mod pipelines;
 mod renderer;
 mod session;

@@ -344,6 +344,18 @@ impl SettingsView {
         }
         Self {
             #[cfg(target_os = "windows")]
+            online_address: cx.new(|cx| InputState::new(window, cx)),
+            #[cfg(target_os = "windows")]
+            online_address_initialized: false,
+            #[cfg(target_os = "windows")]
+            online_join_pending: false,
+            #[cfg(target_os = "windows")]
+            online_request_generation: 0,
+            #[cfg(target_os = "windows")]
+            online_error: None,
+            #[cfg(target_os = "windows")]
+            last_online_error: None,
+            #[cfg(target_os = "windows")]
             window_background_color,
             #[cfg(target_os = "windows")]
             window_background_debouncer: crate::SettingsPatchDebouncer::default(),

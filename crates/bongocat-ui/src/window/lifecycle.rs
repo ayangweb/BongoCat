@@ -73,7 +73,11 @@ pub fn open_settings_window(
                     view.refresh(cx);
                     view
                 });
-                view.update(cx, |view, cx| view.start_snapshot_polling(cx));
+                view.update(cx, |view, cx| {
+                    view.start_snapshot_polling(cx);
+                    #[cfg(target_os = "windows")]
+                    view.start_online_polling(cx);
+                });
                 opened_settings_view.borrow_mut().replace(view.clone());
                 let appearance_view = view.downgrade();
                 window

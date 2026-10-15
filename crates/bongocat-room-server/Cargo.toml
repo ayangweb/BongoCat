@@ -1,0 +1,23 @@
+[package]
+name = "bongocat-room-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = { workspace = true, features = ["ws", "http1", "tokio"] }
+bongocat-online-protocol.workspace = true
+futures-util.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros", "sync", "time", "signal"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tokio-tungstenite.workspace = true
+bongocat-online-client.workspace = true
+
+[lints]
+workspace = true

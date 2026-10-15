@@ -439,6 +439,7 @@ mod tests {
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
         let snapshot = SettingsSnapshot {
+            online_server_address: String::new(),
             revision: 42,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {

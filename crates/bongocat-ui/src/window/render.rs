@@ -87,6 +87,36 @@ impl Render for SettingsView {
         .left_0()
         .size_full();
         let snapshot = self.snapshot.clone();
+        #[cfg(target_os = "windows")]
+        {
+            if !self.online_address_initialized
+                && let Some(snapshot) = &snapshot
+            {
+                self.online_address.update(cx, |input, cx| {
+                    input.set_value(snapshot.online_server_address.clone(), window, cx)
+                });
+                self.online_address_initialized = true;
+            }
+            let error = self.online_error.take().or_else(|| {
+                self.client
+                    .online_client()
+                    .and_then(|client| client.snapshot().error)
+            });
+            if let Some(error) = error
+                && self.last_online_error != Some(error)
+            {
+                window.push_notification(
+                    Notification::new()
+                        .message(bongocat_i18n::text(
+                            self.display_language().catalog_locale(),
+                            online::error_key(error),
+                        ))
+                        .with_type(NotificationType::Error),
+                    cx,
+                );
+            }
+            self.last_online_error = error;
+        }
         // The appearance is applied on every frame, seeded included: the first frame is
         // painted before the service answers the first snapshot, and it has to be the
         // product's theme rather than the component default.
@@ -1646,6 +1676,28 @@ impl Render for SettingsView {
                 self.request_update.clone(),
             ));
 
+        let pages = vec![
+            appearance_page,
+            model_library_page,
+            model_behavior_page,
+            overlay_page,
+            input_interaction_page,
+            shortcuts_page,
+            app_system_page,
+            about_page,
+        ];
+        #[cfg(target_os = "windows")]
+        let pages = {
+            let mut pages = pages;
+            pages.insert(
+                7,
+                online::page(view_entity.clone(), language).title_suffix(page_reporter(
+                    SettingsNavigationPage::Online,
+                    navigation_memory.clone(),
+                )),
+            );
+            pages
+        };
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .default_selected_index(SelectIndex {
@@ -1653,16 +1705,7 @@ impl Render for SettingsView {
                 group_ix: None,
             })
             .with_group_variant(GroupBoxVariant::Outline)
-            .pages(vec![
-                appearance_page,
-                model_library_page,
-                model_behavior_page,
-                overlay_page,
-                input_interaction_page,
-                shortcuts_page,
-                app_system_page,
-                about_page,
-            ]);
+            .pages(pages);
         let model_drag_overlay = self.model_drag.map(|state| {
             let view = cx.entity().downgrade();
             model_drag_overlay::render(state, language, Tokens::from_theme(cx))

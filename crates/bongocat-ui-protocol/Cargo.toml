@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+bongocat-online-protocol.workspace = true
 async-channel.workspace = true
 bongocat-input.workspace = true
 thiserror.workspace = true

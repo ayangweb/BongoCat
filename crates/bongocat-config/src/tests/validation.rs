@@ -1174,3 +1174,18 @@ fn motion_overlap_defaults_off_for_existing_v1_documents_and_round_trips() {
     let bytes = serde_json::to_vec(&enabled).expect("serialize configuration");
     assert_eq!(parse_config(&bytes).expect("read configuration").0, enabled);
 }
+
+#[test]
+fn pre_online_v1_data_starts_without_joining_and_new_address_round_trips() {
+    let old = include_str!("../../../../shared/config/fixtures/accept-before-online.json");
+    let config: NativeConfig = serde_json::from_str(old).unwrap();
+    config.validate().unwrap();
+    assert!(config.online.server_address.is_empty());
+    let mut next = config;
+    next.online.server_address = "ws://203.0.113.10:8080/ws".into();
+    next.validate().unwrap();
+    assert_eq!(
+        serde_json::from_str::<NativeConfig>(&serde_json::to_string(&next).unwrap()).unwrap(),
+        next
+    );
+}

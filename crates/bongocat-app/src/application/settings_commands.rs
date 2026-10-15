@@ -20,6 +20,17 @@ use bongocat_runtime::{
 };
 
 impl Application {
+    pub fn set_online_server(&mut self, address: String) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.online.server_address = address;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;

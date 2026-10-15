@@ -18,3 +18,6 @@ mod update;
 
 pub use settings::*;
 pub use update::*;
+
+mod online;
+pub use online::*;
