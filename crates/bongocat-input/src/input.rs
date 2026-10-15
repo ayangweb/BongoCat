@@ -483,6 +483,18 @@ pub struct InputDiagnostics {
     pub captured_down: u64,
     /// Unique captured keyboard downs, without identities or text.
     pub keyboard_activity: u64,
+    /// Unique captured keyboard releases, without identities or text.
+    ///
+    /// It is counted beside [`Self::keyboard_activity`] rather than derived from
+    /// it: a plugin that plays one sound for a press and another for a release
+    /// has to tell the two edges apart, and a release the platform reported
+    /// after the runtime had already forgotten the press is still a release the
+    /// user performed.
+    pub keyboard_release: u64,
+    /// Unique captured mouse button downs, without identities or coordinates.
+    pub mouse_activity: u64,
+    /// Unique captured mouse button releases, without identities or coordinates.
+    pub mouse_release: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
     pub released_by_reset: u64,

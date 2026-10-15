@@ -17,6 +17,12 @@ Catalog selection is per plugin ID, not the single newest release across all IDs
 An upgrade preserves plugin config/state, replaces registry metadata and restarts
 an enabled process. A refused package must retain the previous selected version.
 
+> Amended by ADR-0093: the single keyboard-down counter below is superseded by
+> four per-device counters (`input_activity_v1`), the temporary MP3 evaluation
+> asset is removed, and the plugin now embeds its own sound sets. The privacy
+> argument, the coalescing rule and the independent-process boundary are
+> unchanged.
+
 Issue #90 is implemented by an independent typing-sound process. The generic
 `keyboard_activity_v1` capability gates a new typed message carrying only a
 monotonic timestamp: no key identity, text, modifiers or release sequence crosses

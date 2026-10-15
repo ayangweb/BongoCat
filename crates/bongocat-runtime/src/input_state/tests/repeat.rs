@@ -42,9 +42,11 @@ fn a_release_with_nothing_pressed_is_counted_rather_than_ignored() {
 }
 
 #[test]
-fn anonymous_keyboard_activity_excludes_repeat_mouse_release_and_reconcile() {
+fn anonymous_device_edges_count_press_and_release_per_device() {
+    let b = InputControl::Key(PhysicalKey::from_hid_usage(0x05));
     let mut state = InputState::default();
     state.apply(edge(0, 0, A, InputEdge::Down));
+    // A repeat is the platform re-sending a press, not a second one.
     state.apply(edge(1, 1, A, InputEdge::Down));
     state.apply(edge(
         2,
@@ -52,22 +54,57 @@ fn anonymous_keyboard_activity_excludes_repeat_mouse_release_and_reconcile() {
         InputControl::Mouse(MouseButton::Left),
         InputEdge::Down,
     ));
-    state.apply(edge(3, 3, A, InputEdge::Up));
+    state.apply(edge(
+        3,
+        3,
+        InputControl::Mouse(MouseButton::Left),
+        InputEdge::Up,
+    ));
+    state.apply(edge(4, 4, A, InputEdge::Up));
+    // B goes down and the platform never reports its release, which is exactly
+    // the case the reconciliation exists for.
+    state.apply(edge(5, 5, b, InputEdge::Down));
     state.apply(SequencedInputEvent {
-        sequence: 4,
+        sequence: 6,
         event: InputEvent::Reconcile {
-            pressed: [A].into(),
-            at: MonotonicMillis::new(4),
+            pressed: BTreeSet::new(),
+            at: MonotonicMillis::new(6),
         },
     });
-    assert_eq!(state.snapshot().diagnostics.keyboard_activity, 1);
     state.apply(SequencedInputEvent {
-        sequence: 5,
+        sequence: 7,
+        event: InputEvent::Reconcile {
+            pressed: BTreeSet::new(),
+            at: MonotonicMillis::new(7),
+        },
+    });
+    let counted = state.snapshot().diagnostics;
+    assert_eq!(
+        counted.keyboard_activity, 2,
+        "the repeat is not a second press, but the second key is"
+    );
+    assert_eq!(
+        counted.keyboard_release, 1,
+        "the release the runtime invented is not a device edge"
+    );
+    assert_eq!(counted.mouse_activity, 1);
+    assert_eq!(counted.mouse_release, 1);
+    assert_eq!(
+        counted.reconciled_release, 1,
+        "a reconciliation is the runtime's own correction, not a device edge"
+    );
+    state.apply(SequencedInputEvent {
+        sequence: 8,
         event: InputEvent::Reset {
             reason: InputResetReason::SequenceGap,
-            at: MonotonicMillis::new(5),
+            at: MonotonicMillis::new(8),
         },
     });
-    state.apply(edge(6, 6, A, InputEdge::Down));
-    assert_eq!(state.snapshot().diagnostics.keyboard_activity, 2);
+    state.apply(edge(9, 9, A, InputEdge::Down));
+    let after_reset = state.snapshot().diagnostics;
+    assert_eq!(after_reset.keyboard_activity, 3);
+    assert_eq!(
+        after_reset.keyboard_release, 1,
+        "a reset clears the pressed set, and the release it invents is not a device edge"
+    );
 }

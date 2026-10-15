@@ -47,3 +47,11 @@ pub(crate) const LOOP_INTERVAL: std::time::Duration = std::time::Duration::from_
 pub(crate) const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
 
 pub use bongocat_plugin_manager::PluginSource;
+/// The anonymous device edges a plugin may be fed, re-exported for the caller
+/// that measures them.
+///
+/// The service reads its activity source rather than owning it, so the type of
+/// what that source returns belongs to the protocol both are written against;
+/// the binary that wires the two together should not have to depend on the SDK
+/// itself to name it.
+pub use bongocat_plugin_sdk::InputActivity;

@@ -191,6 +191,25 @@ impl HudRenderer {
                     DEFAULT_TEXT_COLOR,
                 );
             }
+            UiNode::Select {
+                label,
+                value,
+                options,
+                ..
+            } => {
+                let text = format!(
+                    "{label}: {}",
+                    crate::layout::select_option_label(value, options)
+                );
+                canvas.draw_text(
+                    &self.font,
+                    &text,
+                    rect.x,
+                    rect.y,
+                    LABEL_SIZE * scale,
+                    DEFAULT_TEXT_COLOR,
+                );
+            }
         }
     }
 }

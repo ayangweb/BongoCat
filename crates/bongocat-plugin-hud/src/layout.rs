@@ -55,7 +55,37 @@ pub fn measure_node(node: &UiNode, font: &HudFont) -> (f32, f32) {
                 font.line_height(LABEL_SIZE),
             )
         }
+        // The model window is a display surface: a choice is drawn as the label
+        // and the option it holds, exactly as a number is. Picking another option
+        // is a settings-panel action, and the panel is where the host draws it.
+        UiNode::Select {
+            label,
+            value,
+            options,
+            ..
+        } => {
+            let text = format!("{label}: {}", select_option_label(value, options));
+            (
+                font.measure_text(&text, LABEL_SIZE),
+                font.line_height(LABEL_SIZE),
+            )
+        }
     }
+}
+
+/// The label of the option a select currently holds.
+///
+/// A select is validated against its own list before the host sees it, so a
+/// missing option means a plugin bug rather than user data. The value is then
+/// shown as it came, which is what a reader can act on, instead of an empty line.
+pub(crate) fn select_option_label<'a>(
+    value: &'a str,
+    options: &'a [bongocat_plugin_sdk::SelectOption],
+) -> &'a str {
+    options
+        .iter()
+        .find(|option| option.value == value)
+        .map_or(value, |option| option.label.as_str())
 }
 
 /// The text size a node's string is drawn at.
@@ -142,6 +172,7 @@ pub fn interactive_id(node: &UiNode) -> Option<&str> {
         UiNode::Button { id, .. } => Some(id),
         UiNode::Toggle { key, .. } => Some(key),
         UiNode::Integer { key, .. } => Some(key),
+        UiNode::Select { key, .. } => Some(key),
         UiNode::Text { .. } => None,
     }
 }

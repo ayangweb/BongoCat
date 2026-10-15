@@ -128,8 +128,13 @@ impl PluginManager {
     pub fn resume_enabled(&mut self) -> Result<(), PluginManagerError> {
         self.registry.resume_enabled().map_err(Into::into)
     }
-    pub fn keyboard_activity(&mut self, elapsed_ms: u64) {
-        self.registry.keyboard_activity(elapsed_ms);
+    /// Hand every running plugin the device edges counted since the last poll.
+    pub fn input_activity(
+        &mut self,
+        elapsed_ms: u64,
+        activity: bongocat_plugin_sdk::InputActivity,
+    ) {
+        self.registry.input_activity(elapsed_ms, activity);
     }
     /// Tell every running plugin that localizes its own views which catalog tag
     /// the host is showing.

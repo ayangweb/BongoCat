@@ -1,7 +1,7 @@
 //! Cross-module tests for the panel vocabulary.
 
 use crate::{HudFont, HudRect, PluginView};
-use bongocat_plugin_sdk::{Anchor, UiNode};
+use bongocat_plugin_sdk::{Anchor, SelectOption, UiNode};
 
 fn font() -> HudFont {
     crate::load_platform_font().expect("the platform ships a usable text face")
@@ -60,4 +60,45 @@ fn a_view_with_no_nodes_lays_out_nothing() {
     );
     assert!(layout.panel.is_empty());
     assert!(layout.interactive.is_empty());
+}
+
+/// The model window is a display surface: a select shows the option it holds,
+/// and it is still a hit target for the click the panel routes back.
+#[test]
+fn a_select_is_measured_by_its_chosen_option_and_stays_interactive() {
+    let font = font();
+    let options = vec![
+        SelectOption {
+            value: "skcm-blue".into(),
+            label: "SKCM Blue".into(),
+        },
+        SelectOption {
+            value: "box-navy".into(),
+            label: "Box Navy".into(),
+        },
+    ];
+    // The panel shows the option's label, not the value the plugin was handed
+    // back, and an unknown value falls back to showing itself rather than
+    // drawing nothing.
+    assert_eq!(
+        crate::layout::select_option_label("box-navy", &options),
+        "Box Navy"
+    );
+    assert_eq!(crate::layout::select_option_label("gone", &options), "gone");
+
+    let node = UiNode::Select {
+        key: "keyboard_pack".into(),
+        label: "Keyboard sound".into(),
+        value: "skcm-blue".into(),
+        options,
+    };
+    let view = PluginView {
+        anchor: Anchor::TopLeft,
+        nodes: vec![node],
+    };
+    let viewport = HudRect::new(0.0, 0.0, 300.0, 300.0);
+    let layout = crate::layout(&view, viewport, &font);
+    assert_eq!(layout.interactive.len(), 1);
+    assert_eq!(layout.interactive[0].id, "keyboard_pack");
+    assert!(layout.interactive[0].rect.width > 0.0);
 }

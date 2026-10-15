@@ -14,6 +14,33 @@ pub const MAX_MESSAGE_BYTES: usize = 256 * 1024;
 /// resolves an unknown system language to.
 pub const DEFAULT_LOCALE: &str = "en-US";
 
+/// Anonymous device edges, counted since the process started.
+///
+/// The host owns these counters and a plugin only ever compares them with the
+/// values it saw last, which is why they are absolute totals rather than deltas:
+/// a coalesced signal that was dropped while the host was busy cannot then be
+/// miscounted, and a plugin that started late still sees a consistent picture.
+///
+/// Nothing about which key, button, modifier or pointer position produced an
+/// edge is here — the four numbers are the whole message.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputActivity {
+    pub keyboard_down: u64,
+    pub keyboard_up: u64,
+    pub mouse_down: u64,
+    pub mouse_up: u64,
+}
+
+impl InputActivity {
+    /// Whether anything moved since `previous` was read.
+    ///
+    /// The host polls its own counters, so this is what keeps an idle desktop
+    /// from costing a message per poll.
+    pub fn advanced_since(self, previous: Self) -> bool {
+        self != previous
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ConfigValue {
@@ -39,6 +66,13 @@ pub enum Capability {
     PersistentState,
     /// Anonymous, coalesced keyboard-down activity; message contract version 1.
     KeyboardActivityV1,
+    /// Anonymous keyboard/mouse edge counters; message contract version 1.
+    ///
+    /// It supersedes [`Capability::KeyboardActivityV1`] for a plugin that has to
+    /// tell a press from a release, or a key from a mouse button: the message it
+    /// gates carries four monotonic counters rather than one, and still carries
+    /// no key identity, text, modifiers or button identity.
+    InputActivityV1,
     /// The plugin localizes the text it publishes; the host delivers the
     /// resolved catalog tag with [`HostMessage::Locale`].
     ///
@@ -219,6 +253,30 @@ pub enum UiNode {
         min: i64,
         max: i64,
     },
+    /// One choice out of a list the plugin itself publishes.
+    ///
+    /// The list travels with the node rather than living in the host because the
+    /// options are the plugin's own vocabulary — which typing sounds it carries,
+    /// which of them the user may pick — and the host has no way to invent them.
+    /// `value` is the option currently selected and always one of `options`, so a
+    /// plugin cannot publish a selection the list does not contain.
+    Select {
+        key: String,
+        label: String,
+        value: String,
+        options: Vec<SelectOption>,
+    },
+}
+
+/// One option of a [`UiNode::Select`].
+///
+/// The label is what the row draws and the value is what the plugin is handed
+/// back, which is the same split the host applies to every plugin copy: readable
+/// text never has to double as an identifier.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectOption {
+    pub value: String,
+    pub label: String,
 }
 
 /// The glyph a plugin asks the host to draw on one of its buttons.
@@ -290,9 +348,34 @@ impl PluginView {
                     min,
                     max,
                 } => valid_key(key) && label.len() <= 128 && min <= value && value <= max,
+                UiNode::Select {
+                    key,
+                    label,
+                    value,
+                    options,
+                } => {
+                    valid_key(key)
+                        && label.len() <= 128
+                        && !options.is_empty()
+                        && options.len() <= SELECT_OPTION_LIMIT
+                        && options.iter().all(|option| {
+                            valid_key(&option.value)
+                                && option.value.len() <= 128
+                                && option.label.len() <= 128
+                        })
+                        && options.iter().any(|option| &option.value == value)
+                }
             })
     }
 }
+
+/// How many options one [`UiNode::Select`] may publish.
+///
+/// The bound is the same kind of limit as the node count: a settings panel is a
+/// handful of controls, and a list longer than this is a catalog the plugin
+/// should have split rather than one the host should have to paginate.
+pub const SELECT_OPTION_LIMIT: usize = 64;
+
 pub fn valid_key(key: &str) -> bool {
     !key.is_empty()
         && key.len() <= 128
@@ -317,6 +400,22 @@ pub enum HostMessage {
     },
     KeyboardActivity {
         elapsed_ms: u64,
+    },
+    /// Anonymous device activity, as four monotonic counters.
+    ///
+    /// The host counts unique captured edges per device and direction; the
+    /// plugin compares them with the ones it saw last. Nothing about which key,
+    /// button, modifier or pointer position produced an edge crosses this
+    /// message, and repeats and reconciliation do not move any counter, so a
+    /// plugin cannot reconstruct what was typed from it.
+    ///
+    /// Counters rather than events because the boundary is a coalesced,
+    /// best-effort signal: the plugin plays a sound for "the keyboard was
+    /// released since I last looked", which is what a typing sound is, and the
+    /// reliable edge queue never waits behind it (ADR-0091).
+    InputActivity {
+        elapsed_ms: u64,
+        activity: InputActivity,
     },
     Action {
         id: String,
@@ -605,5 +704,95 @@ mod tests {
                 ..
             }]
         ));
+    }
+
+    /// A select is valid only when the choice it publishes is one of its own
+    /// options, so the host never draws a selection the list cannot show.
+    #[test]
+    fn a_select_carries_its_own_options_and_a_member_value() {
+        let node = |value: &str, options: Vec<SelectOption>| UiNode::Select {
+            key: "keyboard_pack".into(),
+            label: "Keyboard sound".into(),
+            value: value.into(),
+            options,
+        };
+        let options = vec![
+            SelectOption {
+                value: "alps-skcm-blue".into(),
+                label: "SKCM Blue · Alps".into(),
+            },
+            SelectOption {
+                value: "kailh-box-navy".into(),
+                label: "Box Navy · Kailh".into(),
+            },
+        ];
+        let view = PluginView {
+            nodes: vec![node("kailh-box-navy", options.clone())],
+            ..Default::default()
+        };
+        assert!(view.validate());
+
+        for invalid in [
+            node("unknown-pack", options.clone()),
+            node("kailh-box-navy", Vec::new()),
+            node(
+                "kailh-box-navy",
+                vec![SelectOption {
+                    value: "../escape".into(),
+                    label: "Box Navy".into(),
+                }],
+            ),
+        ] {
+            assert!(
+                !PluginView {
+                    nodes: vec![invalid],
+                    ..Default::default()
+                }
+                .validate()
+            );
+        }
+    }
+
+    /// The activity message carries counters and nothing else, and a plugin
+    /// frames it the same way on both sides of the pipe.
+    #[test]
+    fn input_activity_round_trips_counters_only() {
+        let mut bytes = Vec::new();
+        write_frame(
+            &mut bytes,
+            &Request {
+                sequence: 1,
+                message: HostMessage::InputActivity {
+                    elapsed_ms: 1_000,
+                    activity: InputActivity {
+                        keyboard_down: 3,
+                        keyboard_up: 2,
+                        mouse_down: 1,
+                        mouse_up: 1,
+                    },
+                },
+            },
+        )
+        .unwrap();
+        let request: Request = read_frame(&mut bytes.as_slice()).unwrap();
+        let HostMessage::InputActivity {
+            elapsed_ms,
+            activity,
+        } = request.message
+        else {
+            panic!("the frame is the activity message it was written as");
+        };
+        assert_eq!(elapsed_ms, 1_000);
+        assert_eq!(
+            activity,
+            InputActivity {
+                keyboard_down: 3,
+                keyboard_up: 2,
+                mouse_down: 1,
+                mouse_up: 1,
+            }
+        );
+        assert!(activity.advanced_since(InputActivity::default()));
+        assert!(!activity.advanced_since(activity));
     }
 }

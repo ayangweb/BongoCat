@@ -324,19 +324,30 @@ impl PluginRegistry {
         failure.map_or(Ok(()), Err)
     }
 
-    pub fn keyboard_activity(&mut self, elapsed_ms: u64) {
+    /// Hand every running plugin the device edges counted since the last poll.
+    ///
+    /// Which message a plugin gets is the capability it declared, not the
+    /// protocol version: one that asked for `input_activity_v1` is told the edges
+    /// of both devices and both directions, and one that only ever asked for
+    /// `keyboard_activity_v1` keeps receiving the single keyboard total it was
+    /// built against. A plugin that declared the newer capability is never sent
+    /// the older message as well, because it did not ask for two signals and the
+    /// duplicate would double every sound it plays.
+    pub fn input_activity(
+        &mut self,
+        elapsed_ms: u64,
+        activity: bongocat_plugin_sdk::InputActivity,
+    ) {
         for entry in self.entries.values_mut() {
-            if !entry
-                .metadata
-                .capabilities
-                .contains(&bongocat_plugin_sdk::Capability::KeyboardActivityV1)
-            {
+            let Some(message) =
+                activity_message(&entry.metadata.capabilities, elapsed_ms, activity)
+            else {
                 continue;
-            }
+            };
             let Some(process) = entry.process.as_mut() else {
                 continue;
             };
-            match process.exchange(HostMessage::KeyboardActivity { elapsed_ms }) {
+            match process.exchange(message) {
                 Ok(output) => entry.last_output = output,
                 Err(_) => {
                     entry.process.take();
@@ -344,6 +355,31 @@ impl PluginRegistry {
                 }
             }
         }
+    }
+}
+
+/// The activity message one plugin's declared capabilities entitle it to.
+///
+/// The capability is the gate, not the protocol version, and the newer one wins
+/// rather than adding to the older: a plugin that asked for both signals did not
+/// ask for two, and sending it the keyboard total as well would double every
+/// sound it plays. A plugin that declared neither is not running an activity
+/// plugin at all, so there is nothing to send it.
+fn activity_message(
+    capabilities: &[bongocat_plugin_sdk::Capability],
+    elapsed_ms: u64,
+    activity: bongocat_plugin_sdk::InputActivity,
+) -> Option<HostMessage> {
+    use bongocat_plugin_sdk::Capability;
+    if capabilities.contains(&Capability::InputActivityV1) {
+        Some(HostMessage::InputActivity {
+            elapsed_ms,
+            activity,
+        })
+    } else if capabilities.contains(&Capability::KeyboardActivityV1) {
+        Some(HostMessage::KeyboardActivity { elapsed_ms })
+    } else {
+        None
     }
 }
 
@@ -407,5 +443,49 @@ fn persist(entry: &Entry) -> std::io::Result<()> {
 impl Default for PluginRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bongocat_plugin_sdk::{Capability, InputActivity};
+
+    const ACTIVITY: InputActivity = InputActivity {
+        keyboard_down: 3,
+        keyboard_up: 2,
+        mouse_down: 1,
+        mouse_up: 1,
+    };
+
+    /// A plugin is sent the activity contract it asked for, and only that one.
+    #[test]
+    fn the_declared_capability_picks_the_activity_message() {
+        let message = |capabilities: &[Capability]| activity_message(capabilities, 500, ACTIVITY);
+
+        assert!(matches!(
+            message(&[Capability::InputActivityV1]),
+            Some(HostMessage::InputActivity {
+                elapsed_ms: 500,
+                activity,
+            }) if activity == ACTIVITY
+        ));
+        assert!(matches!(
+            message(&[Capability::KeyboardActivityV1]),
+            Some(HostMessage::KeyboardActivity { elapsed_ms: 500 })
+        ));
+        // The newer capability supersedes the older one rather than joining it:
+        // a plugin that declared both is still sent one message, or it would
+        // play every sound twice.
+        assert!(matches!(
+            message(&[Capability::KeyboardActivityV1, Capability::InputActivityV1,]),
+            Some(HostMessage::InputActivity {
+                elapsed_ms: 500,
+                activity,
+            }) if activity == ACTIVITY
+        ));
+        // A plugin that asked for neither is not an activity plugin at all.
+        assert!(message(&[]).is_none());
+        assert!(message(&[Capability::ModelUi]).is_none());
     }
 }

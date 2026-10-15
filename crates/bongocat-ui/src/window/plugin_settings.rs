@@ -22,6 +22,54 @@ use plugins_page::action_icon;
 /// one line.
 const PLUGIN_SETTINGS_PANEL_WIDTH: Pixels = px(440.0);
 
+/// One option of a dropdown a plugin published.
+///
+/// The value is what the plugin is handed back and the label is what the row
+/// draws, which is the same split the protocol makes: a plugin's option list is
+/// its own vocabulary, and the panel never has to guess a value from a label it
+/// is showing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PluginSettingsSelectChoice {
+    value: SharedString,
+    label: SharedString,
+}
+
+impl PluginSettingsSelectChoice {
+    fn new(value: &str, label: &str) -> Self {
+        Self {
+            value: SharedString::from(value.to_owned()),
+            label: SharedString::from(label.to_owned()),
+        }
+    }
+}
+
+impl SearchableListItem for PluginSettingsSelectChoice {
+    /// The option's value rather than the whole row, so a plugin that relabels
+    /// an option it still holds keeps the selection instead of losing it.
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.value
+    }
+}
+
+/// The dropdowns one open panel draws, keyed by the config key each writes.
+///
+/// A select is an `Entity` because that is what the component's state is, and
+/// the panel is rebuilt from the plugin's published tree on every frame: keeping
+/// the entities here is what lets a plugin republish its option list without the
+/// open menu losing its place. The subscriptions are held beside them because a
+/// dropped `Subscription` stops delivering the choice the user made.
+#[derive(Default)]
+struct PluginSettingsSelects {
+    entities: BTreeMap<String, Entity<PluginSettingsSelectState>>,
+    subscriptions: Vec<gpui_kit::Subscription>,
+}
+
 /// The one plugin whose configuration panel is open.
 ///
 /// The open panel is a value rather than a window flag because the view has to
@@ -38,6 +86,8 @@ pub(crate) struct PluginSettingsDraft {
     /// builder must not read the `SettingsView` that `render` already holds. The
     /// published title, controls and in-flight commands are the frame's inputs.
     pub(crate) snapshot: Rc<RefCell<PluginSettingsSnapshot>>,
+    /// The dropdowns this panel draws, one per select the plugin published.
+    selects: Rc<RefCell<PluginSettingsSelects>>,
 }
 
 /// What one frame of a plugin's configuration panel draws.
@@ -105,12 +155,16 @@ impl SettingsView {
                 .settings
                 .iter()
                 .filter_map(|node| match node {
-                    UiNode::Toggle { key, .. } | UiNode::Integer { key, .. } => Some(key.clone()),
+                    UiNode::Toggle { key, .. }
+                    | UiNode::Integer { key, .. }
+                    | UiNode::Select { key, .. } => Some(key.clone()),
                     _ => None,
                 })
                 .filter(|key| state.pending_key(&plugin, key))
                 .collect(),
         };
+        let selects = draft.selects.clone();
+        sync_plugin_selects(&selects, &plugin, &snapshot.nodes, window, cx);
         let draft = self
             .plugin_settings
             .as_mut()
@@ -125,9 +179,16 @@ impl SettingsView {
         }
         draft.open = true;
         let snapshot = draft.snapshot.clone();
+        let selects = draft.selects.clone();
         let view = cx.entity().downgrade();
         window.open_dialog(cx, move |dialog, _, cx| {
-            build_plugin_settings_dialog(snapshot.clone(), view.clone(), dialog, cx)
+            build_plugin_settings_dialog(
+                snapshot.clone(),
+                selects.clone(),
+                view.clone(),
+                dialog,
+                cx,
+            )
         });
     }
 
@@ -169,6 +230,7 @@ impl SettingsView {
                 busy: state.loading,
                 pending_keys: BTreeSet::new(),
             })),
+            selects: Rc::new(RefCell::new(PluginSettingsSelects::default())),
         });
         self.sync_plugin_settings_dialog(window, cx);
     }
@@ -209,6 +271,84 @@ impl SettingsView {
     }
 }
 
+/// Keep one dropdown per select node the panel draws in step with the plugin.
+///
+/// A dropdown is an entity, so it is created once for the lifetime of the open
+/// panel and only its items and selection are refreshed afterwards: recreating it
+/// on every frame would close a menu the user has open, and rebuilding the items
+/// is what makes a plugin's republished option list show up. The selection is
+/// written back through the same typed command every other control uses, so the
+/// plugin stays the one that decides whether a value is acceptable.
+fn sync_plugin_selects(
+    selects: &Rc<RefCell<PluginSettingsSelects>>,
+    plugin: &str,
+    nodes: &[UiNode],
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) {
+    for node in nodes {
+        let UiNode::Select {
+            key,
+            value,
+            options,
+            ..
+        } = node
+        else {
+            continue;
+        };
+        let choices: Vec<PluginSettingsSelectChoice> = options
+            .iter()
+            .map(|option| PluginSettingsSelectChoice::new(&option.value, &option.label))
+            .collect();
+        let selected = SharedString::from(value.clone());
+        let current = choices
+            .iter()
+            .position(|choice| choice.value == selected)
+            .unwrap_or(0);
+        let mut selects = selects.borrow_mut();
+        match selects.entities.get(key) {
+            Some(entity) => {
+                entity.update(cx, |state, cx| {
+                    state.set_items(SearchableVec::new(choices), window, cx);
+                    state.set_selected_value(&selected, window, cx);
+                });
+            }
+            None => {
+                let entity = cx.new(|cx| {
+                    SelectState::new(
+                        SearchableVec::new(choices),
+                        Some(IndexPath::default().row(current)),
+                        window,
+                        cx,
+                    )
+                });
+                let (field_plugin, field_key) = (plugin.to_owned(), key.clone());
+                let subscription = cx.subscribe_in(
+                    &entity,
+                    window,
+                    move |view: &mut SettingsView,
+                          _: &Entity<PluginSettingsSelectState>,
+                          event: &SelectEvent<SearchableVec<PluginSettingsSelectChoice>>,
+                          _: &mut Window,
+                          cx: &mut Context<SettingsView>| {
+                        let SelectEvent::Confirm(Some(value)) = event else {
+                            return;
+                        };
+                        view.configure_plugin(
+                            &field_plugin,
+                            &field_key,
+                            ConfigValue::Text(value.to_string()),
+                            cx,
+                        );
+                    },
+                );
+                selects.subscriptions.push(subscription);
+                selects.entities.insert(key.clone(), entity);
+            }
+        }
+    }
+}
+
 /// Build one frame of a plugin's configuration panel.
 ///
 /// The builder reruns whenever the window's dialog layer repaints, so its inputs
@@ -218,6 +358,7 @@ impl SettingsView {
 /// stays the only thing that decides what its configuration is.
 fn build_plugin_settings_dialog(
     snapshot: Rc<RefCell<PluginSettingsSnapshot>>,
+    selects: Rc<RefCell<PluginSettingsSelects>>,
     view: WeakEntity<SettingsView>,
     dialog: Dialog,
     _cx: &mut App,
@@ -289,18 +430,50 @@ fn build_plugin_settings_dialog(
                     .w_full()
                     .gap_3()
                     .children(nodes.iter().enumerate().map(|(index, node)| {
-                        settings_field(node, index, locale, busy, &pending_keys, view.clone())
+                        settings_field(
+                            node,
+                            index,
+                            locale,
+                            busy,
+                            &pending_keys,
+                            view.clone(),
+                            &selects,
+                        )
                     })),
             )
         })
 }
 
+/// One plugin dropdown, drawn with the window it is painted in.
+///
+/// The element exists for the menu width alone: `Select` sizes its menu from its
+/// trigger, and the trigger is only as wide as the option the plugin currently
+/// holds, so every longer option — the one a user scanning the list is looking
+/// for — would be ellipsized. The width is measured at paint time, when there is
+/// a window with a text system to measure through, which is what a `RenderOnce`
+/// element is handed.
+#[derive(gpui_kit::IntoElement)]
+struct PluginSettingsSelect {
+    state: Entity<PluginSettingsSelectState>,
+    labels: Vec<SharedString>,
+    disabled: bool,
+}
+
+impl RenderOnce for PluginSettingsSelect {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        Select::new(&self.state)
+            .menu_width(dropdown_menu_width(window, self.labels))
+            .disabled(self.disabled)
+    }
+}
+
 /// One control of a plugin's configuration panel.
 ///
 /// Each node keeps the meaning the plugin gave it: a button runs the action it
-/// published, a toggle writes its key, and a number steps inside the range the
-/// plugin declared. A node carrying its own in-flight state draws that state on
-/// the control itself rather than beside it.
+/// published, a toggle writes its key, a number steps inside the range the plugin
+/// declared, and a select writes the option the user picked. A node carrying its
+/// own in-flight state draws that state on the control itself rather than beside
+/// it.
 fn settings_field(
     node: &UiNode,
     index: usize,
@@ -308,6 +481,7 @@ fn settings_field(
     busy: bool,
     pending_keys: &BTreeSet<String>,
     view: WeakEntity<SettingsView>,
+    selects: &Rc<RefCell<PluginSettingsSelects>>,
 ) -> AnyElement {
     match node {
         UiNode::Text { text } => div()
@@ -433,6 +607,46 @@ fn settings_field(
                 );
             }
             row.child(controls).into_any_element()
+        }
+        UiNode::Select {
+            key,
+            label,
+            options,
+            ..
+        } => {
+            let row = div()
+                .id(("plugin-setting-select", index))
+                .test_support()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .child(div().min_w_0().flex_1().text_sm().child(label.clone()));
+            // The dropdown is created by `sync_plugin_selects` before the panel
+            // paints, and its own list is what sizes the menu: a plugin's option
+            // labels are its own, so the menu has to be measured from them rather
+            // than from the trigger the component would otherwise size itself by.
+            let select = selects
+                .borrow()
+                .entities
+                .get(key)
+                .cloned()
+                .expect("every select node has its dropdown before the panel draws it");
+            let labels: Vec<SharedString> = options
+                .iter()
+                .map(|option| SharedString::from(option.label.clone()))
+                .collect();
+            row.child(
+                div()
+                    .flex_shrink_0()
+                    .max_w(px(220.0))
+                    .child(PluginSettingsSelect {
+                        state: select,
+                        labels,
+                        disabled: busy || pending_keys.contains(key),
+                    }),
+            )
+            .into_any_element()
         }
     }
 }

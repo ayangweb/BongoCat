@@ -1,6 +1,7 @@
 //! Real pipe protocol; the audio-device test is opt-in for hardware hosts.
 use bongocat_plugin_sdk::{
-    HostMessage, PluginOutput, Request, Response, UiNode, read_frame, write_frame,
+    ConfigValue, HostMessage, InputActivity, PluginOutput, Request, Response, UiNode, read_frame,
+    write_frame,
 };
 use std::{
     io::{BufReader, BufWriter},
@@ -61,15 +62,49 @@ impl Drop for Process {
 fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
     let mut process = Process::start();
     process.exchange(HostMessage::Start {
-        config: [(
-            "volume".into(),
-            bongocat_plugin_sdk::ConfigValue::Integer(0),
-        )]
-        .into(),
+        config: [("volume".into(), ConfigValue::Integer(0))].into(),
         state: Vec::new(),
     });
-    for elapsed_ms in [0, 50, 100, 500] {
-        process.exchange(HostMessage::KeyboardActivity { elapsed_ms });
+    // Muted, so a host without an audio device still exercises the whole path:
+    // the counters move, the plugin admits each edge and resolves each set.
+    for (elapsed_ms, activity) in [
+        (
+            0,
+            InputActivity {
+                keyboard_down: 1,
+                ..InputActivity::default()
+            },
+        ),
+        (
+            50,
+            InputActivity {
+                keyboard_down: 1,
+                keyboard_up: 1,
+                ..InputActivity::default()
+            },
+        ),
+        (
+            100,
+            InputActivity {
+                keyboard_down: 1,
+                keyboard_up: 1,
+                mouse_down: 1,
+                mouse_up: 1,
+            },
+        ),
+    ] {
+        let output = process.exchange(HostMessage::InputActivity {
+            elapsed_ms,
+            activity,
+        });
+        assert!(
+            output
+                .settings
+                .nodes
+                .iter()
+                .any(|node| matches!(node, UiNode::Select { key, .. } if key == "keyboard_pack")),
+            "the panel publishes the sound pickers"
+        );
     }
     let stopped = process.exchange(HostMessage::Stop);
     assert!(stopped.model.nodes.is_empty());
@@ -77,10 +112,10 @@ fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
 }
 #[test]
 #[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
-fn preview_and_keyboard_activity_use_the_real_audio_output() {
+fn preview_and_device_activity_use_the_real_audio_output() {
     let mut process = Process::start();
     process.exchange(HostMessage::Start {
-        config: Default::default(),
+        config: [("mouse_enabled".into(), ConfigValue::Boolean(true))].into(),
         state: Vec::new(),
     });
     let preview = process.exchange(HostMessage::Action {
@@ -92,10 +127,25 @@ fn preview_and_keyboard_activity_use_the_real_audio_output() {
         preview.settings
     );
     process.exchange(HostMessage::Pause);
-    let paused = process.exchange(HostMessage::KeyboardActivity { elapsed_ms: 500 });
+    let paused = process.exchange(HostMessage::InputActivity {
+        elapsed_ms: 500,
+        activity: InputActivity {
+            keyboard_down: 1,
+            keyboard_up: 1,
+            ..InputActivity::default()
+        },
+    });
     assert!(!previewing(&paused));
     process.exchange(HostMessage::Resume);
-    let typed = process.exchange(HostMessage::KeyboardActivity { elapsed_ms: 1000 });
+    let typed = process.exchange(HostMessage::InputActivity {
+        elapsed_ms: 1000,
+        activity: InputActivity {
+            keyboard_down: 2,
+            keyboard_up: 2,
+            mouse_down: 1,
+            mouse_up: 1,
+        },
+    });
     assert!(
         previewing(&typed),
         "typing playback did not start: {:?}",

@@ -721,6 +721,21 @@ mod tests {
                     icon: Some(bongocat_plugin_sdk::ActionIcon::Volume),
                     loading: false,
                 },
+                UiNode::Select {
+                    key: "keyboard_pack".into(),
+                    label: "Keyboard sound".into(),
+                    value: "skcm-blue".into(),
+                    options: vec![
+                        bongocat_plugin_sdk::SelectOption {
+                            value: "auto".into(),
+                            label: "Follow the keyboard sound".into(),
+                        },
+                        bongocat_plugin_sdk::SelectOption {
+                            value: "skcm-blue".into(),
+                            label: "SKCM Blue · Alps".into(),
+                        },
+                    ],
+                },
             ],
         }
     }
@@ -966,6 +981,21 @@ mod tests {
                 );
             });
         }
+        // A select draws the component's own trigger, and its bounds prove the
+        // plugin's options reached a real dropdown with room to draw in. The row
+        // itself is published by the panel, and the panel would have panicked
+        // while building it if the dropdown the plugin's options created were
+        // missing.
+        let row = visual.update(|window, _| {
+            window
+                .try_find(ElementId::from(("plugin-setting-select", 3usize)))
+                .expect("the plugin's select row must be painted")
+                .bounds()
+        });
+        assert!(
+            row.size.width > px(0.) && row.size.height > px(0.),
+            "the plugin dropdown has to occupy its row"
+        );
         // Closing the panel drops the draft, so the next open is a fresh read of
         // whatever the plugin is publishing then.
         // The dialog slides in on frame time, so it has to settle before pointer

@@ -142,6 +142,9 @@ impl InputState {
                                 if matches!(control, InputControl::Key(_)) {
                                     self.diagnostics.keyboard_activity =
                                         self.diagnostics.keyboard_activity.saturating_add(1);
+                                } else if matches!(control, InputControl::Mouse(_)) {
+                                    self.diagnostics.mouse_activity =
+                                        self.diagnostics.mouse_activity.saturating_add(1);
                                 }
                                 self.diagnostics.captured_down =
                                     self.diagnostics.captured_down.saturating_add(1);
@@ -163,6 +166,21 @@ impl InputState {
                             InputSource::Capture => {
                                 self.diagnostics.captured_up =
                                     self.diagnostics.captured_up.saturating_add(1);
+                                // A captured release is a physical edge whatever
+                                // the pressed set believed about it; a
+                                // reconciled one is the runtime's own correction
+                                // and is counted by the reconciliation counters.
+                                match control {
+                                    InputControl::Key(_) => {
+                                        self.diagnostics.keyboard_release =
+                                            self.diagnostics.keyboard_release.saturating_add(1);
+                                    }
+                                    InputControl::Mouse(_) => {
+                                        self.diagnostics.mouse_release =
+                                            self.diagnostics.mouse_release.saturating_add(1);
+                                    }
+                                    InputControl::Gamepad(_) => {}
+                                }
                             }
                             InputSource::Reconciliation => {
                                 if released {

@@ -19,7 +19,7 @@ use bongocat_plugin_hud::{
 use bongocat_plugin_manager::{
     AvailablePlugin, PluginManager, PluginManagerError, PluginSource, PluginState, RegistryError,
 };
-use bongocat_plugin_sdk::{ConfigValue, PluginOutput};
+use bongocat_plugin_sdk::{ConfigValue, InputActivity, PluginOutput};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -90,7 +90,7 @@ impl PluginService {
         storage_root: &Path,
         capacity: usize,
         source: PluginSource,
-        keyboard_activity: Option<Box<dyn Fn() -> u64 + Send>>,
+        input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
     ) -> Result<(Self, PluginOverlayHandles), PluginServiceStartError> {
         let directory = plugin_directory(storage_root);
         let (client, endpoint) = PluginServiceClient::bounded(capacity);
@@ -112,7 +112,7 @@ impl PluginService {
                     },
                     worker_stop,
                     source,
-                    keyboard_activity,
+                    input_activity,
                 );
             })
             .map_err(PluginServiceStartError::Spawn)?;
@@ -172,8 +172,8 @@ struct Worker {
     offers: Vec<AvailablePlugin>,
     job: Option<CatalogJob>,
     catalog_stop: Arc<AtomicBool>,
-    keyboard_activity: Option<Box<dyn Fn() -> u64 + Send>>,
-    last_keyboard_activity: u64,
+    input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
+    last_input_activity: InputActivity,
     endpoint: PluginServiceEndpoint,
     hud: OverlaySinks,
     compositor: Option<HudCompositor>,
@@ -221,7 +221,7 @@ fn run(
     hud: OverlaySinks,
     stop: Arc<AtomicBool>,
     source: PluginSource,
-    keyboard_activity: Option<Box<dyn Fn() -> u64 + Send>>,
+    input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
 ) {
     let Ok(mut manager) = PluginManager::new(directory) else {
         // The store could not be opened at all. The service still answers, so the
@@ -244,15 +244,17 @@ fn run(
     if let Err(failure) = manager.resume_enabled() {
         error = Some(failure.to_string());
     }
-    let last_keyboard_activity = keyboard_activity.as_ref().map_or(0, |read| read());
+    let last_input_activity = input_activity
+        .as_ref()
+        .map_or(InputActivity::default(), |read| read());
     let mut worker = Worker {
         manager,
         source,
         offers: Vec::new(),
         job: None,
         catalog_stop: Arc::clone(&stop),
-        keyboard_activity,
-        last_keyboard_activity,
+        input_activity,
+        last_input_activity,
         endpoint,
         hud,
         compositor: load_platform_font().ok().map(HudCompositor::new),
@@ -311,7 +313,7 @@ impl Worker {
         while !stop.load(Ordering::Acquire) {
             self.finish_catalog_job();
             self.drain_commands();
-            self.dispatch_keyboard_activity();
+            self.dispatch_input_activity();
             self.drain_interactions();
             self.dispatch_tick();
             self.compose();
@@ -377,14 +379,21 @@ impl Worker {
         }
     }
 
-    fn dispatch_keyboard_activity(&mut self) {
-        let Some(read) = &self.keyboard_activity else {
+    /// Hand the running plugins the device activity that happened since the last
+    /// poll.
+    ///
+    /// The counters are absolute, so an unchanged read is what says nothing
+    /// happened: an idle desktop costs one comparison per loop and no message at
+    /// all, and a plugin that declared no activity capability is skipped inside
+    /// the manager rather than here.
+    fn dispatch_input_activity(&mut self) {
+        let Some(read) = &self.input_activity else {
             return;
         };
         let current = read();
-        if current != self.last_keyboard_activity {
-            self.last_keyboard_activity = current;
-            self.manager.keyboard_activity(self.now_ms());
+        if current.advanced_since(self.last_input_activity) {
+            self.last_input_activity = current;
+            self.manager.input_activity(self.now_ms(), current);
         }
     }
 

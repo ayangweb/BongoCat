@@ -1,6 +1,6 @@
 [package]
 name = "bongocat-typing-sound"
-version = "1.0.0"
+version = "1.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 bongocat-plugin-sdk.workspace = true
-rodio = { workspace = true, features = ["mp3"] }
+rodio = { workspace = true, features = ["wav"] }
 
 [lints]
 workspace = true

@@ -345,12 +345,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &plugin_storage_root,
             16,
             dev_plugins::source(),
+            // The two devices and the two directions are read as four counters
+            // and nothing else: no key, button, modifier or pointer position is
+            // ever measured here, so a plugin cannot learn what was typed from
+            // the activity it is given (ADR-0091).
             Some(Box::new(move || {
-                activity_runtime
-                    .snapshot()
-                    .input
-                    .diagnostics
-                    .keyboard_activity
+                let diagnostics = activity_runtime.input_diagnostics();
+                bongocat_plugin_service::InputActivity {
+                    keyboard_down: diagnostics.keyboard_activity,
+                    keyboard_up: diagnostics.keyboard_release,
+                    mouse_down: diagnostics.mouse_activity,
+                    mouse_up: diagnostics.mouse_release,
+                }
             })),
         ) {
             Ok(started) => (Some(started.0), Some(started.1)),

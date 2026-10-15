@@ -202,6 +202,14 @@ pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'stat
 
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
+/// One dropdown of a plugin's own configuration panel.
+///
+/// Its options are the plugin's, so unlike the window's own dropdowns the list
+/// is not a fixed catalog: it is rebuilt from whatever the open plugin published
+/// last.
+pub(crate) type PluginSettingsSelectState =
+    SelectState<SearchableVec<plugin_settings::PluginSettingsSelectChoice>>;
+
 /// The appearance a settings window paints its first frame with.
 ///
 /// The window is created and shown before the settings service answers its first
