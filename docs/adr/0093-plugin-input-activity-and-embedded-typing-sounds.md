@@ -122,8 +122,10 @@ plugin that declared only `keyboard_activity_v1` keeps receiving the older
 message, a view with no `Select` node is unaffected, and the typing-sound
 plugin's earlier keys (`volume`, `cooldown_ms`) keep parsing, so a session saved
 by the previous build still starts. No config, state, session or catalog format
-changes and `schema_version` stays 1. The plugin's package version is bumped to
-1.1.0 because ADR-0091 makes an installed package version immutable.
+changes and `schema_version` stays 1. The plugin's package version remains 1.0.0
+throughout this unreleased PR; ADR-0091 requires a new version only for an update
+after the first release. Both plugins accept application versions `>=2.3.1`
+without an upper bound.
 
 ## Validation
 

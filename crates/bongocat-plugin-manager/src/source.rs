@@ -193,6 +193,32 @@ pub fn is_newer(available: &str, installed: &str) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
+        for bytes in [
+            include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/typing-sound/plugin.json").as_slice(),
+        ] {
+            let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
+            let requirement = VersionReq::parse(&manifest.metadata.app_versions).unwrap();
+            for (app, supported) in [
+                ("2.3.0", false),
+                ("2.3.1", true),
+                ("2.4.0", true),
+                ("3.0.0", true),
+                ("99.0.0", true),
+            ] {
+                assert_eq!(
+                    requirement.matches(&Version::parse(app).unwrap()),
+                    supported,
+                    "{} application compatibility for {app}",
+                    manifest.metadata.id,
+                );
+            }
+        }
+    }
+
     fn package(id: &str, version: &str, app_versions: &str) -> Vec<u8> {
         let mut manifest: crate::PluginManifest =
             serde_json::from_slice(include_bytes!("../../../plugins/pomodoro/plugin.json"))

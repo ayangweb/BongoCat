@@ -54,8 +54,10 @@ It refuses unsigned output and changed bytes under an existing release asset
 name, and never uploads anything. Upload the complete output set to the product's
 GitHub release only after the asset license/release gates pass.
 
-Installed package versions are immutable; local plugin code changes intended as
-an update must bump the plugin manifest and package version before rebuilding.
+Published package versions are immutable; changes intended as an update after
+release must bump the plugin manifest and package version before rebuilding.
+During the current unreleased plugin-system PR, both plugins stay at 1.0.0.
+Both declare `app_versions: ">=2.3.1"`, with no upper application-version bound.
 Config/state and enabled status use a bounded, atomic v1 session envelope outside
 the version directory. Missing optional session fields default safely; disabled
 and uninstalled plugins do not restart automatically. Graceful shutdown preserves

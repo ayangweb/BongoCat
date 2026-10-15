@@ -4,7 +4,7 @@
     "name": "Pomodoro",
     "description": "A focus timer you can pause and restart",
     "version": "1.0.0",
-    "app_versions": ">=2.3.1, <3.0.0",
+    "app_versions": ">=2.3.1",
     "protocol_version": 1,
     "entry": "bongocat-pomodoro",
     "icon": {
