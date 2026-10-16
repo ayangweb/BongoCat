@@ -27,19 +27,6 @@ impl Process {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        /// The executable for this platform. A manifest names the base name; Windows
-        /// packages append `.exe`, so the same manifest installs on both platforms.
-        fn entry_path(root: &Path, entry: &str) -> std::path::PathBuf {
-            let path = root.join(entry);
-            #[cfg(target_os = "windows")]
-            if !path.is_file() {
-                let with_extension = root.join(format!("{entry}.exe"));
-                if with_extension.is_file() {
-                    return with_extension;
-                }
-            }
-            path
-        }
 
         #[cfg(target_os = "windows")]
         {
@@ -115,7 +102,11 @@ impl Process {
         if response.sequence != self.sequence {
             return Err(io::Error::other("plugin response sequence mismatch"));
         }
-        let output = response.result.map_err(io::Error::other)?;
+        // A valid refusal consumed its sequence and leaves the protocol usable.
+        // Transport/protocol errors, unlike invalid user configuration, are fatal.
+        let output = response
+            .result
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         if !output.validate() {
             return Err(io::Error::other("plugin output exceeds limits"));
         }
@@ -128,13 +119,17 @@ impl Process {
         while self.child.try_wait()?.is_none() && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(5));
         }
-        if self.child.try_wait()?.is_none() {
+        let status = self.child.try_wait()?;
+        if status.is_none() {
             let _ = self.child.kill();
             let _ = self.child.wait();
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "plugin shutdown deadline",
             ));
+        }
+        if !status.is_some_and(|status| status.success()) {
+            return Err(io::Error::other("plugin exited unsuccessfully"));
         }
         output
     }
@@ -147,5 +142,93 @@ impl Drop for Process {
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
         }
+    }
+}
+
+/// A manifest names a base name; Windows packages may append `.exe`.
+pub(crate) fn entry_path(root: &Path, entry: &str) -> std::path::PathBuf {
+    let path = root.join(entry);
+    #[cfg(target_os = "windows")]
+    if !path.is_file() {
+        let with_extension = root.join(format!("{entry}.exe"));
+        if with_extension.is_file() {
+            return with_extension;
+        }
+    }
+    path
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn metadata() -> PluginMetadata {
+        let mut metadata = serde_json::from_str::<crate::PluginManifest>(include_str!(
+            "../../../plugins/pomodoro/plugin.json"
+        ))
+        .unwrap()
+        .metadata;
+        metadata.entry = "plugin".into();
+        metadata
+    }
+
+    fn script(body: &str) -> tempfile::TempDir {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("plugin");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        directory
+    }
+
+    fn frame(sequence: u64) -> String {
+        let mut bytes = Vec::new();
+        write_frame(
+            &mut bytes,
+            &Response {
+                sequence,
+                result: Ok(PluginOutput::default()),
+            },
+        )
+        .unwrap();
+        bytes.iter().map(|byte| format!("\\{byte:03o}")).collect()
+    }
+
+    #[test]
+    fn malformed_sequences_and_nonresponsive_children_fail_closed() {
+        let metadata = metadata();
+        let wrong_sequence = script(&format!("printf '{}'\nexec sleep 10", frame(99)));
+        assert!(Process::start(wrong_sequence.path(), &metadata).is_err());
+        let unresponsive = script("exec sleep 10");
+        let error = Process::start(unresponsive.path(), &metadata)
+            .err()
+            .unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn stop_requires_a_successful_exit_not_only_a_valid_response() {
+        let metadata = metadata();
+        let request_size = |sequence, message| {
+            let mut bytes = Vec::new();
+            write_frame(&mut bytes, &Request { sequence, message }).unwrap();
+            bytes.len()
+        };
+        let handshake = request_size(
+            1,
+            HostMessage::Handshake {
+                protocol_version: PROTOCOL_VERSION,
+                id: metadata.id.clone(),
+            },
+        );
+        let stop = request_size(2, HostMessage::Stop);
+        let directory = script(&format!(
+            "dd bs=1 count={handshake} >/dev/null 2>/dev/null\nprintf '{}'\ndd bs=1 count={stop} >/dev/null 2>/dev/null\nprintf '{}'\nexit 7",
+            frame(1),
+            frame(2)
+        ));
+        let mut process = Process::start(directory.path(), &metadata).unwrap();
+        let error = process.stop().unwrap_err();
+        assert_eq!(error.to_string(), "plugin exited unsuccessfully");
     }
 }

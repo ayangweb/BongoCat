@@ -316,7 +316,15 @@ pub struct PluginView {
 
 impl PluginView {
     pub fn validate(&self) -> bool {
+        let mut ids = std::collections::BTreeSet::new();
         self.nodes.len() <= 16
+            && self.nodes.iter().all(|node| match node {
+                UiNode::Text { .. } => true,
+                UiNode::Button { id, .. } => ids.insert(id),
+                UiNode::Toggle { key, .. }
+                | UiNode::Integer { key, .. }
+                | UiNode::Select { key, .. } => ids.insert(key),
+            })
             && self.nodes.iter().all(|node| match node {
                 UiNode::Text { text } => text.len() <= 1024,
                 UiNode::Button { id, label, .. } => valid_key(id) && label.len() <= 128,
@@ -334,12 +342,14 @@ impl PluginView {
                     value,
                     options,
                 } => {
+                    let mut values = std::collections::BTreeSet::new();
                     valid_key(key)
                         && label.len() <= 128
                         && !options.is_empty()
                         && options.len() <= SELECT_OPTION_LIMIT
                         && options.iter().all(|option| {
-                            valid_key(&option.value)
+                            values.insert(&option.value)
+                                && valid_key(&option.value)
                                 && option.value.len() <= 128
                                 && option.label.len() <= 128
                         })
@@ -554,6 +564,35 @@ mod tests {
             }
             .validate()
         );
+    }
+
+    #[test]
+    fn rejects_duplicate_control_ids_and_select_values() {
+        let duplicate_controls = PluginView {
+            nodes: vec![UiNode::button("same", "One"), UiNode::button("same", "Two")],
+            ..Default::default()
+        };
+        assert!(!duplicate_controls.validate());
+
+        let duplicate_options = PluginView {
+            nodes: vec![UiNode::Select {
+                key: "pack".into(),
+                label: "Pack".into(),
+                value: "one".into(),
+                options: vec![
+                    SelectOption {
+                        value: "one".into(),
+                        label: "One".into(),
+                    },
+                    SelectOption {
+                        value: "one".into(),
+                        label: "Also one".into(),
+                    },
+                ],
+            }],
+            ..Default::default()
+        };
+        assert!(!duplicate_options.validate());
     }
 
     fn localized_metadata() -> PluginMetadata {

@@ -909,7 +909,10 @@ impl Plugin for TypingSound {
             }
             HostMessage::Reset => {
                 self.playback.stop();
-                *self = Self::default();
+                *self = Self {
+                    locale: self.locale.take(),
+                    ..Self::default()
+                };
             }
             HostMessage::Handshake { .. } => return Err("Handshake belongs to SDK".into()),
         }
@@ -917,8 +920,8 @@ impl Plugin for TypingSound {
     }
 }
 
-fn main() {
-    let _ = bongocat_plugin_sdk::run(&mut TypingSound::default());
+fn main() -> std::io::Result<()> {
+    bongocat_plugin_sdk::run(&mut TypingSound::default())
 }
 
 #[cfg(test)]
@@ -926,6 +929,23 @@ mod tests {
     use super::*;
     use bongocat_plugin_sdk::ActionIcon;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn resetting_settings_keeps_the_application_language() {
+        let mut plugin = TypingSound::default();
+        plugin
+            .handle(HostMessage::Locale {
+                locale: "zh-CN".into(),
+            })
+            .unwrap();
+        plugin
+            .configure(&[("volume".into(), ConfigValue::Integer(80))].into())
+            .unwrap();
+        let output = plugin.handle(HostMessage::Reset).unwrap();
+        assert!(output.validate());
+        assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        assert_eq!(button_label(&output, "preview"), "试听");
+    }
 
     /// Every embedded set has to be playable, because nothing else can repair it
     /// after the fact: a set that ships a file this build cannot decode would

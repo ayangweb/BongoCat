@@ -37,7 +37,8 @@ impl AvailablePlugin {
     pub fn read(&self, stop: &AtomicBool) -> Result<Vec<u8>, String> {
         let bytes = match &self.location {
             PackageLocation::Local(path) => {
-                fs::read(path).map_err(|_| "local plugin package is unavailable".to_owned())?
+                install::read_bounded(path, catalog::MAX_DOWNLOAD_BYTES)
+                    .map_err(|_| "local plugin package is unavailable".to_owned())?
             }
             PackageLocation::Https(url) => {
                 catalog::download_blocking(url, stop).map_err(|error| error.to_string())?
@@ -91,7 +92,8 @@ impl PluginSource {
                     {
                         return Err("local plugin package exceeds size limit".into());
                     }
-                    let bytes = fs::read(entry.path()).map_err(|error| error.to_string())?;
+                    let bytes = install::read_bounded(&entry.path(), catalog::MAX_DOWNLOAD_BYTES)
+                        .map_err(|error| error.to_string())?;
                     let manifest =
                         install::inspect_package(&bytes).map_err(|error| error.to_string())?;
                     candidates.push(AvailablePlugin {

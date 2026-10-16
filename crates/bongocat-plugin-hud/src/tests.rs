@@ -62,10 +62,9 @@ fn a_view_with_no_nodes_lays_out_nothing() {
     assert!(layout.interactive.is_empty());
 }
 
-/// The model window is a display surface: a select shows the option it holds,
-/// and it is still a hit target for the click the panel routes back.
+/// Selects are display-only on the model window, not action buttons.
 #[test]
-fn a_select_is_measured_by_its_chosen_option_and_stays_interactive() {
+fn a_select_is_measured_by_its_chosen_option_without_an_action_target() {
     let font = font();
     let options = vec![
         SelectOption {
@@ -98,7 +97,42 @@ fn a_select_is_measured_by_its_chosen_option_and_stays_interactive() {
     };
     let viewport = HudRect::new(0.0, 0.0, 300.0, 300.0);
     let layout = crate::layout(&view, viewport, &font);
-    assert_eq!(layout.interactive.len(), 1);
-    assert_eq!(layout.interactive[0].id, "keyboard_pack");
-    assert!(layout.interactive[0].rect.width > 0.0);
+    assert!(layout.interactive.is_empty());
+    assert!(layout.panel.width > 0.0);
+}
+
+#[test]
+fn only_ready_buttons_and_toggles_are_interactive() {
+    let mut loading = UiNode::button("busy", "Busy");
+    if let UiNode::Button { loading, .. } = &mut loading {
+        *loading = true;
+    }
+    let view = PluginView {
+        nodes: vec![
+            loading,
+            UiNode::button("ready", "Ready"),
+            UiNode::Toggle {
+                key: "enabled".into(),
+                label: "Enabled".into(),
+                value: false,
+            },
+            UiNode::Integer {
+                key: "minutes".into(),
+                label: "Minutes".into(),
+                value: 25,
+                min: 1,
+                max: 180,
+            },
+        ],
+        ..Default::default()
+    };
+    let layout = crate::layout(&view, HudRect::new(0.0, 0.0, 300.0, 300.0), &font());
+    assert_eq!(
+        layout
+            .interactive
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>(),
+        ["ready", "enabled"]
+    );
 }

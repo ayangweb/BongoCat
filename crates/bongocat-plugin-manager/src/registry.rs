@@ -28,7 +28,6 @@ struct Entry {
     root: PathBuf,
     state: PluginState,
     process: Option<Process>,
-    config: Configuration,
     last_output: PluginOutput,
     data_file: PathBuf,
     enabled: bool,
@@ -97,8 +96,9 @@ impl PluginRegistry {
             .join(crate::DATA_DIRECTORY)
             .join(&metadata.id)
             .join("session.json");
-        let saved = match std::fs::read(&data_file) {
-            Ok(bytes) if bytes.len() <= bongocat_plugin_sdk::MAX_MESSAGE_BYTES => {
+        let bytes = crate::install::read_bounded(&data_file, MAX_SESSION_BYTES);
+        let saved = match bytes {
+            Ok(bytes) if bytes.len() <= MAX_SESSION_BYTES => {
                 let saved: SavedSession =
                     serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
                 if saved.schema_version != 1 {
@@ -126,7 +126,6 @@ impl PluginRegistry {
                 root,
                 state: PluginState::Discovered,
                 process: None,
-                config: saved.config.clone(),
                 last_output: PluginOutput {
                     config: saved.config,
                     state: saved.state,
@@ -186,38 +185,77 @@ impl PluginRegistry {
         if entry.process.is_some() {
             return Ok(entry.last_output.clone());
         }
-        let mut process = Process::start(&entry.root, &entry.metadata)?;
-        let output = process.exchange(HostMessage::Start {
-            config: entry.config.clone(),
-            state: entry.last_output.state.clone(),
-        })?;
-        entry.config = output.config.clone();
-        entry.last_output = output.clone();
-        entry.process = Some(process);
-        entry.state = PluginState::Enabled;
-        entry.enabled = true;
-        // `Start` is answered before the locale is delivered, so a plugin that
-        // cannot localize still publishes its fallback copy for the first frame
-        // rather than failing the start. The reply replaces that frame.
-        deliver_locale(entry, locale.as_deref());
-        persist(entry)?;
-        Ok(entry.last_output.clone())
+        let started = (|| -> std::io::Result<_> {
+            let mut process = Process::start(&entry.root, &entry.metadata)?;
+            let mut output = process.exchange(HostMessage::Start {
+                config: entry.last_output.config.clone(),
+                state: entry.last_output.state.clone(),
+            })?;
+            if let Some(locale) = locale
+                && entry
+                    .metadata
+                    .capabilities
+                    .contains(&bongocat_plugin_sdk::Capability::LocalizedViewsV1)
+            {
+                output = process.exchange(HostMessage::Locale {
+                    locale: entry.metadata.view_locale(&locale).to_owned(),
+                })?;
+            }
+            persist_output(entry, &output, true)?;
+            Ok((process, output))
+        })();
+        match started {
+            Ok((process, output)) => {
+                entry.last_output = output.clone();
+                entry.process = Some(process);
+                entry.state = PluginState::Enabled;
+                entry.enabled = true;
+                Ok(output)
+            }
+            Err(error) => {
+                entry.state = PluginState::Failed;
+                Err(error.into())
+            }
+        }
     }
+
     pub fn disable(&mut self, id: &str) -> Result<(), RegistryError> {
+        self.stop(id, false)
+    }
+
+    /// Stop for replacement without persisting a user-requested disable.
+    pub(crate) fn suspend(&mut self, id: &str) -> Result<(), RegistryError> {
+        let enabled = self
+            .entries
+            .get(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?
+            .enabled;
+        self.stop(id, enabled)
+    }
+
+    fn stop(&mut self, id: &str, enabled: bool) -> Result<(), RegistryError> {
         let entry = self
             .entries
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
-        entry.enabled = false;
-        if let Some(mut process) = entry.process.take() {
-            let output = process.stop()?;
-            entry.config = output.config.clone();
-            entry.last_output = output;
-            persist(entry)?;
+        let stopped = entry
+            .process
+            .take()
+            .map(|mut process| process.stop())
+            .transpose();
+        if let Ok(Some(output)) = &stopped {
+            entry.last_output = output.clone();
         }
-        entry.state = PluginState::Disabled;
+        entry.enabled = enabled;
+        entry.state = if stopped.is_err() {
+            PluginState::Failed
+        } else {
+            PluginState::Disabled
+        };
+        // Persist the requested enable flag even after a refused/failed Stop,
+        // or a plugin explicitly disabled by the user would restart next boot.
         persist(entry)?;
-        Ok(())
+        stopped.map(|_| ()).map_err(Into::into)
     }
     pub fn configure(
         &mut self,
@@ -228,13 +266,15 @@ impl PluginRegistry {
             .entries
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
-        let Some(process) = entry.process.as_mut() else {
-            return Ok(entry.last_output.clone());
-        };
-        let output = process.exchange(HostMessage::Configure { config })?;
-        entry.config = output.config.clone();
-        entry.last_output = output.clone();
-        persist(entry)?;
+        let previous = entry.last_output.clone();
+        let output = entry.exchange(HostMessage::Configure { config })?;
+        if let Err(error) = persist(entry) {
+            // A process that applied an uncommitted config must not keep running
+            // with settings different from disk. Retry starts the last good state.
+            entry.fail();
+            entry.last_output = previous;
+            return Err(error.into());
+        }
         Ok(output)
     }
     pub fn action(&mut self, id: &str, action: &str) -> Result<PluginOutput, RegistryError> {
@@ -242,29 +282,16 @@ impl PluginRegistry {
             .entries
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
-        let process = entry
-            .process
-            .as_mut()
-            .ok_or_else(|| RegistryError::NotRunning(id.into()))?;
-        let output = process.exchange(HostMessage::Action { id: action.into() })?;
-        entry.last_output = output.clone();
-        Ok(output)
+        entry.exchange(HostMessage::Action { id: action.into() })
     }
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, PluginOutput)> {
         let mut outputs = Vec::new();
         for (id, entry) in &mut self.entries {
-            let Some(process) = entry.process.as_mut() else {
+            if entry.process.is_none() {
                 continue;
-            };
-            match process.exchange(HostMessage::Tick { elapsed_ms }) {
-                Ok(output) => {
-                    entry.last_output = output.clone();
-                    outputs.push((id.clone(), output));
-                }
-                Err(_) => {
-                    entry.process.take();
-                    entry.state = PluginState::Failed;
-                }
+            }
+            if let Ok(output) = entry.required_exchange(HostMessage::Tick { elapsed_ms }) {
+                outputs.push((id.clone(), output));
             }
         }
         outputs
@@ -294,16 +321,20 @@ impl PluginRegistry {
         }
     }
 
-    pub fn shutdown(&mut self) {
-        for entry in self.entries.values_mut() {
-            if let Some(mut process) = entry.process.take()
-                && let Ok(output) = process.stop()
-            {
-                entry.config = output.config.clone();
-                entry.last_output = output;
-                let _ = persist(entry);
+    pub fn shutdown(&mut self) -> Result<(), RegistryError> {
+        let ids = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.process.is_some())
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        let mut failure = None;
+        for id in ids {
+            if let Err(error) = self.suspend(&id) {
+                failure.get_or_insert(error);
             }
         }
+        failure.map_or(Ok(()), Err)
     }
 
     pub fn resume_enabled(&mut self) -> Result<(), RegistryError> {
@@ -345,15 +376,8 @@ impl PluginRegistry {
             else {
                 continue;
             };
-            let Some(process) = entry.process.as_mut() else {
-                continue;
-            };
-            match process.exchange(message) {
-                Ok(output) => entry.last_output = output,
-                Err(_) => {
-                    entry.process.take();
-                    entry.state = PluginState::Failed;
-                }
+            if entry.process.is_some() {
+                let _ = entry.required_exchange(message);
             }
         }
     }
@@ -379,19 +403,11 @@ impl PluginRegistry {
         {
             return;
         }
-        let Some(process) = entry.process.as_mut() else {
-            return;
-        };
-        let message = HostMessage::InputActivity {
-            elapsed_ms,
-            activity,
-        };
-        match process.exchange(message) {
-            Ok(output) => entry.last_output = output,
-            Err(_) => {
-                entry.process.take();
-                entry.state = PluginState::Failed;
-            }
+        if entry.process.is_some() {
+            let _ = entry.required_exchange(HostMessage::InputActivity {
+                elapsed_ms,
+                activity,
+            });
         }
     }
 }
@@ -443,21 +459,56 @@ fn deliver_locale(entry: &mut Entry, locale: Option<&str>) {
     {
         return;
     }
-    let Some(process) = entry.process.as_mut() else {
-        return;
-    };
-    match process.exchange(HostMessage::Locale {
-        locale: entry.metadata.view_locale(locale).to_owned(),
-    }) {
-        Ok(output) => entry.last_output = output,
-        Err(_) => {
-            entry.process.take();
-            entry.state = PluginState::Failed;
-        }
+    if entry.process.is_some() {
+        let _ = entry.required_exchange(HostMessage::Locale {
+            locale: entry.metadata.view_locale(locale).to_owned(),
+        });
     }
 }
 
+impl Entry {
+    fn fail(&mut self) {
+        self.process.take();
+        self.state = PluginState::Failed;
+    }
+
+    fn exchange(&mut self, message: HostMessage) -> Result<PluginOutput, RegistryError> {
+        let process = self
+            .process
+            .as_mut()
+            .ok_or_else(|| RegistryError::NotRunning(self.metadata.id.clone()))?;
+        match process.exchange(message) {
+            Ok(output) => {
+                self.last_output = output.clone();
+                Ok(output)
+            }
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::InvalidInput {
+                    self.fail();
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    fn required_exchange(&mut self, message: HostMessage) -> Result<PluginOutput, RegistryError> {
+        let result = self.exchange(message);
+        if result.is_err() {
+            self.fail();
+        }
+        result
+    }
+}
+
+// State bytes expand to JSON integers; a valid 64 KiB state can exceed the
+// protocol's frame limit once wrapped in a durable session.
+const MAX_SESSION_BYTES: usize = 512 * 1024;
+
 fn persist(entry: &Entry) -> std::io::Result<()> {
+    persist_output(entry, &entry.last_output, entry.enabled)
+}
+
+fn persist_output(entry: &Entry, output: &PluginOutput, enabled: bool) -> std::io::Result<()> {
     use std::io::Write;
     std::fs::create_dir_all(
         entry
@@ -470,9 +521,9 @@ fn persist(entry: &Entry) -> std::io::Result<()> {
         &mut file,
         &SavedSession {
             schema_version: 1,
-            config: entry.config.clone(),
-            state: entry.last_output.state.clone(),
-            enabled: entry.enabled,
+            config: output.config.clone(),
+            state: output.state.clone(),
+            enabled,
         },
     )?;
     file.flush()?;
@@ -488,6 +539,86 @@ impl Default for PluginRegistry {
 mod tests {
     use super::*;
     use bongocat_plugin_sdk::{Capability, InputActivity};
+
+    fn metadata() -> PluginMetadata {
+        serde_json::from_str::<crate::PluginManifest>(include_str!(
+            "../../../plugins/pomodoro/plugin.json"
+        ))
+        .unwrap()
+        .metadata
+    }
+
+    #[test]
+    fn durable_sessions_round_trip_full_state_and_reject_invalid_config() {
+        let store = tempfile::tempdir().unwrap();
+        let metadata = metadata();
+        let root = store
+            .path()
+            .join("packages")
+            .join(&metadata.id)
+            .join(&metadata.version);
+        let data = store.path().join("data").join(&metadata.id);
+        std::fs::create_dir_all(&data).unwrap();
+        let file = data.join("session.json");
+        let mut saved = SavedSession {
+            state: vec![255; 64 * 1024],
+            config: [(
+                "minutes".into(),
+                bongocat_plugin_sdk::ConfigValue::Integer(5),
+            )]
+            .into(),
+            enabled: true,
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        assert!(bytes.len() > bongocat_plugin_sdk::MAX_MESSAGE_BYTES);
+        std::fs::write(&file, bytes).unwrap();
+        let mut registry = PluginRegistry::new();
+        registry.register(metadata.clone(), root.clone()).unwrap();
+        assert_eq!(registry.output(&metadata.id).unwrap().state, saved.state);
+        assert_eq!(registry.output(&metadata.id).unwrap().config, saved.config);
+        assert!(registry.entries[&metadata.id].enabled);
+        persist(&registry.entries[&metadata.id]).unwrap();
+        let mut reopened = PluginRegistry::new();
+        reopened.register(metadata.clone(), root.clone()).unwrap();
+        assert_eq!(reopened.output(&metadata.id).unwrap().state, saved.state);
+
+        saved.config.insert(
+            "../escape".into(),
+            bongocat_plugin_sdk::ConfigValue::Boolean(true),
+        );
+        std::fs::write(&file, serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert!(PluginRegistry::new().register(metadata, root).is_err());
+    }
+
+    #[test]
+    fn configuring_a_stopped_plugin_is_refused_without_changing_its_output() {
+        let store = tempfile::tempdir().unwrap();
+        let metadata = metadata();
+        let mut registry = PluginRegistry::new();
+        registry
+            .register(
+                metadata.clone(),
+                store
+                    .path()
+                    .join("packages")
+                    .join(&metadata.id)
+                    .join(&metadata.version),
+            )
+            .unwrap();
+        assert!(matches!(
+            registry.configure(
+                &metadata.id,
+                [(
+                    "minutes".into(),
+                    bongocat_plugin_sdk::ConfigValue::Integer(5)
+                )]
+                .into()
+            ),
+            Err(RegistryError::NotRunning(_))
+        ));
+        assert!(registry.output(&metadata.id).unwrap().config.is_empty());
+    }
 
     const ACTIVITY: InputActivity = InputActivity {
         keyboard_down: 3,

@@ -93,6 +93,12 @@ uninstalling and installing it through the center, which retains its data. The
 host must not guess icons or translations from legacy action IDs to hide stale
 code, or silently overwrite immutable installed versions.
 
+Each window serializes service requests through publication of their replies,
+so a delayed poll cannot overwrite a newer configuration/action snapshot. Error
+publication changes only error/loading state under the cache lock and never
+replaces newer cards or in-flight bookkeeping. Plugin Reset preserves the current
+session language rather than treating it as a plugin-owned preference.
+
 ## Compatibility
 
 Every protocol addition is optional and defaults to the previous behavior: a

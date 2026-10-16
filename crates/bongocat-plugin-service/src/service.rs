@@ -19,7 +19,7 @@ use bongocat_plugin_hud::{
 use bongocat_plugin_manager::{
     AvailablePlugin, PluginManager, PluginManagerError, PluginSource, PluginState, RegistryError,
 };
-use bongocat_plugin_sdk::{ConfigValue, InputActivity, PluginOutput};
+use bongocat_plugin_sdk::{ConfigValue, InputActivity, PluginOutput, UiNode};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -60,7 +60,7 @@ pub struct PluginOverlayHandles {
 pub struct PluginService {
     client: PluginServiceClient,
     stop: Arc<AtomicBool>,
-    worker: Option<JoinHandle<()>>,
+    worker: Option<JoinHandle<Result<(), PluginManagerError>>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,6 +69,10 @@ pub enum PluginServiceStartError {
     Store(PluginManagerError),
     #[error("the plugin worker could not be started: {0}")]
     Spawn(std::io::Error),
+    #[error("the plugin worker panicked")]
+    WorkerPanicked,
+    #[error("the plugin service could not shut down cleanly: {0}")]
+    Shutdown(PluginManagerError),
 }
 
 impl PluginService {
@@ -113,7 +117,7 @@ impl PluginService {
                     worker_stop,
                     source,
                     input_activity,
-                );
+                )
             })
             .map_err(PluginServiceStartError::Spawn)?;
         Ok((
@@ -143,7 +147,10 @@ impl PluginService {
     pub fn shutdown(mut self) -> Result<(), PluginServiceStartError> {
         self.stop.store(true, Ordering::Release);
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            worker
+                .join()
+                .map_err(|_| PluginServiceStartError::WorkerPanicked)?
+                .map_err(PluginServiceStartError::Shutdown)?;
         }
         Ok(())
     }
@@ -187,13 +194,9 @@ struct Worker {
     /// comparison is what keeps an idle plugin from costing a rasterization per
     /// loop.
     last_signature: Option<LayerSignature>,
-    /// Clicks the model window resolved to a plugin control, in arrival order.
-    ///
-    /// A click is applied to the plugin that drew the control and the plugin
-    /// decides what it means: the service never learns what a button does.
-    pending_interactions: Vec<HudInteraction>,
     started: Instant,
     last_tick: Duration,
+    shutdown_reply: Option<PluginReply<()>>,
 }
 
 enum CatalogResult {
@@ -206,6 +209,7 @@ enum CatalogResult {
 struct CatalogJob {
     result: Receiver<Result<CatalogResult, String>>,
     worker: JoinHandle<()>,
+    package: Option<String>,
 }
 
 /// What a composed layer is a function of, for skipping an unchanged one.
@@ -222,7 +226,7 @@ fn run(
     stop: Arc<AtomicBool>,
     source: PluginSource,
     input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
-) {
+) -> Result<(), PluginManagerError> {
     let Ok(mut manager) = PluginManager::new(directory) else {
         // The store could not be opened at all. The service still answers, so the
         // plugin center can say what happened instead of reporting a service that
@@ -232,10 +236,12 @@ fn run(
             error: Some(STORE_OPEN_FAILED.to_owned()),
         };
         while !stop.load(Ordering::Acquire) {
-            unavailable.drain();
+            if unavailable.drain() {
+                break;
+            }
             thread::sleep(LOOP_INTERVAL);
         }
-        return;
+        return Ok(());
     };
     let mut error = None;
     if let Err(failure) = manager.discover_plugins() {
@@ -260,15 +266,17 @@ fn run(
         compositor: load_platform_font().ok().map(HudCompositor::new),
         error,
         last_signature: None,
-        pending_interactions: Vec::new(),
         started: Instant::now(),
         last_tick: Duration::ZERO,
+        shutdown_reply: None,
     };
     worker.initialize_running_input_activity();
-    worker.run(stop);
+    worker.run(stop)
 }
 
 const STORE_OPEN_FAILED: &str = "the plugin store could not be opened";
+const COMMANDS_PER_TURN: usize = 16;
+const INTERACTIONS_PER_TURN: usize = 64;
 
 /// The worker when the plugin store itself could not be opened.
 struct Unavailable {
@@ -277,8 +285,11 @@ struct Unavailable {
 }
 
 impl Unavailable {
-    fn drain(&mut self) {
-        while let Ok(Some(command)) = self.endpoint.try_recv() {
+    fn drain(&mut self) -> bool {
+        for _ in 0..COMMANDS_PER_TURN {
+            let Ok(Some(command)) = self.endpoint.try_recv() else {
+                break;
+            };
             let center = PluginCenterSnapshot {
                 cards: Vec::new(),
                 error: self.error.clone(),
@@ -301,33 +312,45 @@ impl Unavailable {
                     ));
                 }
                 PluginCommand::Shutdown { reply } => {
+                    self.endpoint.close();
                     let _ = reply.respond(());
+                    return true;
                 }
             }
         }
+        false
     }
 }
 
 impl Worker {
-    fn run(&mut self, stop: Arc<AtomicBool>) {
+    fn run(&mut self, stop: Arc<AtomicBool>) -> Result<(), PluginManagerError> {
         self.refresh_catalog();
         while !stop.load(Ordering::Acquire) {
             self.finish_catalog_job();
             self.drain_commands();
+            if stop.load(Ordering::Acquire) {
+                break;
+            }
             self.dispatch_input_activity();
             self.drain_interactions();
             self.dispatch_tick();
             self.compose();
             thread::sleep(LOOP_INTERVAL);
         }
+        self.endpoint.close();
         if let Some(job) = self.job.take() {
             let _ = job.worker.join();
         }
-        self.manager.shutdown();
+        self.manager.shutdown()?;
+        if let Some(reply) = self.shutdown_reply.take() {
+            let _ = reply.respond(());
+        }
+        Ok(())
     }
 
     fn start_job(
         &mut self,
+        package: Option<String>,
         operation: impl FnOnce() -> Result<CatalogResult, String> + Send + 'static,
     ) {
         let (sender, result) = sync_channel(1);
@@ -336,7 +359,13 @@ impl Worker {
             .spawn(move || {
                 let _ = sender.send(operation());
             }) {
-            Ok(worker) => self.job = Some(CatalogJob { result, worker }),
+            Ok(worker) => {
+                self.job = Some(CatalogJob {
+                    result,
+                    worker,
+                    package,
+                })
+            }
             Err(_) => self.error = Some("catalog worker unavailable".into()),
         }
     }
@@ -350,7 +379,7 @@ impl Worker {
         }
         let source = self.source.clone();
         let stop = Arc::clone(&self.catalog_stop);
-        self.start_job(move || {
+        self.start_job(None, move || {
             source
                 .discover(env!("CARGO_PKG_VERSION"), &stop)
                 .map(CatalogResult::List)
@@ -372,9 +401,11 @@ impl Worker {
         match result {
             Ok(CatalogResult::List(offers)) => self.offers = offers,
             Ok(CatalogResult::Package { offer, bytes }) => {
+                self.dispatch_input_activity();
                 if let Err(error) = self.manager.install_verified(&bytes, Some(&offer.digest)) {
                     self.error = Some(error.to_string());
                 }
+                self.initialize_plugin_input_activity(&offer.metadata.id);
             }
             Err(error) => self.error = Some(error),
         }
@@ -466,6 +497,12 @@ impl Worker {
             if cards.iter().any(|card| card.id == offer.metadata.id) {
                 continue;
             }
+            // A bad installed manifest/session may prevent registration. Keep
+            // its reset/uninstall controls reachable using verified catalog copy.
+            let version = self.manager.installed_version(&offer.metadata.id);
+            let update_available = version.as_ref().is_some_and(|installed| {
+                bongocat_plugin_manager::is_newer(&offer.metadata.version, installed)
+            });
             cards.push(PluginCard {
                 id: offer.metadata.id.clone(),
                 name: offer.metadata.name.clone(),
@@ -473,10 +510,10 @@ impl Worker {
                 localizations: offer.metadata.localizations.clone(),
                 icon: offer.metadata.icon.clone(),
                 enabled: false,
-                failed: false,
-                version: None,
+                failed: version.is_some(),
+                version,
                 available_version: Some(offer.metadata.version.clone()),
-                update_available: false,
+                update_available,
                 actions: Vec::new(),
                 settings: Vec::new(),
             });
@@ -489,9 +526,14 @@ impl Worker {
     }
 
     fn drain_commands(&mut self) {
-        loop {
+        for _ in 0..COMMANDS_PER_TURN {
             match self.endpoint.try_recv() {
-                Ok(Some(command)) => self.apply(command),
+                Ok(Some(command)) => {
+                    self.apply(command);
+                    if self.catalog_stop.load(Ordering::Acquire) {
+                        break;
+                    }
+                }
                 Ok(None) => return,
                 Err(_) => return,
             }
@@ -499,6 +541,29 @@ impl Worker {
     }
 
     fn apply(&mut self, command: PluginCommand) {
+        if let Some(package) = self.job.as_ref().and_then(|job| job.package.as_deref()) {
+            match command {
+                PluginCommand::SetEnabled { ref id, .. }
+                | PluginCommand::Uninstall { ref id, .. }
+                | PluginCommand::ResetData { ref id, .. }
+                    if id == package =>
+                {
+                    let reply = match command {
+                        PluginCommand::SetEnabled { reply, .. }
+                        | PluginCommand::Uninstall { reply, .. }
+                        | PluginCommand::ResetData { reply, .. } => reply,
+                        _ => unreachable!(),
+                    };
+                    self.respond(reply, Err(PluginCommandError::Operation));
+                    return;
+                }
+                PluginCommand::Install { reply, .. } => {
+                    self.respond(reply, Err(PluginCommandError::Operation));
+                    return;
+                }
+                _ => {}
+            }
+        }
         match command {
             PluginCommand::ReadCenter { reply } => {
                 let _ = reply.respond(self.center());
@@ -524,6 +589,10 @@ impl Worker {
                 self.respond(reply, result);
             }
             PluginCommand::Install { bytes, reply } => {
+                self.dispatch_input_activity();
+                let id = bongocat_plugin_manager::install::inspect_package(&bytes)
+                    .ok()
+                    .map(|manifest| manifest.metadata.id);
                 let result = if matches!(self.source, PluginSource::Production { .. }) {
                     Err(PluginCommandError::Operation)
                 } else {
@@ -532,6 +601,9 @@ impl Worker {
                         .map(|_| ())
                         .map_err(|error| operation(&error))
                 };
+                if let Some(id) = id {
+                    self.initialize_plugin_input_activity(&id);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::InstallAvailable { id, reply } => {
@@ -560,7 +632,7 @@ impl Worker {
                 }
                 self.error = None;
                 let stop = Arc::clone(&self.catalog_stop);
-                self.start_job(move || {
+                self.start_job(Some(id), move || {
                     let bytes = offer.read(&stop)?;
                     Ok(CatalogResult::Package {
                         offer: Box::new(offer),
@@ -578,11 +650,13 @@ impl Worker {
                 self.respond(reply, result);
             }
             PluginCommand::ResetData { id, reply } => {
+                self.dispatch_input_activity();
                 let result = self
                     .manager
                     .reset(&id)
                     .map(|_| ())
                     .map_err(|error| operation(&error));
+                self.initialize_plugin_input_activity(&id);
                 self.respond(reply, result);
             }
             PluginCommand::Action {
@@ -611,8 +685,9 @@ impl Worker {
             }
             PluginCommand::Shutdown { reply } => {
                 self.catalog_stop.store(true, Ordering::Release);
-                self.manager.shutdown();
-                let _ = reply.respond(());
+                self.endpoint.close();
+                // The loop acknowledges only after all workers stopped cleanly.
+                self.shutdown_reply = Some(reply);
             }
         }
     }
@@ -670,9 +745,39 @@ impl Worker {
     }
 
     fn drain_interactions(&mut self) {
-        loop {
+        for _ in 0..INTERACTIONS_PER_TURN {
             match self.hud.interactions.try_recv() {
-                Ok(interaction) => self.pending_interactions.push(interaction),
+                Ok(interaction) => {
+                    if !self.manager.list_plugins().iter().any(|(metadata, state)| {
+                        metadata.id == interaction.plugin && *state == PluginState::Enabled
+                    }) {
+                        continue;
+                    }
+                    let Some(output) = self.manager.plugin_output(&interaction.plugin) else {
+                        continue;
+                    };
+                    let result = match output.model.nodes.iter().find(|node| match node {
+                        UiNode::Button {
+                            id, loading: false, ..
+                        } => id == &interaction.id,
+                        UiNode::Toggle { key, .. } => key == &interaction.id,
+                        _ => false,
+                    }) {
+                        Some(UiNode::Button { .. }) => self
+                            .manager
+                            .action_plugin(&interaction.plugin, &interaction.id)
+                            .map_err(|error| operation(&error)),
+                        Some(UiNode::Toggle { key, value, .. }) => self.configure(
+                            &interaction.plugin,
+                            key.clone(),
+                            ConfigValue::Boolean(!value),
+                        ),
+                        _ => continue,
+                    };
+                    if let Err(error) = result {
+                        self.error = Some(error.code().into());
+                    }
+                }
                 Err(TryRecvError::Empty) => return,
                 Err(TryRecvError::Disconnected) => return,
             }
@@ -689,16 +794,8 @@ impl Worker {
         self.manager.tick(now);
     }
 
-    /// Apply every pending click, then publish what the plugins now publish.
+    /// Publish the plugins' current views only when their composed input changed.
     fn compose(&mut self) {
-        for interaction in std::mem::take(&mut self.pending_interactions) {
-            if let Err(error) = self
-                .manager
-                .action_plugin(&interaction.plugin, &interaction.id)
-            {
-                self.error = Some(error.to_string());
-            }
-        }
         let Some(compositor) = self.compositor.as_ref() else {
             return;
         };
@@ -758,5 +855,86 @@ fn operation(error: &PluginManagerError) -> PluginCommandError {
             PluginCommandError::NotRunning
         }
         _ => PluginCommandError::Operation,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_downloads_serialize_conflicting_lifecycle_operations() {
+        let store = tempfile::tempdir().unwrap();
+        let (_, endpoint) = PluginServiceClient::bounded(4);
+        let (hud_producer, _) = latest_hud_channel();
+        let (_, viewport) = latest_viewport_channel();
+        let (_, interactions) = sync_channel(4);
+        let mut worker = Worker {
+            manager: PluginManager::new(store.path().to_path_buf()).unwrap(),
+            source: PluginSource::InstalledOnly,
+            offers: Vec::new(),
+            job: None,
+            catalog_stop: Arc::default(),
+            input_activity: None,
+            last_input_activity: InputActivity::default(),
+            endpoint,
+            hud: OverlaySinks {
+                hud_producer,
+                viewport,
+                interactions,
+            },
+            compositor: None,
+            error: None,
+            last_signature: None,
+            started: Instant::now(),
+            last_tick: Duration::ZERO,
+            shutdown_reply: None,
+        };
+        let id = "com.bongocat.pomodoro";
+        let data = worker.manager.data_root(id, true).unwrap();
+        std::fs::write(data.join("owned-data"), b"keep").unwrap();
+        let (release, wait) = sync_channel(1);
+        worker.start_job(Some(id.into()), move || {
+            wait.recv().unwrap();
+            Ok(CatalogResult::List(Vec::new()))
+        });
+        for operation in 0..4 {
+            let (reply, response) = async_channel::bounded(1);
+            let reply = PluginReply(reply);
+            let command = match operation {
+                0 => PluginCommand::SetEnabled {
+                    id: id.into(),
+                    enabled: false,
+                    reply,
+                },
+                1 => PluginCommand::Uninstall {
+                    id: id.into(),
+                    reply,
+                },
+                2 => PluginCommand::ResetData {
+                    id: id.into(),
+                    reply,
+                },
+                _ => PluginCommand::Install {
+                    bytes: Vec::new(),
+                    reply,
+                },
+            };
+            worker.apply(command);
+            assert_eq!(
+                response.recv_blocking().unwrap(),
+                Err(PluginCommandError::Operation)
+            );
+        }
+        assert_eq!(std::fs::read(data.join("owned-data")).unwrap(), b"keep");
+        // An unrelated plugin's lifecycle is not blocked by this download.
+        let (reply, response) = async_channel::bounded(1);
+        worker.apply(PluginCommand::Uninstall {
+            id: "com.bongocat.other".into(),
+            reply: PluginReply(reply),
+        });
+        assert!(response.recv_blocking().unwrap().is_ok());
+        release.send(()).unwrap();
+        worker.job.take().unwrap().worker.join().unwrap();
     }
 }

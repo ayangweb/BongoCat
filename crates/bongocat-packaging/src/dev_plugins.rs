@@ -40,7 +40,7 @@ pub(super) fn prepare(workspace: &Path) -> Result<Vec<PathBuf>> {
         let bytes = fs::read(&manifest)?;
         let manifest: PluginManifest = serde_json::from_slice(&bytes)?;
         for component in [&manifest.metadata.id, &manifest.metadata.entry] {
-            if !safe_basename(component) {
+            if !bongocat_plugin_manager::install::valid_basename(component) {
                 return failure("local plugin id and entry must be safe basenames");
             }
         }
@@ -99,15 +99,6 @@ fn package_plugin(
     let destination = output.join(&name);
     staged.persist(&destination)?;
     Ok(destination)
-}
-
-fn safe_basename(value: &str) -> bool {
-    !value.is_empty()
-        && value != "."
-        && value != ".."
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
 fn executable_from_messages(bytes: &[u8], entry: &str) -> Option<PathBuf> {
@@ -207,7 +198,7 @@ mod tests {
         );
         assert_eq!(executable_from_messages(report.as_bytes(), "other"), None);
         for value in ["", ".", "..", "../plugin", "C:\\plugin", "/plugin"] {
-            assert!(!safe_basename(value));
+            assert!(!bongocat_plugin_manager::install::valid_basename(value));
         }
     }
 }

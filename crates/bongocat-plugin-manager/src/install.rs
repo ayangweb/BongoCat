@@ -11,7 +11,9 @@ use crate::{
 };
 use bongocat_plugin_sdk::PluginMetadata;
 use std::{
+    collections::BTreeSet,
     fs,
+    io::Read as _,
     path::{Component, Path, PathBuf},
 };
 use zip::ZipArchive;
@@ -20,6 +22,7 @@ use zip::ZipArchive;
 pub const MAX_EXTRACT_BYTES: usize = 64 * 1024 * 1024;
 /// The most files one package may contain.
 pub const MAX_ARCHIVE_ENTRIES: usize = 4096;
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 
 /// The installed version of one plugin: where its files are and what version
 /// the `current` pointer selects.
@@ -41,8 +44,8 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PluginManifest, PluginManagerErro
     let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))?;
     let entry = archive.by_name(MANIFEST_FILE)?;
     let mut bytes = Vec::new();
-    entry.take(64 * 1024 + 1).read_to_end(&mut bytes)?;
-    if bytes.len() > 64 * 1024 {
+    entry.take(MAX_MANIFEST_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_MANIFEST_BYTES as usize {
         return Err(PluginManagerError::UnsafeManifest(
             "manifest exceeds limit".into(),
         ));
@@ -62,6 +65,7 @@ pub fn install_package(
     expected_sha256: Option<&str>,
     bytes: &[u8],
 ) -> Result<InstalledPackage, PluginManagerError> {
+    inspect_package(bytes)?;
     if let Some(expected) = expected_sha256
         && sha256_of(bytes) != expected.to_ascii_lowercase()
     {
@@ -70,24 +74,27 @@ pub fn install_package(
         ));
     }
     let packages = root.join(PACKAGES_DIRECTORY);
-    fs::create_dir_all(&packages)?;
+    ensure_directory(&packages)?;
     let staging = tempfile::Builder::new()
         .prefix(".staging-")
         .tempdir_in(&packages)?;
     extract_zip(bytes, staging.path())?;
-    let manifest: PluginManifest =
-        serde_json::from_slice(&fs::read(staging.path().join(MANIFEST_FILE))?)?;
-    validate(&manifest)?;
-    let id = sanitize(&manifest.metadata.id);
-    let version = sanitize(&manifest.metadata.version);
-    if id.is_empty() || version.is_empty() {
+    let manifest = read_manifest(&staging.path().join(MANIFEST_FILE))?;
+    let id = manifest.metadata.id;
+    let version = manifest.metadata.version;
+    if !fs::symlink_metadata(crate::loader::entry_path(
+        staging.path(),
+        &manifest.metadata.entry,
+    ))
+    .is_ok_and(|metadata| metadata.is_file())
+    {
         return Err(PluginManagerError::UnsafeManifest(
-            "plugin id or version is not a usable directory name".into(),
+            "plugin executable is missing".into(),
         ));
     }
     let package_root = packages.join(&id);
     let destination = package_root.join(&version);
-    fs::create_dir_all(&package_root)?;
+    ensure_directory(&package_root)?;
     // Retain the previous complete tree until the pointer has committed. Neither
     // extraction failure nor a failed pointer write may destroy the working copy.
     let backup = tempfile::Builder::new()
@@ -103,12 +110,16 @@ pub fn install_package(
         write_current(&package_root, &version)
     })();
     if let Err(error) = commit {
+        // A second IO failure during rollback must not let TempDir delete the
+        // last complete package tree. Keep it available for recovery instead.
+        let backup = backup.keep();
         if destination.exists() {
             fs::remove_dir_all(&destination)?;
         }
         if replacing {
             fs::rename(&old_tree, &destination)?;
         }
+        fs::remove_dir_all(backup)?;
         return Err(error);
     }
     Ok(InstalledPackage {
@@ -165,16 +176,17 @@ pub(crate) fn plugin_data_root(
 pub(crate) fn selected_root(root: &Path, id: &str) -> Option<PathBuf> {
     validate_id(id).ok()?;
     let package_root = root.join(PACKAGES_DIRECTORY).join(id);
-    let version = fs::read_to_string(package_root.join(CURRENT_FILE)).ok()?;
+    if !plain_directory(&root.join(PACKAGES_DIRECTORY)) || !plain_directory(&package_root) {
+        return None;
+    }
+    let version =
+        String::from_utf8(read_bounded(&package_root.join(CURRENT_FILE), 256).ok()?).ok()?;
     let version = version.trim();
-    if version.is_empty()
-        || !safe_relative_path(Path::new(version))
-        || version.contains(['/', '\\'])
-    {
+    if !valid_version(version) {
         return None;
     }
     let directory = package_root.join(version);
-    directory.is_dir().then_some(directory)
+    plain_directory(&directory).then_some(directory)
 }
 
 pub(crate) fn write_current(package_root: &Path, version: &str) -> Result<(), PluginManagerError> {
@@ -186,6 +198,27 @@ pub(crate) fn write_current(package_root: &Path, version: &str) -> Result<(), Pl
     Ok(())
 }
 
+pub(crate) fn read_manifest(path: &Path) -> Result<PluginManifest, PluginManagerError> {
+    let bytes = read_bounded(path, MAX_MANIFEST_BYTES as usize)?;
+    let manifest = serde_json::from_slice(&bytes)?;
+    validate(&manifest)?;
+    Ok(manifest)
+}
+
+pub(crate) fn read_bounded(path: &Path, limit: usize) -> std::io::Result<Vec<u8>> {
+    if !fs::symlink_metadata(path)?.is_file() {
+        return Err(std::io::Error::other("plugin file is not a regular file"));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > limit {
+        return Err(std::io::Error::other("plugin file exceeds limit"));
+    }
+    Ok(bytes)
+}
+
 fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerError> {
     let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))?;
     if archive.len() > MAX_ARCHIVE_ENTRIES {
@@ -194,6 +227,7 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
         ));
     }
     let mut written = 0usize;
+    let mut paths = BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         // `enclosed_name` already rejects absolute paths and `..`; the stricter
@@ -204,7 +238,11 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
                 "plugin package contains an unsafe path".into(),
             ));
         };
-        if !safe_relative_path(&path) {
+        let normalized: PathBuf = path.components().collect();
+        if !safe_relative_path(&path)
+            || !paths.insert(normalized.to_string_lossy().to_ascii_lowercase())
+            || entry.is_symlink()
+        {
             return Err(PluginManagerError::UnsafeManifest(
                 "plugin package contains an unsafe path".into(),
             ));
@@ -217,14 +255,20 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        written = written.saturating_add(entry.size() as usize);
-        if written > MAX_EXTRACT_BYTES {
+        if entry.size() > (MAX_EXTRACT_BYTES - written) as u64 {
             return Err(PluginManagerError::UnsafeManifest(
                 "plugin package is too large".into(),
             ));
         }
         let mut file = fs::File::create(&target)?;
-        std::io::copy(&mut entry, &mut file)?;
+        let remaining = (MAX_EXTRACT_BYTES - written) as u64;
+        let copied = std::io::copy(&mut entry.by_ref().take(remaining + 1), &mut file)?;
+        if copied > remaining {
+            return Err(PluginManagerError::UnsafeManifest(
+                "plugin package is too large".into(),
+            ));
+        }
+        written += copied as usize;
         // A plugin package is an executable plus its manifest, and the archive
         // is what carries the executable bit: ZIP records a Unix mode, and a
         // package that only worked because the local filesystem already had the
@@ -239,7 +283,7 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
 }
 
 fn validate_id(id: &str) -> Result<(), PluginManagerError> {
-    if id.is_empty() || id == "." || id == ".." || id.len() > 128 || sanitize(id) != id {
+    if !valid_basename(id) {
         return Err(PluginManagerError::UnsafeManifest(
             "invalid plugin id".into(),
         ));
@@ -247,38 +291,46 @@ fn validate_id(id: &str) -> Result<(), PluginManagerError> {
     Ok(())
 }
 
-fn sanitize(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-        .collect()
+pub fn valid_basename(value: &str) -> bool {
+    bongocat_plugin_sdk::valid_key(value) && !matches!(value, "." | "..")
+}
+
+fn valid_version(value: &str) -> bool {
+    value.len() <= 128 && cargo_packager_updater::semver::Version::parse(value).is_ok()
+}
+
+fn plain_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
+}
+
+fn ensure_directory(path: &Path) -> Result<(), PluginManagerError> {
+    fs::create_dir_all(path)?;
+    if !plain_directory(path) {
+        return Err(PluginManagerError::UnsafeManifest(
+            "package directory is not a directory".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Whether a package entry is a plain relative path of bounded length.
 pub fn safe_relative_path(path: &Path) -> bool {
-    !path.is_absolute()
+    !path.as_os_str().is_empty()
+        && !path.is_absolute()
+        && !path.to_string_lossy().contains(['\\', ':'])
         && path
             .components()
             .all(|component| matches!(component, Component::Normal(_)))
         && path.to_string_lossy().len() <= 256
 }
 
-fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
+pub(crate) fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
     let metadata: &PluginMetadata = &manifest.metadata;
     validate_id(&metadata.id)?;
-    if metadata.id.is_empty()
-        || metadata.id == "."
-        || metadata.id == ".."
-        || sanitize(&metadata.id) != metadata.id
-        || cargo_packager_updater::semver::Version::parse(&metadata.version).is_err()
+    if !valid_version(&metadata.version)
         || cargo_packager_updater::semver::VersionReq::parse(&metadata.app_versions).is_err()
         || metadata.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
-        || metadata.entry.is_empty()
-        || metadata.entry == "."
-        || metadata.entry == ".."
-        || sanitize(&metadata.entry) != metadata.entry
-        || metadata.entry.contains('/')
-        || metadata.entry.contains('\\')
+        || !valid_basename(&metadata.entry)
     {
         return Err(PluginManagerError::UnsafeManifest(
             "installed manifest is invalid".into(),
@@ -429,6 +481,121 @@ mod tests {
         assert!(safe_relative_path(Path::new("a/b")));
         assert!(!safe_relative_path(Path::new("../a")));
         assert!(!safe_relative_path(Path::new("/a")));
+        assert!(!safe_relative_path(Path::new("")));
+        assert!(!safe_relative_path(Path::new("a\\..\\outside")));
+        assert!(!safe_relative_path(Path::new("file:stream")));
+    }
+
+    #[test]
+    fn build_metadata_is_preserved_in_the_selected_version() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
+        manager
+            .install(&package("com.bongocat.pomodoro", "1.0.0+build.1"))
+            .unwrap();
+        assert_eq!(
+            manager
+                .installed_version("com.bongocat.pomodoro")
+                .as_deref(),
+            Some("1.0.0+build.1")
+        );
+        assert_eq!(manager.discover_plugins().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_corrupt_store_is_not_reported_as_an_empty_catalog() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join(PACKAGES_DIRECTORY),
+            b"not a directory",
+        )
+        .unwrap();
+        let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
+        assert!(manager.discover_plugins().is_err());
+    }
+
+    #[test]
+    fn invalid_replacements_leave_the_previous_package_selected() {
+        let directory = tempfile::tempdir().unwrap();
+        let id = "com.bongocat.pomodoro";
+        install_package(directory.path(), None, &package(id, "1.0.0")).unwrap();
+        let manifest = serde_json::to_vec(&PluginManifest {
+            metadata: metadata(id, "1.1.0"),
+            sha256: None,
+        })
+        .unwrap();
+        for bytes in [
+            archive(&[(MANIFEST_FILE, &manifest)]),
+            archive(&[
+                (MANIFEST_FILE, &manifest),
+                ("plugin", b"binary"),
+                ("PLUGIN", b"other"),
+            ]),
+            archive(&[
+                (MANIFEST_FILE, &manifest),
+                ("plugin", b"binary"),
+                ("..\\outside", b"other"),
+            ]),
+            archive(&[
+                (MANIFEST_FILE, &manifest),
+                ("plugin", b"binary"),
+                ("assets/file", b"one"),
+                ("assets//file", b"two"),
+            ]),
+        ] {
+            assert!(install_package(directory.path(), None, &bytes).is_err());
+            assert!(
+                selected_root(directory.path(), id)
+                    .unwrap()
+                    .ends_with("1.0.0")
+            );
+        }
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file(MANIFEST_FILE, options).unwrap();
+        writer.write_all(&manifest).unwrap();
+        writer.add_symlink("plugin", "outside", options).unwrap();
+        assert!(
+            install_package(
+                directory.path(),
+                None,
+                &writer.finish().unwrap().into_inner()
+            )
+            .is_err()
+        );
+        assert!(
+            selected_root(directory.path(), id)
+                .unwrap()
+                .ends_with("1.0.0")
+        );
+    }
+
+    #[test]
+    fn corrupt_or_mismatched_packages_do_not_hide_healthy_plugins() {
+        let directory = tempfile::tempdir().unwrap();
+        let good = "com.bongocat.healthy";
+        let bad = "com.bongocat.broken";
+        install_package(directory.path(), None, &package(good, "1.0.0")).unwrap();
+        let broken = install_package(directory.path(), None, &package(bad, "1.0.0")).unwrap();
+        let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
+        for content in [
+            b"not JSON".to_vec(),
+            serde_json::to_vec(&PluginManifest {
+                metadata: metadata(good, "1.0.0"),
+                sha256: None,
+            })
+            .unwrap(),
+            serde_json::to_vec(&PluginManifest {
+                metadata: metadata(bad, "2.0.0"),
+                sha256: None,
+            })
+            .unwrap(),
+        ] {
+            fs::write(broken.root.join(MANIFEST_FILE), content).unwrap();
+            assert!(manager.discover_plugins().is_err());
+            assert_eq!(manager.list_plugins().len(), 1);
+            assert_eq!(manager.list_plugins()[0].0.id, good);
+        }
     }
 
     #[test]

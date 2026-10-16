@@ -203,6 +203,7 @@ impl From<PluginCard> for PluginCardView {
 pub(crate) struct PluginHost {
     client: Option<PluginServiceClient>,
     published: Arc<Mutex<PluginHubState>>,
+    requests: Arc<Mutex<()>>,
 }
 
 impl Default for PluginHost {
@@ -210,6 +211,7 @@ impl Default for PluginHost {
         Self {
             client: None,
             published: Arc::new(Mutex::new(PluginHubState::loading())),
+            requests: Arc::default(),
         }
     }
 }
@@ -220,6 +222,7 @@ impl PluginHost {
         Self {
             client: Some(client),
             published: Arc::new(Mutex::new(PluginHubState::loading())),
+            requests: Arc::default(),
         }
     }
 
@@ -290,14 +293,20 @@ impl PluginHost {
     /// Report an error that did not come from the service, such as a failed file
     /// read or a dialog backend failure.
     pub(crate) fn report_error(&self, message: String) {
-        let mut state = self.snapshot();
+        let mut state = self
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.error = Some(message);
         state.loading = false;
-        self.publish(state);
     }
 
     /// Read the center's current state and publish it for the next frame.
     pub(crate) fn refresh(&self) {
+        let _request = self
+            .requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Ok(client) = self.client() else {
             self.report_error("the plugin service is unavailable".to_owned());
             return;
@@ -310,6 +319,10 @@ impl PluginHost {
 
     /// Scan the package store again, for the page's retry affordance.
     pub(crate) fn rescan(&self) {
+        let _request = self
+            .requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Ok(client) = self.client() else {
             self.report_error("the plugin service is unavailable".to_owned());
             return;
@@ -370,6 +383,12 @@ impl PluginHost {
         command_key: PluginInFlight,
         command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
     ) {
+        // Polling and command replies publish in request order. A slow poll
+        // must not overwrite the newer state a configuration command returned.
+        let _request = self
+            .requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // The page marked this command before it dispatched it; this call only
         // retires that mark.
         let Ok(client) = self.client() else {
@@ -386,10 +405,7 @@ impl PluginHost {
     }
 
     fn report_command_error(&self, error: PluginCommandError) {
-        let mut state = self.snapshot();
-        state.error = Some(error.to_string());
-        state.loading = false;
-        self.publish(state);
+        self.report_error(error.to_string());
     }
 }
 

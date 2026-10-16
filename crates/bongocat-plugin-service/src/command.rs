@@ -456,6 +456,10 @@ pub struct PluginServiceEndpoint {
 }
 
 impl PluginServiceEndpoint {
+    pub(crate) fn close(&self) {
+        self.commands.close();
+        while self.commands.try_recv().is_ok() {}
+    }
     /// Take the next command, if one is waiting.
     ///
     /// The worker's loop is the service's whole clock: it is already waking on its
@@ -483,5 +487,23 @@ mod tests {
             PluginCommandError::ServiceUnavailable.code(),
             "plugin_service_unavailable"
         );
+    }
+
+    #[test]
+    fn closing_admission_drops_queued_replies_and_refuses_new_commands() {
+        let (client, endpoint) = PluginServiceClient::bounded(2);
+        let (reply, receiver) = async_channel::bounded(1);
+        client
+            .send_blocking(PluginCommand::ReadCenter {
+                reply: PluginReply(reply),
+            })
+            .unwrap();
+        endpoint.close();
+        assert!(receiver.recv_blocking().is_err());
+        assert_eq!(
+            client.read_center_blocking(),
+            Err(PluginCommandError::ServiceUnavailable)
+        );
+        assert!(endpoint.try_recv().is_err());
     }
 }

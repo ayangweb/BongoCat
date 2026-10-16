@@ -45,7 +45,7 @@ fn copy_for(locale: &str) -> &'static Copy {
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Pomodoro {
     remaining_ms: u64,
     running: bool,
@@ -66,6 +66,18 @@ struct Pomodoro {
     #[serde(skip)]
     locale: Option<String>,
 }
+impl Default for Pomodoro {
+    fn default() -> Self {
+        Self {
+            remaining_ms: 0,
+            running: false,
+            started: false,
+            last_tick: None,
+            minutes: default_minutes(),
+            locale: None,
+        }
+    }
+}
 fn default_minutes() -> i64 {
     25
 }
@@ -77,6 +89,9 @@ impl Pomodoro {
 }
 impl Pomodoro {
     fn configure(&mut self, config: &Configuration) -> Result<(), String> {
+        if config.keys().any(|key| key != "minutes") {
+            return Err("Unknown configuration key".into());
+        }
         let minutes = match config.get("minutes") {
             None => default_minutes(),
             Some(ConfigValue::Integer(value)) if (1..=180).contains(value) => *value,
@@ -215,7 +230,7 @@ impl Plugin for Pomodoro {
     }
     fn handle(&mut self, message: HostMessage) -> Result<PluginOutput, String> {
         match message {
-            HostMessage::Start { config, state } => {
+            HostMessage::Start { mut config, state } => {
                 if !state.is_empty() {
                     *self = serde_json::from_slice(&state).map_err(|_| "Invalid saved pomodoro")?;
                     // State saved before `started` existed has no such field, so
@@ -227,6 +242,9 @@ impl Plugin for Pomodoro {
                 }
                 self.running = false;
                 self.last_tick = None;
+                // Earlier configurations ignored unknown keys. Keep those saved
+                // sessions readable while rejecting new edits with unknown keys.
+                config.retain(|key, _| key == "minutes");
                 self.configure(&config)?;
             }
             HostMessage::Configure { config } => self.configure(&config)?,
@@ -276,7 +294,7 @@ impl Plugin for Pomodoro {
             }
             HostMessage::Reset => {
                 *self = Self {
-                    minutes: default_minutes(),
+                    locale: self.locale.take(),
                     ..Default::default()
                 };
             }
@@ -286,10 +304,7 @@ impl Plugin for Pomodoro {
     }
 }
 fn main() -> std::io::Result<()> {
-    bongocat_plugin_sdk::run(&mut Pomodoro {
-        minutes: default_minutes(),
-        ..Default::default()
-    })
+    bongocat_plugin_sdk::run(&mut Pomodoro::default())
 }
 #[cfg(test)]
 mod tests {
@@ -327,6 +342,43 @@ mod tests {
                 .is_err()
         );
         assert_eq!(p.minutes, 25);
+        assert!(
+            p.configure(&[("unknown".into(), ConfigValue::Integer(1))].into())
+                .is_err()
+        );
+        assert_eq!(p.minutes, 25);
+    }
+
+    #[test]
+    fn defaults_and_reset_are_valid_and_keep_the_session_language() {
+        let mut p = Pomodoro::default();
+        assert!(p.output().unwrap().validate());
+        p.handle(HostMessage::Locale {
+            locale: "zh-CN".into(),
+        })
+        .unwrap();
+        p.configure(&[("minutes".into(), ConfigValue::Integer(5))].into())
+            .unwrap();
+        let output = p.handle(HostMessage::Reset).unwrap();
+        assert!(output.validate());
+        assert_eq!(p.minutes, 25);
+        assert_eq!(button_label(&output, "toggle"), "开始");
+    }
+
+    #[test]
+    fn saved_configuration_keeps_the_previous_unknown_key_tolerance() {
+        let output = Pomodoro::default()
+            .handle(HostMessage::Start {
+                config: [
+                    ("minutes".into(), ConfigValue::Integer(5)),
+                    ("unused".into(), ConfigValue::Boolean(true)),
+                ]
+                .into(),
+                state: Vec::new(),
+            })
+            .unwrap();
+        assert_eq!(clock_text(&output), "05:00");
+        assert_eq!(output.config.len(), 1);
     }
     /// The panel shows the duration before the user presses Start.
     #[test]

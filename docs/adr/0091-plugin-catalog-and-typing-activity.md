@@ -63,6 +63,21 @@ the version directory. Missing optional session fields default safely; disabled
 and uninstalled plugins do not restart automatically. Graceful shutdown preserves
 the enabled flag while stopping and joining the process.
 
+Replacement stops preserve that flag even if extraction or the new process's
+Start/locale exchange fails. Uninstall clears it for failed as well as running
+entries before retaining their data, so reinstall cannot resurrect a prior enable
+request. Reset restores a previously running process when data deletion fails;
+it reloads only its own package, not unrelated damaged packages. Package downloads
+serialize conflicting install/uninstall/reset/enable requests for their target.
+Service loop drains have finite budgets so a continuously refilled command or
+interaction queue cannot starve ticks and shutdown. Newly enabled, replaced,
+rolled-back or reset counter-based processes receive a fresh input baseline;
+existing processes first receive pending activity and keep their own baselines.
+If a damaged installed session prevents registration but the verified catalog
+still identifies the package, the card retains its installed version and failed
+state so reset/uninstall remain reachable rather than offering a same-version
+install that immutable-version checks must reject.
+
 ## Model controls
 
 The macOS event location is window-local, not screen-local. Convert via the

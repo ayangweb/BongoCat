@@ -102,6 +102,50 @@ fn the_store_is_private_to_the_storage_root_it_was_started_with() {
 }
 
 #[test]
+fn shutdown_closes_admission_even_when_the_store_is_unavailable() {
+    for unavailable in [false, true] {
+        let store = tempfile::tempdir().unwrap();
+        if unavailable {
+            std::fs::write(plugin_directory(store.path()), b"not a directory").unwrap();
+        }
+        let (service, _) = PluginService::start(store.path(), 4).unwrap();
+        let client = service.client();
+        assert_eq!(
+            client.read_center_blocking().unwrap().error.is_some(),
+            unavailable
+        );
+        client.shutdown_blocking().unwrap();
+        assert_eq!(
+            client.read_center_blocking(),
+            Err(bongocat_plugin_service::PluginCommandError::ServiceUnavailable)
+        );
+        service.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn shutdown_does_not_report_success_when_session_persistence_fails() {
+    let Some((service, store)) = service_with_pomodoro() else {
+        return;
+    };
+    let client = service.client();
+    client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    let session = plugin_directory(store.path())
+        .join("data")
+        .join(PLUGIN_ID)
+        .join("session.json");
+    std::fs::remove_file(&session).unwrap();
+    std::fs::create_dir(&session).unwrap();
+    assert!(client.shutdown_blocking().is_err());
+    assert!(matches!(
+        service.shutdown(),
+        Err(bongocat_plugin_service::PluginServiceStartError::Shutdown(
+            _
+        ))
+    ));
+}
+
+#[test]
 fn a_plugin_runs_and_keeps_running_without_a_window() {
     let Some((service, store)) = service_with_pomodoro() else {
         return;
@@ -369,6 +413,43 @@ fn versioned_package(bytes: &[u8], version: &str, broken: bool) -> Vec<u8> {
         output.write_all(&content).unwrap();
     }
     output.finish().unwrap().into_inner()
+}
+
+#[test]
+fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
+    let Some(bytes) = plugin_package() else {
+        return;
+    };
+    let catalog = tempfile::tempdir().unwrap();
+    let store = tempfile::tempdir().unwrap();
+    std::fs::write(catalog.path().join("pomodoro.zip"), &bytes).unwrap();
+    let source = bongocat_plugin_service::PluginSource::Development(catalog.path().to_owned());
+    let (service, _) =
+        PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
+    let client = service.client();
+    settled(&client);
+    client.install_blocking(bytes).unwrap();
+    client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    service.shutdown().unwrap();
+    std::fs::write(
+        plugin_directory(store.path())
+            .join("data")
+            .join(PLUGIN_ID)
+            .join("session.json"),
+        b"not JSON",
+    )
+    .unwrap();
+    let (service, _) = PluginService::start_with_source(store.path(), 4, source, None).unwrap();
+    let client = service.client();
+    let center = settled(&client);
+    assert_eq!(center.cards.len(), 1);
+    assert!(center.cards[0].failed);
+    assert_eq!(center.cards[0].version.as_deref(), Some("1.0.0"));
+    assert!(!center.cards[0].enabled);
+    let reset = client.reset_data_blocking(PLUGIN_ID).unwrap();
+    assert!(!reset.cards[0].failed);
+    assert!(client.set_enabled_blocking(PLUGIN_ID, true).unwrap().cards[0].enabled);
+    service.shutdown().unwrap();
 }
 
 #[test]

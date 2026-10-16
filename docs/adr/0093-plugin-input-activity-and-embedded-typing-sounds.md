@@ -75,6 +75,12 @@ longest option is the one a user scanning the list is looking for. The model
 window draws a select as `label: selected option`, exactly as it draws a number;
 picking another option is a panel action.
 
+Only non-loading buttons and toggles are model-window hit targets. A button routes
+an action, while a toggle writes the inverse of its latest published Boolean;
+display-only numbers/selects and stale/loading controls never route actions.
+Control IDs are unique within each view, and option values within each select,
+so neither surface can ambiguously resolve a control or choice.
+
 ### The typing-sound plugin owns four sound choices
 
 The plugin carries 25 sound sets copied out of Thock's public soundpack registry

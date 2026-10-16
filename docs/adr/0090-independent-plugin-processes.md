@@ -123,6 +123,26 @@ fallback order come from bongocat-update. Shutdown stops plugin admission and as
 for state, then waits within a deadline; forced process termination is a reported
 fault containment fallback, not a successful graceful shutdown.
 
+Lifecycle hardening keeps the latest validated output as the registry's only
+in-memory configuration/state source. Enable commits only after Start, optional
+locale negotiation and session persistence all succeed. A refused configuration
+or action consumes its sequence without killing an otherwise healthy session;
+transport, framing and advertised-capability failures stop that entry. A failed
+configuration write stops the process and retains the previous accepted configuration
+for retry. Shutdown attempts every running entry and propagates stop/persistence
+failure through the service join; a command-channel shutdown acknowledges only
+after successful cleanup, and closes admission and pending replies first.
+
+Install and discovery share bounded manifest validation, application compatibility
+checks and directory/manifest identity checks. Discovery isolates bad packages
+instead of hiding healthy ones. ZIP extraction rejects symlinks, duplicate or
+case-colliding paths and Windows path syntax on every host; version directories
+preserve SemVer build metadata. If package rollback itself fails, the previous
+tree is retained rather than deleted by temporary-directory cleanup. These checks
+do not turn trusted native executables into a sandbox; plugins must keep protocol
+stdout private, including when launching descendants. Process-tree containment
+for descendants that inherit protocol pipes remains a separate platform gate.
+
 ## Gates and limitations
 
 Autotests must cover handshake, compatibility, framing limits, malformed output,

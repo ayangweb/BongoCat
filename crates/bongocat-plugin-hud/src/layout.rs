@@ -169,11 +169,14 @@ pub fn collect_interactive(
 /// The id a node can be activated by, if it is interactive.
 pub fn interactive_id(node: &UiNode) -> Option<&str> {
     match node {
-        UiNode::Button { id, .. } => Some(id),
+        UiNode::Button {
+            id, loading: false, ..
+        } => Some(id),
         UiNode::Toggle { key, .. } => Some(key),
-        UiNode::Integer { key, .. } => Some(key),
-        UiNode::Select { key, .. } => Some(key),
-        UiNode::Text { .. } => None,
+        UiNode::Button { loading: true, .. }
+        | UiNode::Integer { .. }
+        | UiNode::Select { .. }
+        | UiNode::Text { .. } => None,
     }
 }
 

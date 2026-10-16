@@ -58,8 +58,7 @@ impl PluginManager {
     }
     /// Install a verified package archive, then make it discoverable.
     ///
-    /// Discovery is re-run so a newly installed plugin appears without a restart;
-    /// installing a version over a running one does not by itself restart it.
+    /// A running plugin is restarted on replacement, with rollback on failure.
     pub fn install(
         &mut self,
         bytes: &[u8],
@@ -79,12 +78,7 @@ impl PluginManager {
         }
         let manifest = install::inspect_package(bytes)?;
         let id = &manifest.metadata.id;
-        if !cargo_packager_updater::semver::VersionReq::parse(&manifest.metadata.app_versions)
-            .is_ok_and(|range| {
-                cargo_packager_updater::semver::Version::parse(env!("CARGO_PKG_VERSION"))
-                    .is_ok_and(|version| range.matches(&version))
-            })
-        {
+        if !supports_application(&manifest.metadata) {
             return Err(PluginManagerError::UnsafeManifest(
                 "plugin excludes this application version".into(),
             ));
@@ -97,7 +91,7 @@ impl PluginManager {
         let previous = self.installed_version(id);
         let running = self.registry.is_running(id);
         if running {
-            self.registry.disable(id)?;
+            self.registry.suspend(id)?;
         }
         let result = install::install_package(&self.plugin_dir, expected_sha256, bytes);
         let installed = match result {
@@ -109,19 +103,27 @@ impl PluginManager {
                 return Err(error);
             }
         };
-        self.discover_plugins()?;
-        // Validate the real process before accepting a replacement. The old
-        // version remains on disk so a refused startup can restore the pointer.
-        if running && let Err(error) = self.registry.enable(id) {
-            if let Some(previous) = previous {
-                install::write_current(
-                    &self.plugin_dir.join(PACKAGES_DIRECTORY).join(id),
-                    &previous,
-                )?;
-                self.discover_plugins()?;
-                let _ = self.registry.enable(id);
+        let accept = self.register_installed(id, &installed.root).and_then(|()| {
+            if running {
+                self.registry.enable(id)?;
             }
-            return Err(error.into());
+            Ok(())
+        });
+        if let Err(error) = accept {
+            // Registration, Start and locale negotiation are all part of the
+            // replacement transaction. None may strand the selected pointer.
+            self.registry.forget(id);
+            if let Some(previous) = previous {
+                let package_root = self.plugin_dir.join(PACKAGES_DIRECTORY).join(id);
+                install::write_current(&package_root, &previous)?;
+                self.register_installed(id, &package_root.join(previous))?;
+                if running {
+                    self.registry.enable(id)?;
+                }
+            } else {
+                install::uninstall_package(&self.plugin_dir, id)?;
+            }
+            return Err(error);
         }
         Ok(installed)
     }
@@ -153,7 +155,12 @@ impl PluginManager {
     }
     /// Remove a plugin's executable package. Its data is kept (see [`Self::reset`]).
     pub fn uninstall(&mut self, id: &str) -> Result<bool, PluginManagerError> {
-        if self.registry.is_running(id) {
+        if self
+            .registry
+            .list()
+            .iter()
+            .any(|(metadata, _)| metadata.id == id)
+        {
             self.registry.disable(id)?;
         }
         let removed = install::uninstall_package(&self.plugin_dir, id)?;
@@ -164,11 +171,21 @@ impl PluginManager {
     pub fn reset(&mut self, id: &str) -> Result<bool, PluginManagerError> {
         let running = self.registry.is_running(id);
         if running {
-            self.registry.disable(id)?;
+            self.registry.suspend(id)?;
         }
-        let removed = install::reset_plugin_data(&self.plugin_dir, id)?;
+        let removed = match install::reset_plugin_data(&self.plugin_dir, id) {
+            Ok(removed) => removed,
+            Err(error) => {
+                if running {
+                    self.registry.enable(id)?;
+                }
+                return Err(error);
+            }
+        };
         self.registry.forget(id);
-        self.discover_plugins()?;
+        if let Some(root) = install::selected_root(&self.plugin_dir, id) {
+            self.register_installed(id, &root)?;
+        }
         if running {
             self.registry.enable(id)?;
         }
@@ -191,35 +208,66 @@ impl PluginManager {
     pub fn discover_plugins(&mut self) -> Result<usize, PluginManagerError> {
         let mut count = 0;
         let packages = self.plugin_dir.join(PACKAGES_DIRECTORY);
-        // A store that has never had a plugin installed is empty, not an error.
-        if !packages.is_dir() {
-            self.registry.forget_missing(&[]);
-            return Ok(0);
+        match fs::symlink_metadata(&packages) {
+            // A store that has never had a plugin installed is empty, not an error.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.registry.forget_missing(&[]);
+                return Ok(0);
+            }
+            Err(error) => return Err(error.into()),
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => {
+                return Err(PluginManagerError::UnsafeManifest(
+                    "package store is not a directory".into(),
+                ));
+            }
         }
         let mut discovered = Vec::new();
+        let mut failure = None;
         for entry in fs::read_dir(&packages)? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
+            let entry = match entry.and_then(|entry| entry.file_type().map(|kind| (entry, kind))) {
+                Ok((entry, kind)) if kind.is_dir() => entry,
+                Ok(_) => continue,
+                Err(error) => {
+                    failure.get_or_insert(PluginManagerError::Io(error));
+                    continue;
+                }
+            };
             let id = entry.file_name().to_string_lossy().into_owned();
-            // A package with no `current` pointer, or one naming a directory that
-            // is not there, is treated as absent rather than as a corrupt plugin.
             let Some(root) = install::selected_root(&self.plugin_dir, &id) else {
                 continue;
             };
-            let path = root.join(MANIFEST_FILE);
-            if !path.is_file() {
-                continue;
+            match self.register_installed(&id, &root) {
+                Ok(()) => {
+                    discovered.push(id);
+                    count += 1;
+                }
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
             }
-            let manifest: PluginManifest = serde_json::from_slice(&fs::read(&path)?)?;
-            validate_manifest(&manifest)?;
-            discovered.push(manifest.metadata.id.clone());
-            self.registry.register(manifest.metadata, root)?;
-            count += 1;
         }
         self.registry.forget_missing(&discovered);
-        Ok(count)
+        failure.map_or(Ok(count), Err)
+    }
+
+    fn register_installed(&mut self, id: &str, root: &Path) -> Result<(), PluginManagerError> {
+        let manifest = install::read_manifest(&root.join(MANIFEST_FILE))?;
+        if manifest.metadata.id != id
+            || root.file_name().and_then(|name| name.to_str()) != Some(&manifest.metadata.version)
+        {
+            return Err(PluginManagerError::UnsafeManifest(
+                "selected package identity mismatch".into(),
+            ));
+        }
+        if !supports_application(&manifest.metadata) {
+            return Err(PluginManagerError::UnsafeManifest(
+                "plugin excludes this application version".into(),
+            ));
+        }
+        self.registry
+            .register(manifest.metadata, root.to_path_buf())?;
+        Ok(())
     }
     pub fn list_plugins(&self) -> Vec<(PluginMetadata, PluginState)> {
         self.registry.list()
@@ -252,23 +300,15 @@ impl PluginManager {
     pub fn plugin_output(&self, id: &str) -> Option<&bongocat_plugin_sdk::PluginOutput> {
         self.registry.output(id)
     }
-    pub fn shutdown(&mut self) {
-        self.registry.shutdown();
+    pub fn shutdown(&mut self) -> Result<(), PluginManagerError> {
+        self.registry.shutdown().map_err(Into::into)
     }
 }
-fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
-    let m = &manifest.metadata;
-    if m.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
-        || m.id.is_empty()
-        || m.entry.contains('/')
-        || m.entry.contains('\\')
-        || Path::new(&m.entry).is_absolute()
-    {
-        return Err(PluginManagerError::UnsafeManifest(
-            "protocol, id or entry is invalid".into(),
-        ));
-    }
-    Ok(())
+fn supports_application(metadata: &PluginMetadata) -> bool {
+    use cargo_packager_updater::semver::{Version, VersionReq};
+    VersionReq::parse(&metadata.app_versions).is_ok_and(|range| {
+        Version::parse(env!("CARGO_PKG_VERSION")).is_ok_and(|version| range.matches(&version))
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -288,7 +328,7 @@ mod tests {
             localizations: Default::default(),
         };
         assert!(
-            validate_manifest(&PluginManifest {
+            install::validate(&PluginManifest {
                 metadata,
                 sha256: None
             })
