@@ -305,6 +305,7 @@ impl Unavailable {
                 | PluginCommand::Uninstall { reply, .. }
                 | PluginCommand::ResetData { reply, .. }
                 | PluginCommand::Action { reply, .. }
+                | PluginCommand::Preview { reply, .. }
                 | PluginCommand::Configure { reply, .. }
                 | PluginCommand::SetLocale { reply, .. } => {
                     let _ = reply.respond(Err::<PluginCenterSnapshot, PluginCommandError>(
@@ -667,6 +668,18 @@ impl Worker {
                 let result = self
                     .manager
                     .action_plugin(&plugin, &action)
+                    .map_err(|error| operation(&error));
+                self.respond(reply, result);
+            }
+            PluginCommand::Preview {
+                plugin,
+                key,
+                value,
+                reply,
+            } => {
+                let result = self
+                    .manager
+                    .preview_plugin(&plugin, &key, &value)
                     .map_err(|error| operation(&error));
                 self.respond(reply, result);
             }

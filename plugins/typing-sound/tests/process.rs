@@ -106,6 +106,27 @@ fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
             "the panel publishes the sound pickers"
         );
     }
+    let before = process.exchange(HostMessage::Tick { elapsed_ms: 110 });
+    for (key, value) in [
+        ("keyboard_pack", "skcm-blue"),
+        ("keyboard_up_pack", "auto"),
+        ("mouse_down_pack", "auto"),
+    ] {
+        let preview = process.exchange(HostMessage::Preview {
+            key: key.into(),
+            value: value.into(),
+        });
+        assert_eq!(preview.config, before.config);
+        assert_eq!(preview.state, before.state);
+        assert!(
+            preview
+                .settings
+                .nodes
+                .iter()
+                .all(|node| !matches!(node, UiNode::Text { .. })),
+            "muted preview never opens an audio device"
+        );
+    }
     let stopped = process.exchange(HostMessage::Stop);
     assert!(stopped.model.nodes.is_empty());
     assert!(process.child.wait().unwrap().success());
@@ -161,14 +182,11 @@ fn preview_and_device_activity_use_the_real_audio_output() {
         elapsed_ms: 0,
         activity: InputActivity::default(),
     });
-    let preview = process.exchange(HostMessage::Action {
-        id: "preview".into(),
+    let preview = process.exchange(HostMessage::Preview {
+        key: "keyboard_down_pack".into(),
+        value: "auto".into(),
     });
-    assert!(
-        previewing(&preview),
-        "audio playback did not start: {:?}",
-        preview.settings
-    );
+    assert_no_audio_error(&preview);
     process.exchange(HostMessage::Pause);
     let paused = process.exchange(HostMessage::InputActivity {
         elapsed_ms: 500,
@@ -178,7 +196,7 @@ fn preview_and_device_activity_use_the_real_audio_output() {
             ..InputActivity::default()
         },
     });
-    assert!(!previewing(&paused));
+    assert_no_audio_error(&paused);
     process.exchange(HostMessage::Resume);
     process.exchange(HostMessage::InputActivity {
         elapsed_ms: 999,
@@ -197,27 +215,20 @@ fn preview_and_device_activity_use_the_real_audio_output() {
             mouse_up: 1,
         },
     });
-    assert!(
-        previewing(&typed),
-        "typing playback did not start: {:?}",
-        typed.settings
-    );
+    assert_no_audio_error(&typed);
     std::thread::sleep(std::time::Duration::from_millis(300));
     process.exchange(HostMessage::Stop);
     assert!(process.child.wait().unwrap().success());
 }
 
-/// Whether the plugin reports its preview control as still carrying out the
-/// audition, which is what the host draws as a loading button.
-fn previewing(output: &PluginOutput) -> bool {
-    output.settings.nodes.iter().any(|node| {
-        matches!(
-            node,
-            UiNode::Button {
-                id,
-                loading: true,
-                ..
-            } if id == "preview"
-        )
-    })
+fn assert_no_audio_error(output: &PluginOutput) {
+    assert!(
+        output
+            .settings
+            .nodes
+            .iter()
+            .all(|node| !matches!(node, UiNode::Text { .. })),
+        "audio output must open and decode successfully: {:?}",
+        output.settings
+    );
 }

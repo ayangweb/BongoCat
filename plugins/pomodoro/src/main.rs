@@ -279,6 +279,7 @@ impl Plugin for Pomodoro {
                 }
                 _ => return Err("Unknown pomodoro action".into()),
             },
+            HostMessage::Preview { .. } => return Err("Unknown pomodoro preview".into()),
             // The host resolved the tag before sending it, and the plugin only
             // republishes its own views, so nothing about the timer's own state
             // changes: the clock, the remaining time and the running flag stay

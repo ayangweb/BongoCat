@@ -15,6 +15,8 @@ use bongocat_plugin_sdk::{ConfigValue, UiNode};
 use gpui_kit::{AnyElement, assets::IconName, base::TestSupportExt as _};
 use plugins_page::action_icon;
 
+type PreviewCallback = Rc<dyn Fn(SharedString, bool, &mut App)>;
+
 /// The width the panel reads at.
 ///
 /// It is a reading measure, not a layout constraint: a plugin declares a handful
@@ -28,10 +30,11 @@ const PLUGIN_SETTINGS_PANEL_WIDTH: Pixels = px(440.0);
 /// draws, which is the same split the protocol makes: a plugin's option list is
 /// its own vocabulary, and the panel never has to guess a value from a label it
 /// is showing.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub(crate) struct PluginSettingsSelectChoice {
     value: SharedString,
     label: SharedString,
+    preview: Option<PreviewCallback>,
 }
 
 impl PluginSettingsSelectChoice {
@@ -39,6 +42,7 @@ impl PluginSettingsSelectChoice {
         Self {
             value: SharedString::from(value.to_owned()),
             label: SharedString::from(label.to_owned()),
+            preview: None,
         }
     }
 }
@@ -55,6 +59,26 @@ impl SearchableListItem for PluginSettingsSelectChoice {
     fn value(&self) -> &Self::Value {
         &self.value
     }
+
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let value = self.value.clone();
+        div()
+            .child(self.label.clone())
+            .when_some(self.preview.clone(), |row, preview| {
+                // Keep stock row selection and click handling; only add a hover target.
+                row.child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "plugin-option-preview-{}",
+                            value
+                        )))
+                        .test_support()
+                        .absolute()
+                        .inset_0()
+                        .on_hover(move |hovered, _, cx| preview(value.clone(), *hovered, cx)),
+                )
+            })
+    }
 }
 
 /// The dropdowns one open panel draws, keyed by the config key each writes.
@@ -68,6 +92,8 @@ impl SearchableListItem for PluginSettingsSelectChoice {
 struct PluginSettingsSelects {
     entities: BTreeMap<String, Entity<PluginSettingsSelectState>>,
     subscriptions: Vec<gpui_kit::Subscription>,
+    previews: BTreeMap<String, PreviewCallback>,
+    nodes: Vec<UiNode>,
 }
 
 /// The one plugin whose configuration panel is open.
@@ -88,6 +114,7 @@ pub(crate) struct PluginSettingsDraft {
     pub(crate) snapshot: Rc<RefCell<PluginSettingsSnapshot>>,
     /// The dropdowns this panel draws, one per select the plugin published.
     selects: Rc<RefCell<PluginSettingsSelects>>,
+    preview_lifetime: std::sync::Arc<()>,
 }
 
 /// What one frame of a plugin's configuration panel draws.
@@ -164,7 +191,15 @@ impl SettingsView {
                 .collect(),
         };
         let selects = draft.selects.clone();
-        sync_plugin_selects(&selects, &plugin, &snapshot.nodes, window, cx);
+        sync_plugin_selects(
+            &selects,
+            &plugin,
+            &snapshot.nodes,
+            cx.entity().downgrade(),
+            std::sync::Arc::downgrade(&draft.preview_lifetime),
+            window,
+            cx,
+        );
         let draft = self
             .plugin_settings
             .as_mut()
@@ -231,6 +266,7 @@ impl SettingsView {
                 pending_keys: BTreeSet::new(),
             })),
             selects: Rc::new(RefCell::new(PluginSettingsSelects::default())),
+            preview_lifetime: std::sync::Arc::default(),
         });
         self.sync_plugin_settings_dialog(window, cx);
     }
@@ -283,20 +319,27 @@ fn sync_plugin_selects(
     selects: &Rc<RefCell<PluginSettingsSelects>>,
     plugin: &str,
     nodes: &[UiNode],
+    view: WeakEntity<SettingsView>,
+    lifetime: std::sync::Weak<()>,
     window: &mut Window,
     cx: &mut Context<SettingsView>,
 ) {
+    let changed = selects.borrow().nodes != nodes;
+    if changed {
+        selects.borrow_mut().nodes = nodes.to_vec();
+    }
     for node in nodes {
         let UiNode::Select {
             key,
             value,
             options,
+            preview: supports_preview,
             ..
         } = node
         else {
             continue;
         };
-        let choices: Vec<PluginSettingsSelectChoice> = options
+        let mut choices: Vec<PluginSettingsSelectChoice> = options
             .iter()
             .map(|option| PluginSettingsSelectChoice::new(&option.value, &option.label))
             .collect();
@@ -306,11 +349,44 @@ fn sync_plugin_selects(
             .position(|choice| choice.value == selected)
             .unwrap_or(0);
         let mut selects = selects.borrow_mut();
+        let lifetime = lifetime.clone();
+        let preview = supports_preview.then(|| {
+            selects
+                .previews
+                .entry(key.clone())
+                .or_insert_with(|| {
+                    let plugin = plugin.to_owned();
+                    let key = key.clone();
+                    let view = view.clone();
+                    Rc::new(move |value, hovered, cx| {
+                        let _ = view.update(cx, |view, cx| {
+                            view.preview_plugin(
+                                &plugin,
+                                &key,
+                                value.as_ref(),
+                                hovered,
+                                lifetime.clone(),
+                                cx,
+                            );
+                        });
+                    })
+                })
+                .clone()
+        });
+        for choice in &mut choices {
+            choice.preview = preview.clone();
+        }
         match selects.entities.get(key) {
             Some(entity) => {
                 entity.update(cx, |state, cx| {
-                    state.set_items(SearchableVec::new(choices), window, cx);
-                    state.set_selected_value(&selected, window, cx);
+                    if changed {
+                        state.set_items(SearchableVec::new(choices), window, cx);
+                    }
+                    // A refused write republishes the same nodes. Restore its
+                    // value too, without resetting an unchanged menu cursor.
+                    if changed || state.selected_value() != Some(&selected) {
+                        state.set_selected_value(&selected, window, cx);
+                    }
                 });
             }
             None => {
@@ -343,6 +419,12 @@ fn sync_plugin_selects(
                     },
                 );
                 selects.subscriptions.push(subscription);
+                let (field_plugin, field_key) = (plugin.to_owned(), key.clone());
+                let dismissed =
+                    cx.subscribe(&entity, move |view, _, _: &gpui_kit::DismissEvent, _| {
+                        view.plugin_host.cancel_preview(&field_plugin, &field_key);
+                    });
+                selects.subscriptions.push(dismissed);
                 selects.entities.insert(key.clone(), entity);
             }
         }
@@ -648,5 +730,102 @@ fn settings_field(
             )
             .into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
+
+    struct SelectHarness(Entity<PluginSettingsSelectState>);
+
+    impl Render for SelectHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().p_4().w(px(300.)).child(Select::new(&self.0))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn hovering_stock_select_options_previews_without_confirming(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let previews = Rc::new(RefCell::new(Vec::new()));
+        let received = previews.clone();
+        let capture = Rc::new(RefCell::new(None));
+        let selected = capture.clone();
+        let window = cx.open_window(size(px(600.), px(500.)), move |window, cx| {
+            let callback: PreviewCallback = Rc::new(move |value, hovered, _| {
+                if hovered {
+                    received.borrow_mut().push(value.to_string());
+                }
+            });
+            let choices = ["first", "second"]
+                .into_iter()
+                .map(|value| {
+                    let mut choice = PluginSettingsSelectChoice::new(value, value);
+                    choice.preview = Some(callback.clone());
+                    choice
+                })
+                .collect::<Vec<_>>();
+            let state = cx.new(|cx| {
+                SelectState::new(
+                    SearchableVec::new(choices),
+                    Some(IndexPath::default().row(0)),
+                    window,
+                    cx,
+                )
+            });
+            selected.borrow_mut().replace(state.clone());
+            Root::new(cx.new(|_| SelectHarness(state)), window, cx)
+        });
+        let state = capture.borrow_mut().take().unwrap();
+        let visual = VisualTestContext::from_window(*window, cx).into_mut();
+        visual.run_until_parked();
+        visual.update(|window, cx| window.click("input", cx));
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        for value in ["second", "first", "second"] {
+            visual.update(|window, cx| {
+                let bounds = window
+                    .find(SharedString::from(format!("plugin-option-preview-{value}")))
+                    .bounds();
+                assert!(bounds.size.width > px(0.) && bounds.size.height > px(0.));
+                window.simulate_mouse_move(bounds.center(), cx);
+            });
+            visual.update(|window, cx| window.render_frame(cx));
+            visual.run_until_parked();
+            assert_eq!(previews.borrow().last().map(String::as_str), Some(value));
+            state.read_with(visual, |state, _| {
+                assert_eq!(
+                    state.selected_value().map(|value| value.as_ref()),
+                    Some("first")
+                );
+            });
+        }
+        for right_edge in [false, true] {
+            visual.update(|window, cx| window.simulate_mouse_move(point(px(10.), px(10.)), cx));
+            let before = previews.borrow().len();
+            visual.update(|window, cx| {
+                let bounds = window.find("plugin-option-preview-second").bounds();
+                let x = if right_edge {
+                    bounds.size.width - px(1.)
+                } else {
+                    px(1.)
+                };
+                window.simulate_mouse_move(bounds.origin + point(x, bounds.size.height / 2.), cx);
+            });
+            assert_eq!(
+                previews.borrow().len(),
+                before + 1,
+                "the whole option row previews, including its edges"
+            );
+        }
+        visual.update(|window, cx| window.click("plugin-option-preview-second", cx));
+        state.read_with(visual, |state, _| {
+            assert_eq!(
+                state.selected_value().map(|value| value.as_ref()),
+                Some("second")
+            );
+        });
     }
 }

@@ -13,7 +13,7 @@ use bongocat_plugin_service::{
 };
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 /// One package operation the center itself runs for a plugin.
@@ -193,6 +193,51 @@ impl From<PluginCard> for PluginCardView {
     }
 }
 
+/// Hover is latest-value UI state, not a reliable command queue. At most one
+/// preview is in flight and one is pending, so fast pointer movement cannot
+/// replay a backlog or reorder the final hovered option.
+#[derive(Default)]
+struct PreviewMailbox {
+    pending: Option<PreviewRequest>,
+    running: bool,
+}
+
+struct PreviewRequest {
+    plugin: String,
+    key: String,
+    value: String,
+    lifetime: Weak<()>,
+}
+
+impl PreviewMailbox {
+    fn enqueue(&mut self, request: PreviewRequest, hovered: bool) -> bool {
+        if !hovered {
+            if self.pending.as_ref().is_some_and(|pending| {
+                pending.plugin == request.plugin
+                    && pending.key == request.key
+                    && pending.value == request.value
+            }) {
+                self.pending = None;
+            }
+            return false;
+        }
+        self.pending = Some(request);
+        if self.running {
+            return false;
+        }
+        self.running = true;
+        true
+    }
+
+    fn take(&mut self) -> Option<PreviewRequest> {
+        let pending = self.pending.take();
+        if pending.is_none() {
+            self.running = false;
+        }
+        pending
+    }
+}
+
 /// The window's handle on the plugin service.
 ///
 /// It carries the service client and the published center state, and it is shared
@@ -204,6 +249,7 @@ pub(crate) struct PluginHost {
     client: Option<PluginServiceClient>,
     published: Arc<Mutex<PluginHubState>>,
     requests: Arc<Mutex<()>>,
+    previews: Arc<Mutex<PreviewMailbox>>,
 }
 
 impl Default for PluginHost {
@@ -212,6 +258,7 @@ impl Default for PluginHost {
             client: None,
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
+            previews: Arc::default(),
         }
     }
 }
@@ -223,6 +270,7 @@ impl PluginHost {
             client: Some(client),
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
+            previews: Arc::default(),
         }
     }
 
@@ -367,6 +415,71 @@ impl PluginHost {
         });
     }
 
+    pub(crate) fn queue_preview(
+        &self,
+        plugin: &str,
+        key: &str,
+        value: &str,
+        hovered: bool,
+        lifetime: Weak<()>,
+    ) -> bool {
+        self.previews
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .enqueue(
+                PreviewRequest {
+                    plugin: plugin.to_owned(),
+                    key: key.to_owned(),
+                    value: value.to_owned(),
+                    lifetime,
+                },
+                hovered,
+            )
+    }
+
+    pub(crate) fn cancel_preview(&self, plugin: &str, key: &str) {
+        let mut previews = self
+            .previews
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if previews
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.plugin == plugin && pending.key == key)
+        {
+            previews.pending = None;
+        }
+    }
+
+    pub(crate) fn drain_previews(&self) {
+        loop {
+            // Take the latest option only after earlier reliable commands finish.
+            // Release this lock between previews so configure/stop/poll can run.
+            let _request = self
+                .requests
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(preview) = self
+                .previews
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            else {
+                return;
+            };
+            if preview.lifetime.upgrade().is_none() {
+                continue;
+            }
+            let Ok(client) = self.client() else {
+                continue;
+            };
+            match client.preview_blocking(&preview.plugin, &preview.key, &preview.value) {
+                Ok(snapshot) => self.publish(snapshot.into()),
+                Err(error) => self.report_command_error(error),
+            }
+        }
+    }
+
     pub(crate) fn configure(
         &self,
         plugin: &str,
@@ -417,6 +530,44 @@ mod tests {
     use bongocat_plugin_service::{PluginService, plugin_directory};
     use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
     use std::io::Write as _;
+
+    #[test]
+    fn preview_mailbox_coalesces_hover_and_cancels_stale_options() {
+        let lifetime = Arc::new(());
+        let request = |value: &str| PreviewRequest {
+            plugin: "plugin".into(),
+            key: "pack".into(),
+            value: value.into(),
+            lifetime: Arc::downgrade(&lifetime),
+        };
+        let mut mailbox = PreviewMailbox::default();
+        assert!(mailbox.enqueue(request("first"), true));
+        assert!(!mailbox.enqueue(request("second"), true));
+        assert!(!mailbox.enqueue(request("first"), false));
+        assert_eq!(mailbox.take().unwrap().value, "second");
+        assert!(!mailbox.enqueue(request("third"), true));
+        assert!(!mailbox.enqueue(request("third"), false));
+        assert!(mailbox.take().is_none());
+        assert!(!mailbox.running);
+        assert!(mailbox.enqueue(request("fourth"), true));
+        let pending = mailbox.take().unwrap();
+        drop(lifetime);
+        assert!(
+            pending.lifetime.upgrade().is_none(),
+            "a closed panel invalidates pending work"
+        );
+        assert!(mailbox.take().is_none());
+
+        let host = PluginHost::default();
+        let lifetime = Arc::new(());
+        assert!(host.queue_preview("plugin", "pack", "first", true, Arc::downgrade(&lifetime)));
+        host.cancel_preview("plugin", "other");
+        assert!(host.previews.lock().unwrap().pending.is_some());
+        host.cancel_preview("plugin", "pack");
+        assert!(host.previews.lock().unwrap().pending.is_none());
+        host.drain_previews();
+        assert!(!host.previews.lock().unwrap().running);
+    }
 
     #[cfg(target_os = "windows")]
     const BINARY_FILE: &str = "bongocat-pomodoro.exe";
@@ -754,6 +905,7 @@ mod tests {
                             label: "SKCM Blue · Alps".into(),
                         },
                     ],
+                    preview: false,
                 },
             ],
         }

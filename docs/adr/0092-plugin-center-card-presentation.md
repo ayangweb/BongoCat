@@ -132,3 +132,7 @@ Manual macOS visual acceptance for the grid, settings modal and localized
 tooltips, Windows DPI/layout and real-audio checks remain separate platform
 gates; the bounded product smoke does not replace them. No acceptance item above
 is claimed as verified on a platform that has not run it.
+
+The keyboard/mouse sound plugin's separate preview button is superseded by the
+Select hover-preview contract in ADR-0093. Other plugin buttons continue to use
+this ADR's loading-state contract.

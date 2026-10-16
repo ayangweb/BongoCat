@@ -90,6 +90,7 @@ fn a_select_is_measured_by_its_chosen_option_without_an_action_target() {
         label: "Keyboard sound".into(),
         value: "skcm-blue".into(),
         options,
+        preview: false,
     };
     let view = PluginView {
         anchor: Anchor::TopLeft,

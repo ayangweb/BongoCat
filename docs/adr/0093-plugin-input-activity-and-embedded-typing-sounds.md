@@ -89,6 +89,24 @@ longest option is the one a user scanning the list is looking for. The model
 window draws a select as `label: selected option`, exactly as it draws a number;
 picking another option is a panel action.
 
+Select nodes may opt into `preview: true`. The settings window keeps the existing
+Select component, but gives each opted-in option row a hover listener that sends
+a typed `Preview { key, value }` message without committing configuration. The
+typing-sound plugin stops the previous preview before starting the new one, so
+rapid movement between options never leaves overlapping preview voices. The
+window keeps only the latest pending hover request; leaving a row cancels its
+unsent request, dismissing the menu cancels its pending request, and closing the
+panel invalidates its pending work. An in-flight
+one-shot may finish naturally. The registry validates that the running plugin
+published the preview-enabled select and option before sending the message.
+The plugin reuses the output device, preserves normal input cooldowns, suppresses
+input audio while the preview is audible (without replaying those input edges),
+and respects pause and mute. Following a device previews its current device pack,
+not the action's pinned pack; a missing release recording remains silent. The
+separate preview button and its localized labels are removed. Plugins
+and selects that do not opt in retain ordinary confirm-only behavior, preserving
+compatibility with older installed plugins.
+
 Only non-loading buttons and toggles are model-window hit targets. A button routes
 an action, while a toggle writes the inverse of its latest published Boolean;
 display-only numbers/selects and stale/loading controls never route actions.
@@ -165,10 +183,28 @@ rather than at a user's first keystroke.
 check), `python3 -m unittest discover -s tools/tests` and
 `tools/validate-locales.py` are the gates.
 
+### Hover-preview verification
+
+Headless GPUI tests open the stock Select, move the pointer between real rows,
+check preview callbacks without selection changes, then confirm a choice with a
+click. Mailbox tests cover latest-only delivery, stale row-leave cancellation and
+panel lifetime invalidation. Plugin tests cover every published option, device
+following, direction/category validation, missing release recordings, mute,
+pause, reset, stop and input suppression. Real-pipe tests exercise the preview
+message without persisting a selection. An opt-in audio-device unit test asserts
+one preview voice, output-device reuse during rapid switching and normal input
+recovery after completion; it remains separate from hardware-free CI tests.
+
+On 2026-10-16, `cargo test --locked -p bongocat-typing-sound -- --ignored`
+passed both opt-in tests on macOS with the real output device: rapid preview
+replacement/device reuse/input recovery, and preview/activity over real pipes.
+These are automated audio-output checks, not a manual listening or physical-input
+acceptance record.
+
 ## Remaining Work
 
-macOS real-audio smoke (the four edges, the mouse switch and the preview) is an
-opt-in test and is not recorded with evidence here; Windows real-audio and DPI
-checks remain a separate platform gate. Publishing the plugin to the signed
+Manual listening and physical-input acceptance for all four edges and the mouse
+switch remain open. Windows real-audio and DPI checks remain a separate platform
+gate. Publishing the plugin to the signed
 catalog remains a release gate, as does the final attribution and
 redistribution-list review before any public release.

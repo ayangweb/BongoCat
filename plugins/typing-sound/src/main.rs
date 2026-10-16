@@ -11,8 +11,8 @@
 mod packs;
 
 use bongocat_plugin_sdk::{
-    ActionIcon, ConfigValue, Configuration, HostMessage, InputActivity, Plugin, PluginOutput,
-    PluginView, SelectOption, UiNode,
+    ConfigValue, Configuration, HostMessage, InputActivity, Plugin, PluginOutput, PluginView,
+    SelectOption, UiNode,
 };
 use packs::{PACKS, PackAsset};
 use rodio::{Source as _, buffer::SamplesBuffer};
@@ -90,6 +90,16 @@ impl Action {
             Self::MouseUp => "mouse_up_pack",
         }
     }
+
+    fn from_config_key(key: &str) -> Option<Self> {
+        match key {
+            "keyboard_pack" | "keyboard_down_pack" => Some(Self::KeyboardDown),
+            "mouse_pack" | "mouse_down_pack" => Some(Self::MouseDown),
+            "keyboard_up_pack" => Some(Self::KeyboardUp),
+            "mouse_up_pack" => Some(Self::MouseUp),
+            _ => None,
+        }
+    }
 }
 
 /// The one configuration value the plugin reserves for "follow the device's own
@@ -130,7 +140,6 @@ const DEVICE_IDLE: Duration = Duration::from_secs(2);
 struct Copy {
     volume: &'static str,
     cooldown: &'static str,
-    preview: &'static str,
     mouse_enabled: &'static str,
     keyboard_pack: &'static str,
     keyboard_down_pack: &'static str,
@@ -148,7 +157,6 @@ struct Copy {
 const ENGLISH: Copy = Copy {
     volume: "Volume",
     cooldown: "Minimum gap (ms)",
-    preview: "Preview",
     mouse_enabled: "Play mouse sounds",
     keyboard_pack: "Keyboard sound",
     keyboard_down_pack: "Keyboard press sound",
@@ -165,7 +173,6 @@ const ENGLISH: Copy = Copy {
 const SIMPLIFIED_CHINESE: Copy = Copy {
     volume: "音量",
     cooldown: "最小间隔（毫秒）",
-    preview: "试听",
     mouse_enabled: "播放鼠标音效",
     keyboard_pack: "键盘音效",
     keyboard_down_pack: "键盘按下音效",
@@ -307,6 +314,7 @@ struct Playback {
     /// shared by both would swallow the release of every quick keystroke.
     last_played: BTreeMap<Action, u64>,
     last_audible: Option<Instant>,
+    previewing: bool,
 }
 
 impl Playback {
@@ -340,8 +348,20 @@ impl Playback {
         self.players.iter().any(|player| !player.empty())
     }
 
-    fn stop(&mut self) {
+    fn clear_voices(&mut self) {
         self.players.clear();
+        self.previewing = false;
+    }
+
+    fn preview_active(&mut self) -> bool {
+        if self.previewing && !self.playing() {
+            self.previewing = false;
+        }
+        self.previewing
+    }
+
+    fn stop(&mut self) {
+        self.clear_voices();
         self.device.take();
         self.last_played.clear();
         self.last_audible = None;
@@ -351,6 +371,9 @@ impl Playback {
     /// a while.
     fn idle(&mut self) {
         self.players.retain(|player| !player.empty());
+        if self.players.is_empty() {
+            self.previewing = false;
+        }
         if !self.playing()
             && self
                 .last_audible
@@ -555,15 +578,6 @@ impl TypingSound {
         self.locale.as_deref().map_or(&ENGLISH, copy_for)
     }
 
-    /// Whether the preview sound is still audible.
-    ///
-    /// The preview button reports this rather than the plugin publishing a
-    /// "playing…" line beside it: the button is the control the user pressed, so
-    /// it is the thing that has to show the action is still in flight.
-    fn previewing(&self) -> bool {
-        self.playback.playing()
-    }
-
     fn configure(&mut self, config: &Configuration) -> Result<(), String> {
         if config.keys().any(|key| !is_known_key(key)) {
             return Err("Unknown configuration key".into());
@@ -603,6 +617,9 @@ impl TypingSound {
         )?;
         let mouse_enabled = boolean("mouse_enabled", false)?;
 
+        if self.playback.previewing {
+            self.playback.clear_voices();
+        }
         self.volume = volume;
         self.cooldown_ms = cooldown;
         self.mouse_enabled = mouse_enabled;
@@ -618,6 +635,7 @@ impl TypingSound {
     /// Whether one action may be heard right now.
     fn admit(&mut self, action: Action, now_ms: u64) -> bool {
         if self.paused
+            || self.playback.preview_active()
             || self.volume == 0
             || (action.category() == PackCategory::Mouse && !self.mouse_enabled)
         {
@@ -635,9 +653,8 @@ impl TypingSound {
         true
     }
 
-    /// Play the sound for one action out of the set it resolves to.
-    fn play(&mut self, action: Action) {
-        let pack = self.selection.pack(action);
+    /// Play one sound from a resolved pack.
+    fn play_from_pack(&mut self, action: Action, pack: &'static PackAsset) {
         // The cache is asked for the set, and one sound is taken out of it: the
         // borrow ends before playback starts, so only the sound being played is
         // copied out of the cache.
@@ -653,6 +670,50 @@ impl TypingSound {
             return;
         };
         self.error = self.playback.play(sound, self.volume).err();
+    }
+
+    fn play(&mut self, action: Action) {
+        self.play_from_pack(action, self.selection.pack(action));
+    }
+
+    /// Resolve a published option, not the currently pinned action. "Follow"
+    /// always means the device default even when the action is currently pinned.
+    fn preview_choice(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<(Action, &'static PackAsset), String> {
+        let action =
+            Action::from_config_key(key).ok_or_else(|| "Unknown preview key".to_owned())?;
+        let pack = if value == FOLLOW && key == action.config_key() {
+            if action.category() == PackCategory::Keyboard {
+                self.selection.keyboard
+            } else {
+                self.selection.mouse
+            }
+        } else {
+            pack_by_id(value)
+                .filter(|pack| pack.category == action.category())
+                .ok_or_else(|| "Unknown preview option".to_owned())?
+        };
+        Ok((action, pack))
+    }
+
+    /// A preview owns the voices until its one-shot sample finishes. Normal
+    /// input counters still advance, but cannot mix with or replay after it.
+    fn preview(&mut self, key: &str, value: &str) -> Result<(), String> {
+        let (action, pack) = self.preview_choice(key, value)?;
+        // Reuse the output device and preserve normal input cooldowns.
+        self.playback.clear_voices();
+        self.error = None;
+        if !self.paused && self.volume > 0 {
+            self.playback.previewing = true;
+            self.play_from_pack(action, pack);
+            let mut keep = self.selection.ids();
+            keep.push(pack.id);
+            self.library.retain(&keep);
+        }
+        Ok(())
     }
 
     /// Play whichever edges moved since the counters were last read.
@@ -741,6 +802,7 @@ impl TypingSound {
             label: label.into(),
             value: value.into(),
             options,
+            preview: true,
         }
     }
 
@@ -751,6 +813,7 @@ impl TypingSound {
             label: label.into(),
             value: self.configured_pack(key).into(),
             options: self.pack_options(action, copy),
+            preview: true,
         };
         let mut nodes = vec![
             UiNode::Integer {
@@ -766,15 +829,6 @@ impl TypingSound {
                 value: self.cooldown_ms,
                 min: MIN_COOLDOWN_MS,
                 max: MAX_COOLDOWN_MS,
-            },
-            UiNode::Button {
-                id: "preview".into(),
-                label: copy.preview.into(),
-                // Auditioning is what this control is, whatever state it is in,
-                // so the glyph is the speaker rather than a pointer that says
-                // nothing about the action.
-                icon: Some(ActionIcon::Volume),
-                loading: self.previewing(),
             },
             UiNode::Toggle {
                 key: "mouse_enabled".into(),
@@ -894,7 +948,7 @@ impl Plugin for TypingSound {
                 self.play_edges(elapsed_ms, activity);
             }
             HostMessage::Tick { .. } => self.playback.idle(),
-            HostMessage::Action { id } if id == "preview" => self.play(Action::KeyboardDown),
+            HostMessage::Preview { key, value } => self.preview(&key, &value)?,
             HostMessage::Action { .. } => return Err("Unknown action".into()),
             // The host resolved the tag before sending it, and the plugin only
             // republishes its own labels, so the sound settings are untouched.
@@ -927,7 +981,6 @@ fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_plugin_sdk::ActionIcon;
     use std::collections::BTreeSet;
 
     #[test]
@@ -944,7 +997,9 @@ mod tests {
         let output = plugin.handle(HostMessage::Reset).unwrap();
         assert!(output.validate());
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
-        assert_eq!(button_label(&output, "preview"), "试听");
+        assert!(output.settings.nodes.iter().any(|node| {
+            matches!(node, UiNode::Integer { label, .. } if label == SIMPLIFIED_CHINESE.volume)
+        }));
     }
 
     /// Every embedded set has to be playable, because nothing else can repair it
@@ -1349,7 +1404,6 @@ mod tests {
         let mut plugin = TypingSound::default();
         let english = plugin.output();
         assert_eq!(integer_label(&plugin.output(), "volume"), "Volume");
-        assert_eq!(button_label(&plugin.output(), "preview"), "Preview");
         assert_eq!(
             select_label(&plugin.output(), "keyboard_down_pack"),
             "Keyboard press sound"
@@ -1362,7 +1416,6 @@ mod tests {
             .unwrap();
         assert_eq!(integer_label(&localized, "volume"), "音量");
         assert_eq!(integer_label(&localized, "cooldown_ms"), "最小间隔（毫秒）");
-        assert_eq!(button_label(&localized, "preview"), "试听");
         assert_eq!(select_label(&localized, "mouse_up_pack"), "鼠标弹起音效");
         assert_eq!(
             select_option_label(&localized, "keyboard_up_pack", FOLLOW),
@@ -1377,7 +1430,6 @@ mod tests {
                     locale: locale.into(),
                 })
                 .unwrap();
-            assert_eq!(button_label(&localized, "preview"), "试听", "{locale}");
             assert_eq!(localized.settings, chinese.settings, "{locale}");
             assert_eq!(localized.config, english.config, "{locale}");
         }
@@ -1393,7 +1445,6 @@ mod tests {
                     locale: locale.into(),
                 })
                 .unwrap();
-            assert_eq!(button_label(&fallback, "preview"), "Preview", "{locale}");
             assert_eq!(
                 select_label(&fallback, "mouse_pack"),
                 "Mouse sound",
@@ -1450,23 +1501,232 @@ mod tests {
         }
     }
 
-    /// Auditioning is what the preview button is, so its glyph never changes,
-    /// and the in-flight state is the button's own rather than a line of
-    /// placeholder text beside it.
+    /// Auditioning is attached to each option rather than taking a separate
+    /// action row in the settings panel.
     #[test]
-    fn the_preview_button_carries_its_own_glyph_and_progress() {
+    fn the_settings_panel_has_no_preview_button() {
         let plugin = TypingSound::default();
         let output = plugin.output();
-        assert_eq!(button_icon(&output, "preview"), Some(ActionIcon::Volume));
-        assert!(!button_loading(&output, "preview"));
         assert!(
             !output
                 .settings
                 .nodes
                 .iter()
-                .any(|node| matches!(node, UiNode::Text { .. })),
-            "progress is the button's own state, not a published line"
+                .any(|node| matches!(node, UiNode::Button { id, .. } if id == "preview"))
         );
+    }
+
+    #[test]
+    fn hovering_a_sound_option_previews_without_committing_configuration() {
+        let mut plugin = TypingSound::default();
+        plugin
+            .configure(&Configuration::from([
+                ("volume".into(), ConfigValue::Integer(0)),
+                (
+                    "keyboard_down_pack".into(),
+                    ConfigValue::Text(FOLLOW.into()),
+                ),
+            ]))
+            .unwrap();
+        let before = plugin.output().config;
+        let output = plugin
+            .handle(HostMessage::Preview {
+                key: "keyboard_down_pack".into(),
+                value: PACKS
+                    .iter()
+                    .find(|pack| pack.category == PackCategory::Keyboard)
+                    .unwrap()
+                    .id
+                    .into(),
+            })
+            .unwrap();
+        assert_eq!(output.config, before);
+        assert!(plugin.error.is_none());
+        assert!(plugin.playback.device.is_none());
+        assert!(plugin.library.decoded.is_empty());
+        assert!(
+            plugin
+                .handle(HostMessage::Preview {
+                    key: "keyboard_pack".into(),
+                    value: PackCategory::Keyboard.default_pack().id.into(),
+                })
+                .is_ok()
+        );
+        assert!(
+            plugin
+                .handle(HostMessage::Preview {
+                    key: "keyboard_down_pack".into(),
+                    value: "missing-pack".into(),
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn every_published_preview_resolves_to_its_device_and_direction() {
+        let mut plugin = TypingSound::default();
+        let pinned = PackCategory::Keyboard.packs().nth(1).unwrap();
+        plugin
+            .configure(
+                &[(
+                    "keyboard_down_pack".into(),
+                    ConfigValue::Text(pinned.id.into()),
+                )]
+                .into(),
+            )
+            .unwrap();
+        assert_eq!(plugin.selection.pack(Action::KeyboardDown).id, pinned.id);
+        assert_eq!(
+            plugin
+                .preview_choice("keyboard_down_pack", FOLLOW)
+                .unwrap()
+                .1
+                .id,
+            plugin.selection.keyboard.id
+        );
+        for node in plugin.output().settings.nodes {
+            if let UiNode::Select {
+                key,
+                options,
+                preview,
+                ..
+            } = node
+            {
+                assert!(preview);
+                let expected = Action::from_config_key(&key).unwrap();
+                for option in options {
+                    let (action, pack) = plugin.preview_choice(&key, &option.value).unwrap();
+                    assert_eq!(action, expected);
+                    assert_eq!(pack.category, action.category());
+                }
+            }
+        }
+        assert!(plugin.preview_choice("keyboard_pack", FOLLOW).is_err());
+        assert!(plugin.preview_choice("volume", "skcm-blue").is_err());
+        assert!(plugin.preview_choice("mouse_pack", "skcm-blue").is_err());
+    }
+
+    fn install_test_voice(plugin: &mut TypingSound, preview: bool) {
+        let (player, _output) = rodio::Player::new();
+        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(1)));
+        plugin.playback.players.push(player);
+        plugin.playback.previewing = preview;
+    }
+
+    #[test]
+    fn previews_suppress_input_without_replaying_edges_or_resetting_cooldown() {
+        let mut plugin = TypingSound {
+            activity: Some(InputActivity::default()),
+            ..Default::default()
+        };
+        plugin.playback.last_played.insert(Action::KeyboardDown, 10);
+        install_test_voice(&mut plugin, true);
+        assert!(plugin.playback.preview_active());
+        let activity = InputActivity {
+            keyboard_down: 1,
+            keyboard_up: 1,
+            mouse_down: 1,
+            mouse_up: 1,
+        };
+        plugin.play_edges(100, activity);
+        assert_eq!(plugin.activity, Some(activity));
+        assert_eq!(plugin.playback.players.len(), 1);
+        assert_eq!(plugin.playback.last_played[&Action::KeyboardDown], 10);
+        assert!(plugin.error.is_none());
+        plugin.playback.clear_voices();
+        plugin.play_edges(200, activity);
+        assert!(plugin.playback.players.is_empty());
+        assert!(plugin.admit(Action::KeyboardDown, 200));
+    }
+
+    #[test]
+    fn finished_preview_releases_ownership_before_the_next_input_batch() {
+        let mut plugin = TypingSound::default();
+        let (player, mut output) = rodio::Player::new();
+        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_millis(1)));
+        plugin.playback.players.push(player);
+        plugin.playback.previewing = true;
+        for _ in 0..100_000 {
+            if !plugin.playback.playing() {
+                break;
+            }
+            output.next();
+        }
+        assert!(!plugin.playback.playing());
+        assert!(plugin.admit(Action::KeyboardDown, 100));
+        assert!(!plugin.playback.previewing);
+        install_test_voice(&mut plugin, false);
+        assert!(
+            plugin.admit(Action::KeyboardUp, 100),
+            "normal press audio must not be mistaken for a preview"
+        );
+    }
+
+    #[test]
+    fn silent_release_preview_replaces_old_voice_and_pause_mute_reset_stop_are_safe() {
+        let mut plugin = TypingSound::default();
+        let no_release = PackCategory::Keyboard
+            .packs()
+            .find(|pack| !pack.supports_key_up)
+            .unwrap();
+        install_test_voice(&mut plugin, true);
+        plugin.preview("keyboard_up_pack", no_release.id).unwrap();
+        assert!(!plugin.playback.playing());
+        assert!(plugin.playback.device.is_none());
+        assert!(plugin.error.is_none());
+        for message in [HostMessage::Pause, HostMessage::Reset, HostMessage::Stop] {
+            install_test_voice(&mut plugin, true);
+            plugin.handle(message).unwrap();
+            assert!(!plugin.playback.preview_active());
+            assert!(plugin.playback.players.is_empty());
+        }
+        plugin.preview("keyboard_pack", "skcm-blue").unwrap();
+        assert!(
+            plugin.playback.device.is_none(),
+            "paused previews never open output"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
+    fn rapid_previews_replace_voices_reuse_output_and_recover_normal_input() {
+        let mut plugin = TypingSound {
+            activity: Some(InputActivity::default()),
+            ..Default::default()
+        };
+        plugin.playback.last_played.insert(Action::KeyboardDown, 10);
+        plugin.preview("keyboard_pack", "skcm-blue").unwrap();
+        assert!(plugin.error.is_none());
+        assert!(plugin.playback.preview_active());
+        let device = std::ptr::from_ref(plugin.playback.device.as_ref().unwrap());
+        for pack in PackCategory::Keyboard.packs().take(4) {
+            plugin.preview("keyboard_pack", pack.id).unwrap();
+            assert!(plugin.error.is_none());
+            assert_eq!(plugin.playback.players.len(), 1);
+            assert_eq!(
+                device,
+                std::ptr::from_ref(plugin.playback.device.as_ref().unwrap())
+            );
+            assert_eq!(plugin.playback.last_played[&Action::KeyboardDown], 10);
+            plugin.play_edges(
+                100,
+                InputActivity {
+                    keyboard_down: 1,
+                    ..Default::default()
+                },
+            );
+            assert_eq!(plugin.playback.players.len(), 1);
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while plugin.playback.preview_active() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!plugin.playback.preview_active());
+        assert!(plugin.admit(Action::KeyboardDown, 200));
+        plugin.play(Action::KeyboardDown);
+        assert!(plugin.playback.playing());
+        plugin.handle(HostMessage::Stop).unwrap();
+        assert!(plugin.playback.device.is_none());
     }
 
     /// The whole panel is one frame the host has to be able to draw: every select
@@ -1554,51 +1814,6 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Action::KeyboardDown]
         );
-    }
-
-    /// The label one settings button carries, by the action it publishes.
-    fn button_label<'a>(output: &'a PluginOutput, id: &str) -> &'a str {
-        match output.settings.nodes.iter().find_map(|node| match node {
-            UiNode::Button {
-                id: node_id, label, ..
-            } if node_id == id => Some(label.as_str()),
-            _ => None,
-        }) {
-            Some(label) => label,
-            None => panic!("the settings panel always publishes the {id} button"),
-        }
-    }
-
-    /// The glyph one settings button asks the host to draw.
-    fn button_icon(output: &PluginOutput, id: &str) -> Option<ActionIcon> {
-        output
-            .settings
-            .nodes
-            .iter()
-            .find_map(|node| match node {
-                UiNode::Button {
-                    id: node_id, icon, ..
-                } if node_id == id => Some(*icon),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("the settings panel always publishes the {id} button"))
-    }
-
-    /// Whether one settings button is carrying out its action right now.
-    fn button_loading(output: &PluginOutput, id: &str) -> bool {
-        output
-            .settings
-            .nodes
-            .iter()
-            .find_map(|node| match node {
-                UiNode::Button {
-                    id: node_id,
-                    loading,
-                    ..
-                } if node_id == id => Some(*loading),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("the settings panel always publishes the {id} button"))
     }
 
     /// The label of one numeric setting the settings panel publishes.

@@ -153,6 +153,13 @@ pub enum PluginCommand {
         action: String,
         reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
     },
+    /// Preview one select option without committing it to plugin configuration.
+    Preview {
+        plugin: String,
+        key: String,
+        value: String,
+        reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
+    },
     /// Set one declared configuration key on a running plugin.
     Configure {
         plugin: String,
@@ -391,6 +398,20 @@ impl PluginServiceClient {
             plugin: plugin.to_owned(),
             key: key.to_owned(),
             value,
+            reply,
+        })
+    }
+
+    pub fn preview_blocking(
+        &self,
+        plugin: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
+        self.request_blocking(|reply| PluginCommand::Preview {
+            plugin: plugin.to_owned(),
+            key: key.to_owned(),
+            value: value.to_owned(),
             reply,
         })
     }

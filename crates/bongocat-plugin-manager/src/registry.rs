@@ -1,6 +1,6 @@
 //! Process-backed plugin registry. A failed child only removes that entry.
 use crate::loader::Process;
-use bongocat_plugin_sdk::{Configuration, HostMessage, PluginMetadata, PluginOutput};
+use bongocat_plugin_sdk::{Configuration, HostMessage, PluginMetadata, PluginOutput, UiNode};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -13,6 +13,8 @@ pub enum RegistryError {
     AlreadyRunning(String),
     #[error("plugin is not running: {0}")]
     NotRunning(String),
+    #[error("plugin did not publish this preview option")]
+    InvalidPreview,
     #[error("plugin process failed: {0}")]
     Process(#[from] std::io::Error),
 }
@@ -283,6 +285,30 @@ impl PluginRegistry {
             .get_mut(id)
             .ok_or_else(|| RegistryError::NotFound(id.into()))?;
         entry.exchange(HostMessage::Action { id: action.into() })
+    }
+    pub fn preview(
+        &mut self,
+        id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<PluginOutput, RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        if entry.state != PluginState::Enabled {
+            return Err(RegistryError::NotRunning(id.into()));
+        }
+        if !entry.last_output.settings.nodes.iter().any(|node| {
+            matches!(node, UiNode::Select { key: published_key, options, preview: true, .. }
+                if published_key == key && options.iter().any(|option| option.value == value))
+        }) {
+            return Err(RegistryError::InvalidPreview);
+        }
+        entry.exchange(HostMessage::Preview {
+            key: key.into(),
+            value: value.into(),
+        })
     }
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, PluginOutput)> {
         let mut outputs = Vec::new();
@@ -618,6 +644,63 @@ mod tests {
             Err(RegistryError::NotRunning(_))
         ));
         assert!(registry.output(&metadata.id).unwrap().config.is_empty());
+    }
+
+    #[test]
+    fn only_running_plugins_with_opted_in_published_options_receive_previews() {
+        let store = tempfile::tempdir().unwrap();
+        let metadata = metadata();
+        let mut registry = PluginRegistry::new();
+        registry
+            .register(
+                metadata.clone(),
+                store
+                    .path()
+                    .join("packages")
+                    .join(&metadata.id)
+                    .join(&metadata.version),
+            )
+            .unwrap();
+        assert!(matches!(
+            registry.preview(&metadata.id, "pack", "one"),
+            Err(RegistryError::NotRunning(_))
+        ));
+        let entry = registry.entries.get_mut(&metadata.id).unwrap();
+        entry.state = PluginState::Enabled;
+        let select = |preview| UiNode::Select {
+            key: "pack".into(),
+            label: "Sound".into(),
+            value: "one".into(),
+            options: vec![bongocat_plugin_sdk::SelectOption {
+                value: "one".into(),
+                label: "One".into(),
+            }],
+            preview,
+        };
+        entry.last_output.settings.nodes = vec![select(false)];
+        assert!(matches!(
+            registry.preview(&metadata.id, "pack", "one"),
+            Err(RegistryError::InvalidPreview)
+        ));
+        registry
+            .entries
+            .get_mut(&metadata.id)
+            .unwrap()
+            .last_output
+            .settings
+            .nodes = vec![select(true)];
+        for (key, value) in [("other", "one"), ("pack", "other")] {
+            assert!(matches!(
+                registry.preview(&metadata.id, key, value),
+                Err(RegistryError::InvalidPreview)
+            ));
+        }
+        // A valid request reaches exchange (there is deliberately no child).
+        assert!(matches!(
+            registry.preview(&metadata.id, "pack", "one"),
+            Err(RegistryError::NotRunning(_))
+        ));
+        assert_eq!(registry.entries[&metadata.id].state, PluginState::Enabled);
     }
 
     const ACTIVITY: InputActivity = InputActivity {

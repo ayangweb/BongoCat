@@ -83,6 +83,23 @@ impl SettingsView {
         .detach();
     }
 
+    pub(super) fn preview_plugin(
+        &mut self,
+        plugin: &str,
+        key: &str,
+        value: &str,
+        hovered: bool,
+        lifetime: std::sync::Weak<()>,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .plugin_host
+            .queue_preview(plugin, key, value, hovered, lifetime)
+        {
+            self.update_plugin_host(move |host| host.drain_previews(), cx);
+        }
+    }
+
     /// Keep the rendered snapshot current while the window is on screen.
     ///
     /// The window is created for each open and destroyed on close. The poll still

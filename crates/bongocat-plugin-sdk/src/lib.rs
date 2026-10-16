@@ -245,6 +245,9 @@ pub enum UiNode {
         label: String,
         value: String,
         options: Vec<SelectOption>,
+        /// Whether hovering an option asks the plugin to preview it.
+        #[serde(default)]
+        preview: bool,
     },
 }
 
@@ -341,6 +344,7 @@ impl PluginView {
                     label,
                     value,
                     options,
+                    ..
                 } => {
                     let mut values = std::collections::BTreeSet::new();
                     valid_key(key)
@@ -409,6 +413,12 @@ pub enum HostMessage {
     },
     Action {
         id: String,
+    },
+    /// Preview one option from a plugin-published select without changing its
+    /// configuration. The plugin owns the meaning of the key and value.
+    Preview {
+        key: String,
+        value: String,
     },
     Configure {
         config: Configuration,
@@ -589,6 +599,7 @@ mod tests {
                         label: "Also one".into(),
                     },
                 ],
+                preview: false,
             }],
             ..Default::default()
         };
@@ -737,6 +748,7 @@ mod tests {
             label: "Keyboard sound".into(),
             value: value.into(),
             options,
+            preview: false,
         };
         let options = vec![
             SelectOption {
@@ -753,6 +765,11 @@ mod tests {
             ..Default::default()
         };
         assert!(view.validate());
+        let legacy: UiNode = serde_json::from_str(
+            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One"}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(legacy, UiNode::Select { preview: false, .. }));
 
         for invalid in [
             node("unknown-pack", options.clone()),

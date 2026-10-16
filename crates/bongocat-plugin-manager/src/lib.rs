@@ -284,6 +284,17 @@ impl PluginManager {
             .map(|_| ())
             .map_err(Into::into)
     }
+    pub fn preview_plugin(
+        &mut self,
+        id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), PluginManagerError> {
+        self.registry
+            .preview(id, key, value)
+            .map(|_| ())
+            .map_err(Into::into)
+    }
     pub fn configure_plugin(
         &mut self,
         id: &str,
