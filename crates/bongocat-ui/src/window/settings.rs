@@ -28,6 +28,7 @@ impl SettingsView {
     /// a build without the plugin service looks like.
     pub(super) fn set_plugin_host(&mut self, host: PluginHost) {
         self.plugin_host = host;
+        self.plugin_locale = None;
     }
 
     /// Keep the plugin center's copy of the service's state current.

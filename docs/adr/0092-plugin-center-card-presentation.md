@@ -67,8 +67,10 @@ plugin built before the message existed is never sent a frame it cannot parse an
 keeps publishing its fallback copy; a plugin that declared the capability and
 then refuses the exchange fails like any other faulty tick. The registry owns the
 current tag so a plugin started later — enable, upgrade, resume at startup —
-receives it too. Framework copy (page title, card chrome, tooltips, the panel
-title and its empty state) stays in `bongocat-i18n`, which now carries
+receives it too. The window only caches a sent tag when a service is attached,
+and clears that cache when its service is replaced so an unchanged language is
+not skipped by a newly attached service. Framework copy (page title, card chrome,
+tooltips, the panel title and its empty state) stays in `bongocat-i18n`, which now carries
 `plugins.settings.{open,title,empty}` in all eight catalogs.
 
 Both shipped plugins (pomodoro, typing-sound) carry only English and Simplified
@@ -80,6 +82,15 @@ for every button they publish. The typing sound preview button reports `loading`
 from its own playback state instead of
 publishing a text node, and the failure it can report is an error code the plugin
 renders in the language on screen rather than a sentence frozen in English.
+
+Installed code, not catalog metadata, publishes action labels and icons. An old
+installed package without these declarations therefore keeps its English labels
+and neutral glyph even if a rebuilt package is available. `just dev-plugins`
+only rebuilds the catalog ZIPs; it does not replace installed code. During this
+unreleased PR's fixed 1.0.0 baseline (ADR-0091), testing a rebuilt plugin requires
+uninstalling and installing it through the center, which retains its data. The
+host must not guess icons or translations from legacy action IDs to hide stale
+code, or silently overwrite immutable installed versions.
 
 ## Compatibility
 
@@ -98,8 +109,10 @@ the shipped plugins' English fallback for unsupported host languages,
 per-control in-flight bookkeeping, grid column selection, the settings entry
 opening and closing one plugin's panel, action glyph mapping (including the
 neutral fallback), and that a plugin-reported loading state draws on its own
-button. `just check` (fmt, clippy across targets/features, workspace tests,
-release check) and `tools/validate-locales.py` pass.
+button. Real-pipe tests check Pomodoro's localized action labels and play, pause
+and restart declarations together across timer transitions. `just check` (fmt,
+clippy across targets/features, workspace tests, release check) and
+`tools/validate-locales.py` pass.
 
 ## Remaining Work
 

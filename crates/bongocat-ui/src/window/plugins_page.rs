@@ -490,21 +490,18 @@ impl SettingsView {
     ///
     /// It is sent from every frame rather than from the plugin page, because the
     /// language also re-labels the panels the plugins draw in the model window,
-    /// and the user may never open the center. The service is the one that skips
-    /// a tag it already has, so a frame that changes nothing costs one message.
+    /// and the user may never open the center. An unchanged tag is not sent again
+    /// until a service is attached or replaced; an unavailable host consumes none.
     pub(super) fn sync_plugin_locale(
         &mut self,
         language: SettingsLanguage,
         cx: &mut Context<Self>,
     ) {
         let locale = language.catalog_locale();
-        if self.plugin_locale.as_deref() == Some(locale) {
+        if !self.plugin_host.is_available() || self.plugin_locale.as_deref() == Some(locale) {
             return;
         }
         self.plugin_locale = Some(locale.to_owned());
-        if !self.plugin_host.is_available() {
-            return;
-        }
         self.update_plugin_host(move |host| host.set_locale(locale), cx);
     }
 }

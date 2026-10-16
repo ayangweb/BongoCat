@@ -864,6 +864,17 @@ mod tests {
 
     #[gpui_kit::test]
     fn every_action_button_carries_the_glyph_its_plugin_declared(cx: &mut TestAppContext) {
+        use bongocat_plugin_sdk::ActionIcon;
+        use gpui_kit::assets::IconName;
+        for (icon, expected) in [
+            (Some(ActionIcon::Play), IconName::Play),
+            (Some(ActionIcon::Pause), IconName::Pause),
+            (Some(ActionIcon::Restart), IconName::RotateCcw),
+            (Some(ActionIcon::Volume), IconName::Volume2),
+            (None, IconName::MousePointerClick),
+        ] {
+            assert_eq!(super::super::plugins_page::action_icon(icon), expected);
+        }
         let (_, visual) = card_page(cx, vec![sample_card()], 720.);
         visual.update(|window, _| {
             // The plugin named a glyph per action, so the buttons are told apart
@@ -1069,9 +1080,8 @@ mod tests {
         });
     }
 
-    /// The window tells the service which tag it is showing once per change, and
-    /// the mark is kept whether or not a service is attached: a window that
-    /// attaches later must not skip the tag it is already rendering.
+    /// A locale is consumed only by an attached service. Attaching or replacing
+    /// the service must deliver it again even if the window language is unchanged.
     #[gpui_kit::test]
     fn the_window_named_locale_is_sent_once_per_change(cx: &mut TestAppContext) {
         let (view, visual) = card_page(cx, vec![sample_card()], 720.);
@@ -1079,9 +1089,14 @@ mod tests {
             view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
         });
         view.read_with(visual, |view, _| {
-            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
+            assert!(view.plugin_locale.is_none());
         });
+        let root = tempfile::tempdir().unwrap();
+        let (service, _handles) = PluginService::start(root.path(), 4).unwrap();
         view.update(visual, |view, cx| {
+            view.set_plugin_host(PluginHost::new(service.client()));
+            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
+            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
             view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
             assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
             view.sync_plugin_locale(SettingsLanguage::English, cx);
@@ -1089,5 +1104,13 @@ mod tests {
         view.read_with(visual, |view, _| {
             assert_eq!(view.plugin_locale.as_deref(), Some("en-US"));
         });
+        view.update(visual, |view, cx| {
+            view.set_plugin_host(PluginHost::new(service.client()));
+            assert!(view.plugin_locale.is_none());
+            view.sync_plugin_locale(SettingsLanguage::English, cx);
+            assert_eq!(view.plugin_locale.as_deref(), Some("en-US"));
+        });
+        visual.run_until_parked();
+        service.shutdown().unwrap();
     }
 }
