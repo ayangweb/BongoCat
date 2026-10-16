@@ -1,7 +1,7 @@
 //! Rasterizing a laid-out view into an RGBA bitmap.
 //!
-//! The host draws a plugin's panel itself rather than accepting pixels, so this
-//! is the only place a panel's appearance is decided. The output is a plain
+//! The host lays out a plugin's panel itself; inline status icons are confined
+//! to their bounded slot. This is where the panel's appearance is decided. The output is a plain
 //! premultiplied RGBA buffer the two backends upload unchanged: D3D11 and Metal
 //! differ in almost everything, but they agree on a texture, which is what lets
 //! one rasterizer serve both.
@@ -12,7 +12,7 @@ use crate::{
     DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL, DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE,
     PlacedNode,
 };
-use bongocat_plugin_sdk::{PluginView, UiNode};
+use bongocat_plugin_sdk::{PluginView, StatusIcon, UiNode};
 
 /// The largest panel the host will rasterize on either axis, in device pixels.
 ///
@@ -142,6 +142,42 @@ impl HudRenderer {
     ) {
         let rect = bitmap_rect(placed.rect, offset, scale);
         match placed.node {
+            UiNode::IconText { icon, text } => {
+                let side = 24.0 * scale;
+                let icon_rect = centered_icon_rect(rect, side);
+                match icon {
+                    StatusIcon::Rgba(pixels) if icon.validate() => {
+                        canvas.draw_icon(pixels, icon_rect, icon.is_template());
+                    }
+                    StatusIcon::Badge(badge) => {
+                        canvas.fill_rounded_rect(
+                            icon_rect,
+                            CORNER_RADIUS * scale,
+                            DEFAULT_BUTTON_FILL,
+                        );
+                        let size =
+                            LABEL_SIZE * scale * if badge.chars().count() > 1 { 0.75 } else { 1.0 };
+                        let width = self.font.measure_text(badge, size);
+                        canvas.draw_text(
+                            &self.font,
+                            badge,
+                            rect.x + (side - width) / 2.0,
+                            rect.y + (side - self.font.line_height(size)) / 2.0,
+                            size,
+                            DEFAULT_TEXT_COLOR,
+                        );
+                    }
+                    _ => {}
+                }
+                canvas.draw_text(
+                    &self.font,
+                    text,
+                    rect.x + side + crate::PANEL_GAP * scale,
+                    centered_text_y(&self.font, text, LABEL_SIZE * scale, rect),
+                    LABEL_SIZE * scale,
+                    DEFAULT_TEXT_COLOR,
+                );
+            }
             UiNode::Text { text } => {
                 let size = text_size(text) * scale;
                 canvas.draw_text(&self.font, text, rect.x, rect.y, size, DEFAULT_TEXT_COLOR);
@@ -223,6 +259,28 @@ fn bitmap_rect(rect: HudRect, offset: HudRect, scale: f32) -> HudRect {
     )
 }
 
+fn centered_icon_rect(row: HudRect, side: f32) -> HudRect {
+    HudRect::new(row.x, row.y + (row.height - side) / 2.0, side, side)
+}
+
+fn centered_text_y(font: &HudFont, text: &str, size: f32, row: HudRect) -> f32 {
+    let ascent = font.line_metrics(size).ascent;
+    let mut ink_top = f32::INFINITY;
+    let mut ink_bottom = f32::NEG_INFINITY;
+    for character in text.chars().filter(|character| font.has_glyph(*character)) {
+        let (metrics, _) = font.rasterize(character, size);
+        if metrics.width == 0 || metrics.height == 0 {
+            continue;
+        }
+        ink_top = ink_top.min(ascent - metrics.ymin as f32 - metrics.height as f32);
+        ink_bottom = ink_bottom.max(ascent - metrics.ymin as f32);
+    }
+    if !ink_top.is_finite() {
+        return row.y + (row.height - font.line_height(size)) / 2.0;
+    }
+    row.y + (row.height - (ink_bottom - ink_top)) / 2.0 - ink_top
+}
+
 /// A premultiplied RGBA8 surface the panel is painted into.
 struct Canvas {
     width: u32,
@@ -231,6 +289,87 @@ struct Canvas {
 }
 
 impl Canvas {
+    fn draw_icon(&mut self, pixels: &[u8], rect: HudRect, template: bool) {
+        // Supersampling the source and interpolating premultiplied colour keeps
+        // transparent edges clean when a 32px native icon is resized for the
+        // panel. Nearest-neighbour sampling made circles and diagonal strokes
+        // visibly stair-step at 100% and 125% display scales.
+        const SAMPLES_PER_AXIS: usize = 2;
+        const SAMPLE_COUNT: f32 = (SAMPLES_PER_AXIS * SAMPLES_PER_AXIS) as f32;
+        for y in 0..rect.height.ceil() as u32 {
+            for x in 0..rect.width.ceil() as u32 {
+                let mut color = [0.0; 4];
+                for sample_y in 0..SAMPLES_PER_AXIS {
+                    for sample_x in 0..SAMPLES_PER_AXIS {
+                        let local_x = (x as f32
+                            + (sample_x as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
+                            / rect.width;
+                        let local_y = (y as f32
+                            + (sample_y as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
+                            / rect.height;
+                        let sample = Self::sample_icon(
+                            pixels,
+                            local_x * 32.0 - 0.5,
+                            local_y * 32.0 - 0.5,
+                            template,
+                        );
+                        color[0] += sample[0] * sample[3] / SAMPLE_COUNT;
+                        color[1] += sample[1] * sample[3] / SAMPLE_COUNT;
+                        color[2] += sample[2] * sample[3] / SAMPLE_COUNT;
+                        color[3] += sample[3] / SAMPLE_COUNT;
+                    }
+                }
+                if color[3] > f32::EPSILON {
+                    color[0] /= color[3];
+                    color[1] /= color[3];
+                    color[2] /= color[3];
+                }
+                self.blend(
+                    rect.x as i64 + i64::from(x),
+                    rect.y as i64 + i64::from(y),
+                    color,
+                );
+            }
+        }
+    }
+
+    fn sample_icon(pixels: &[u8], x: f32, y: f32, template: bool) -> [f32; 4] {
+        const SIZE: usize = 32;
+        let x = x.clamp(0.0, (SIZE - 1) as f32);
+        let y = y.clamp(0.0, (SIZE - 1) as f32);
+        let x0 = x.floor() as usize;
+        let y0 = y.floor() as usize;
+        let x1 = (x0 + 1).min(SIZE - 1);
+        let y1 = (y0 + 1).min(SIZE - 1);
+        let tx = x - x0 as f32;
+        let ty = y - y0 as f32;
+        let mut premultiplied = [0.0; 4];
+
+        for (row, row_weight) in [(y0, 1.0 - ty), (y1, ty)] {
+            for (column, column_weight) in [(x0, 1.0 - tx), (x1, tx)] {
+                let weight = row_weight * column_weight;
+                let index = (row * SIZE + column) * 4;
+                let alpha = f32::from(pixels[index + 3]) / 255.0;
+                premultiplied[3] += alpha * weight;
+                for channel in 0..3 {
+                    let value = if template {
+                        DEFAULT_TEXT_COLOR[channel]
+                    } else {
+                        f32::from(pixels[index + channel]) / 255.0
+                    };
+                    premultiplied[channel] += value * alpha * weight;
+                }
+            }
+        }
+
+        if premultiplied[3] > f32::EPSILON {
+            premultiplied[0] /= premultiplied[3];
+            premultiplied[1] /= premultiplied[3];
+            premultiplied[2] /= premultiplied[3];
+        }
+        premultiplied
+    }
+
     fn new(width: u32, height: u32) -> Self {
         Self {
             width,
@@ -433,6 +572,47 @@ mod tests {
         let bitmap = renderer.rasterize(&empty, 300, 300, 1.0).unwrap();
         assert!(bitmap.is_empty());
         assert!(renderer.rasterize(&view(), 300, 300, 0.0).is_err());
+    }
+
+    #[test]
+    fn icon_is_centered_in_a_taller_text_row() {
+        let row = HudRect::new(0.0, 0.0, 120.0, 32.0);
+        assert_eq!(
+            centered_icon_rect(row, 24.0),
+            HudRect::new(0.0, 4.0, 24.0, 24.0)
+        );
+    }
+
+    #[test]
+    fn icon_and_chinese_label_share_the_same_visible_vertical_center() {
+        let font = crate::load_platform_font().expect("platform font");
+        let row = HudRect::new(0.0, 0.0, 180.0, 24.0);
+        let label = "微信输入法";
+        let size = LABEL_SIZE;
+        let y = centered_text_y(&font, label, size, row);
+        let ascent = font.line_metrics(size).ascent;
+        let mut ink_top = f32::INFINITY;
+        let mut ink_bottom = f32::NEG_INFINITY;
+        for character in label.chars() {
+            let (metrics, _) = font.rasterize(character, size);
+            ink_top = ink_top.min(y + ascent - metrics.ymin as f32 - metrics.height as f32);
+            ink_bottom = ink_bottom.max(y + ascent - metrics.ymin as f32);
+        }
+        let text_center = (ink_top + ink_bottom) / 2.0;
+        let icon = centered_icon_rect(row, 24.0);
+        let icon_center = icon.y + icon.height / 2.0;
+        assert!((text_center - icon_center).abs() < 0.01);
+    }
+
+    #[test]
+    fn icon_sampling_interpolates_transparent_edges_without_rgb_fringes() {
+        let mut pixels = vec![0; 32 * 32 * 4];
+        let index = (16 * 32 + 16) * 4;
+        pixels[index..index + 4].copy_from_slice(&[255, 0, 0, 255]);
+        let sample = Canvas::sample_icon(&pixels, 15.5, 16.0, false);
+        assert!(sample[3] > 0.0 && sample[3] < 1.0);
+        assert!((sample[0] - 1.0).abs() < f32::EPSILON);
+        assert!(sample[1].abs() < f32::EPSILON && sample[2].abs() < f32::EPSILON);
     }
 
     #[test]

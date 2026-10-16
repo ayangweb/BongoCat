@@ -36,6 +36,10 @@ pub fn measure_view(view: &PluginView, font: &HudFont) -> (f32, f32) {
 /// The size one node occupies, in logical pixels.
 pub fn measure_node(node: &UiNode, font: &HudFont) -> (f32, f32) {
     match node {
+        UiNode::IconText { text, .. } => (
+            24.0 + PANEL_GAP + font.measure_text(text, LABEL_SIZE),
+            24.0_f32.max(font.line_height(LABEL_SIZE)),
+        ),
         UiNode::Text { text } => {
             let size = text_size(text);
             (font.measure_text(text, size), font.line_height(size))
@@ -176,6 +180,7 @@ pub fn interactive_id(node: &UiNode) -> Option<&str> {
         UiNode::Button { loading: true, .. }
         | UiNode::Integer { .. }
         | UiNode::Select { .. }
+        | UiNode::IconText { .. }
         | UiNode::Text { .. } => None,
     }
 }

@@ -27,6 +27,7 @@ members = [
     "crates/bongocat-update",
     "plugins/pomodoro",
     "plugins/button-sounds",
+    "plugins/input-source",
 ]
 
 [workspace.package]

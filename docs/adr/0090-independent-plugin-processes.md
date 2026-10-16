@@ -27,7 +27,8 @@ expected a fat trait-object pointer. Do not execute that loader; replace it.
   plugin-owned config validation and model-window presentation without new OS APIs.
 - #905: daily keyboard count and mouse travel. Defer until an exact aggregate input
   stream and local-day contract are available; pixels cannot be called kilometres.
-- #849: current input source. Defer: platform IME APIs and session semantics.
+- #849: current input source. Implemented as a read-only plugin in ADR-0094;
+  Windows TSF/internal conversion-mode and manual platform acceptance remain open.
 - #90: meow on typing. Implemented as an independent process in ADR-0091;
   the temporary evaluation audio still needs redistribution license review.
 - #74: held-key display. Defer: sensitive input consent, reset/reconcile semantics;

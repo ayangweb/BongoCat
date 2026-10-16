@@ -8,6 +8,54 @@ fn font() -> HudFont {
 }
 
 #[test]
+fn icon_text_rasterizes_at_desktop_scales_without_an_interaction_target() {
+    use bongocat_plugin_sdk::StatusIcon;
+    let renderer = crate::HudRenderer::new(font());
+    for icon in [
+        StatusIcon::Badge("中".into()),
+        StatusIcon::Rgba([255, 0, 0, 128].repeat(1024)),
+        StatusIcon::Rgba([0, 0, 0, 128].repeat(1024)),
+    ] {
+        let view = PluginView {
+            anchor: Anchor::BottomRight,
+            nodes: vec![UiNode::IconText {
+                icon: icon.clone(),
+                text: "Pinyin / 拼音".into(),
+            }],
+        };
+        assert!(view.validate());
+        let layout = crate::layout(&view, HudRect::new(0.0, 0.0, 800.0, 600.0), renderer.font());
+        assert!(layout.interactive.is_empty());
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let bitmap = renderer.rasterize(&view, 800, 600, scale).unwrap();
+            assert!(!bitmap.is_empty());
+            assert_eq!(
+                bitmap.pixels.len(),
+                bitmap.width as usize * bitmap.height as usize * 4
+            );
+            assert!(bitmap.origin.right() <= 800.0 && bitmap.origin.bottom() <= 600.0);
+            if matches!(icon, StatusIcon::Rgba(_)) {
+                let x = (crate::PANEL_PADDING * scale + 2.0) as usize;
+                let y = (crate::PANEL_PADDING * scale + 2.0) as usize;
+                let pixel = &bitmap.pixels[(y * bitmap.width as usize + x) * 4..][..4];
+                if icon.is_template() {
+                    assert!(
+                        pixel[..3].iter().all(|value| *value > 100),
+                        "a black template is legible on the dark HUD"
+                    );
+                } else {
+                    assert!(
+                        pixel[0] > pixel[1] + 50,
+                        "the red icon is actually composited"
+                    );
+                }
+                assert!(pixel[..3].iter().all(|channel| channel <= &pixel[3]));
+            }
+        }
+    }
+}
+
+#[test]
 fn a_view_measures_to_its_widest_node_and_stacked_height() {
     let font = font();
     let view = PluginView {

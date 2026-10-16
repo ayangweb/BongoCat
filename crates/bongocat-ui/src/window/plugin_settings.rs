@@ -13,9 +13,78 @@
 use super::*;
 use bongocat_plugin_sdk::{ConfigValue, UiNode};
 use gpui_kit::{AnyElement, Task, assets::IconName, base::TestSupportExt as _};
+use image::ImageEncoder as _;
 use plugins_page::action_icon;
 
 type PreviewCallback = Rc<dyn Fn(SharedString, bool, &mut App)>;
+
+/// The standard image cache keys encoded artwork by content. A fresh RenderImage
+/// on each dialog repaint would instead allocate a fresh sprite-atlas entry.
+fn status_icon_image(
+    pixels: &[u8],
+    tint: Option<[u8; 3]>,
+) -> Option<std::sync::Arc<gpui_kit::Image>> {
+    if pixels.len() != 4096 {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    let mut tinted;
+    let pixels = if let Some(tint) = tint {
+        tinted = pixels.to_vec();
+        for pixel in tinted.chunks_exact_mut(4) {
+            pixel[..3].copy_from_slice(&tint);
+        }
+        tinted.as_slice()
+    } else {
+        pixels
+    };
+    image::codecs::png::PngEncoder::new(&mut bytes)
+        .write_image(pixels, 32, 32, image::ExtendedColorType::Rgba8)
+        .ok()?;
+    Some(std::sync::Arc::new(gpui_kit::Image::from_bytes(
+        gpui_kit::ImageFormat::Png,
+        bytes,
+    )))
+}
+
+#[derive(gpui_kit::IntoElement)]
+struct PluginStatus {
+    icon: bongocat_plugin_sdk::StatusIcon,
+    text: String,
+}
+
+impl RenderOnce for PluginStatus {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        use bongocat_plugin_sdk::StatusIcon;
+        let color = cx.theme().foreground.to_rgb();
+        let tint = self
+            .icon
+            .is_template()
+            .then(|| [color.r, color.g, color.b].map(|c| (c * 255.0).round() as u8));
+        let artwork = match &self.icon {
+            StatusIcon::Rgba(pixels) => status_icon_image(pixels, tint).map_or_else(
+                || div().into_any_element(),
+                |image| img(image).size(px(24.0)).into_any_element(),
+            ),
+            StatusIcon::Badge(badge) => div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(24.0))
+                .rounded_md()
+                .bg(cx.theme().secondary)
+                .text_xs()
+                .child(badge.clone())
+                .into_any_element(),
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(artwork)
+            .child(self.text)
+    }
+}
 
 /// The width the panel reads at.
 ///
@@ -659,6 +728,11 @@ fn settings_field(
     selects: &Rc<RefCell<PluginSettingsSelects>>,
 ) -> AnyElement {
     match node {
+        UiNode::IconText { icon, text } => PluginStatus {
+            icon: icon.clone(),
+            text: text.clone(),
+        }
+        .into_any_element(),
         UiNode::Text { text } => div()
             .id(("plugin-setting-text", index))
             .test_support()
@@ -832,6 +906,22 @@ fn settings_field(
 mod tests {
     use super::*;
     use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
+
+    #[test]
+    fn unchanged_status_artwork_reuses_the_content_addressed_image_cache() {
+        let pixels = [255, 0, 0, 128].repeat(1024);
+        let first = status_icon_image(&pixels, None).unwrap();
+        let second = status_icon_image(&pixels, None).unwrap();
+        assert_eq!(first.id(), second.id());
+        let decoded = image::load_from_memory(&first.bytes).unwrap().into_rgba8();
+        assert_eq!(decoded.as_raw(), &pixels);
+        assert!(status_icon_image(&[], None).is_none());
+        for tint in [[240, 240, 240], [20, 20, 20]] {
+            let image = status_icon_image(&[0, 0, 0, 128].repeat(1024), Some(tint)).unwrap();
+            let decoded = image::load_from_memory(&image.bytes).unwrap().into_rgba8();
+            assert_eq!(decoded.get_pixel(0, 0).0, [tint[0], tint[1], tint[2], 128]);
+        }
+    }
 
     struct SelectHarness(Entity<PluginSettingsSelectState>);
 

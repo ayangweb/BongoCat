@@ -17,6 +17,7 @@ bongocat-plugin-sdk.workspace = true
 bongocat-plugin-service.workspace = true
 dirs.workspace = true
 gpui-kit.workspace = true
+image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

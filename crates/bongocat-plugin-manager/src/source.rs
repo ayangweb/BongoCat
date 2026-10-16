@@ -201,6 +201,7 @@ mod tests {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
             include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
             let metadata = manifest.metadata;
@@ -257,6 +258,7 @@ mod tests {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
             include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
             let requirement = VersionReq::parse(&manifest.metadata.app_versions).unwrap();

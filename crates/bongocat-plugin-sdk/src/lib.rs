@@ -73,6 +73,8 @@ pub enum Capability {
     /// gates carries four monotonic counters rather than one, and still carries
     /// no key identity, text, modifiers or button identity.
     InputActivityV1,
+    /// The plugin may publish bounded [`UiNode::IconText`] display nodes.
+    IconTextV1,
     /// The plugin localizes the text it publishes; the host delivers the
     /// resolved catalog tag with [`HostMessage::Locale`].
     ///
@@ -203,6 +205,11 @@ pub enum UiNode {
     Text {
         text: String,
     },
+    /// A read-only status with an inline icon; never a file path or URL.
+    IconText {
+        icon: StatusIcon,
+        text: String,
+    },
     Button {
         id: String,
         label: String,
@@ -249,6 +256,50 @@ pub enum UiNode {
         #[serde(default)]
         preview: bool,
     },
+}
+
+/// Small, bounded status artwork. Pixels are 32x32 straight (not premultiplied)
+/// RGBA8. A short language badge is used when a source has no native icon.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum StatusIcon {
+    Rgba(Vec<u8>),
+    Badge(String),
+}
+
+impl StatusIcon {
+    /// A single neutral-color glyph on transparency is a template. Preserve
+    /// multi-tone and colored artwork instead of washing out their details.
+    pub fn is_template(&self) -> bool {
+        let Self::Rgba(pixels) = self else {
+            return false;
+        };
+        if !self.validate() {
+            return false;
+        }
+        let mut base = None;
+        let neutral = pixels
+            .chunks_exact(4)
+            .filter(|pixel| pixel[3] > 16)
+            .all(|pixel| {
+                let first = *base.get_or_insert(pixel[0]);
+                pixel[0].abs_diff(pixel[1]) <= 8
+                    && pixel[1].abs_diff(pixel[2]) <= 8
+                    && first.abs_diff(pixel[0]) <= 16
+            });
+        neutral && base.is_some()
+    }
+
+    pub fn validate(&self) -> bool {
+        match self {
+            Self::Rgba(pixels) => pixels.len() == 32 * 32 * 4,
+            Self::Badge(text) => {
+                !text.trim().is_empty()
+                    && text.chars().count() <= 3
+                    && !text.chars().any(char::is_control)
+            }
+        }
+    }
 }
 
 /// One option of a [`UiNode::Select`].
@@ -329,7 +380,7 @@ impl PluginView {
         let mut ids = std::collections::BTreeSet::new();
         self.nodes.len() <= 16
             && self.nodes.iter().all(|node| match node {
-                UiNode::Text { .. } => true,
+                UiNode::Text { .. } | UiNode::IconText { .. } => true,
                 UiNode::Button { id, .. } => ids.insert(id),
                 UiNode::Toggle { key, .. }
                 | UiNode::Integer { key, .. }
@@ -337,6 +388,12 @@ impl PluginView {
             })
             && self.nodes.iter().all(|node| match node {
                 UiNode::Text { text } => text.len() <= 1024,
+                UiNode::IconText { icon, text } => {
+                    icon.validate()
+                        && !text.trim().is_empty()
+                        && text.len() <= 512
+                        && !text.chars().any(char::is_control)
+                }
                 UiNode::Button { id, label, .. } => valid_key(id) && label.len() <= 128,
                 UiNode::Toggle { key, label, .. } => valid_key(key) && label.len() <= 128,
                 UiNode::Integer {
@@ -552,6 +609,46 @@ pub fn run(plugin: &mut impl Plugin) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inline_status_icons_are_bounded_and_round_trip_without_paths() {
+        assert!(StatusIcon::Rgba([0, 0, 0, 128].repeat(1024)).is_template());
+        assert!(!StatusIcon::Rgba([255, 0, 0, 128].repeat(1024)).is_template());
+        let multitone = [[0, 0, 0, 255].repeat(512), vec![255; 2048]].concat();
+        assert!(!StatusIcon::Rgba(multitone).is_template());
+        for icon in [
+            StatusIcon::Rgba(vec![255; 4096]),
+            StatusIcon::Badge("拼音".into()),
+        ] {
+            let view = PluginView {
+                nodes: vec![UiNode::IconText {
+                    icon,
+                    text: "Pinyin".into(),
+                }],
+                ..Default::default()
+            };
+            assert!(view.validate());
+            let json = serde_json::to_vec(&view).unwrap();
+            assert_eq!(serde_json::from_slice::<PluginView>(&json).unwrap(), view);
+        }
+        for icon in [
+            StatusIcon::Rgba(vec![]),
+            StatusIcon::Rgba(vec![0; 4097]),
+            StatusIcon::Badge("".into()),
+            StatusIcon::Badge("abcd".into()),
+            StatusIcon::Badge("\n".into()),
+        ] {
+            assert!(!icon.validate());
+        }
+        let view = PluginView {
+            nodes: vec![UiNode::IconText {
+                icon: StatusIcon::Badge("A".into()),
+                text: "bad\nname".into(),
+            }],
+            ..Default::default()
+        };
+        assert!(!view.validate());
+    }
+
     #[test]
     fn rejects_oversized_and_truncated_frames() {
         assert!(

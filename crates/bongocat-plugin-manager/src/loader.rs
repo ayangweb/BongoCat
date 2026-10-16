@@ -1,7 +1,7 @@
 //! One owned process with bounded request/response exchanges.
 use bongocat_plugin_sdk::{
-    HostMessage, PROTOCOL_VERSION, PluginMetadata, PluginOutput, Request, Response, read_frame,
-    write_frame,
+    Capability, HostMessage, PROTOCOL_VERSION, PluginMetadata, PluginOutput, Request, Response,
+    UiNode, read_frame, write_frame,
 };
 use std::{
     io,
@@ -18,6 +18,7 @@ pub(crate) struct Process {
     responses: Receiver<io::Result<Response>>,
     reader: Option<JoinHandle<()>>,
     sequence: u64,
+    icon_text: bool,
 }
 impl Process {
     pub(crate) fn start(root: &Path, metadata: &PluginMetadata) -> io::Result<Self> {
@@ -56,6 +57,7 @@ impl Process {
             responses,
             reader: Some(reader),
             sequence: 0,
+            icon_text: metadata.capabilities.contains(&Capability::IconTextV1),
         };
         process.exchange(HostMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
@@ -109,6 +111,18 @@ impl Process {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         if !output.validate() {
             return Err(io::Error::other("plugin output exceeds limits"));
+        }
+        if !self.icon_text
+            && output
+                .model
+                .nodes
+                .iter()
+                .chain(&output.settings.nodes)
+                .any(|node| matches!(node, UiNode::IconText { .. }))
+        {
+            return Err(io::Error::other(
+                "plugin published undeclared icon_text_v1 nodes",
+            ));
         }
         Ok(output)
     }
@@ -192,6 +206,43 @@ mod tests {
         )
         .unwrap();
         bytes.iter().map(|byte| format!("\\{byte:03o}")).collect()
+    }
+
+    #[test]
+    fn inline_artwork_requires_the_manifest_capability() {
+        let output = PluginOutput {
+            model: bongocat_plugin_sdk::PluginView {
+                nodes: vec![UiNode::IconText {
+                    icon: bongocat_plugin_sdk::StatusIcon::Badge("A".into()),
+                    text: "ABC".into(),
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bytes = Vec::new();
+        write_frame(
+            &mut bytes,
+            &Response {
+                sequence: 2,
+                result: Ok(output),
+            },
+        )
+        .unwrap();
+        let response: String = bytes.iter().map(|byte| format!("\\{byte:03o}")).collect();
+        let fixture = script(&format!("printf '{}{response}'\nexec sleep 10", frame(1)));
+        for declared in [false, true] {
+            let mut metadata = metadata();
+            if declared {
+                metadata.capabilities.push(Capability::IconTextV1);
+            }
+            let mut process = Process::start(fixture.path(), &metadata).unwrap();
+            let result = process.exchange(HostMessage::Start {
+                config: Default::default(),
+                state: vec![],
+            });
+            assert_eq!(result.is_ok(), declared);
+        }
     }
 
     #[test]
