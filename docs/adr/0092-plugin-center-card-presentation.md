@@ -53,35 +53,36 @@ fails, because controls nothing would answer are not a configuration surface. A
 dialog dismissed by the overlay or by Escape never reaches a callback, so the
 draft is reconciled on the next frame instead of leaking an open panel.
 
-Plugin copy belongs to the plugin. `plugin.json` keeps its mandatory `name` and
-`description` as the fallback and gains an optional `localizations` map keyed by
-catalog tag; the SDK (not each plugin) owns tag resolution, matching the whole
-tag first and then the primary subtag, with Chinese resolved by script subtag
-because Simplified and Traditional are different written forms rather than
-regional variants (ADR-0012). A plugin that declares only one Chinese script does
-not serve the other. The plugin declares
-`capability::LocalizedViewsV1` to say it can localize the views it publishes, and
-the host sends its resolved tag once per change through `HostMessage::Locale`.
-The capability is the gate rather than the protocol version, so an installed
-plugin built before the message existed is never sent a frame it cannot parse and
-keeps publishing its fallback copy; a plugin that declared the capability and
-then refuses the exchange fails like any other faulty tick. The registry owns the
-current tag so a plugin started later — enable, upgrade, resume at startup —
-receives it too. The window only caches a sent tag when a service is attached,
-and clears that cache when its service is replaced so an unchanged language is
-not skipped by a newly attached service. Framework copy (page title, card chrome,
-tooltips, the panel title and its empty state) stays in `bongocat-i18n`, which now carries
-`plugins.settings.{open,title,empty}` in all eight catalogs.
+Plugin copy belongs to the plugin. `plugin.json` keeps its mandatory English
+`name` and `description` as the fallback and gains an optional `localizations`
+map. The SDK resolves only `zh-CN` (case-insensitive, accepting `_` separators)
+and English; every other resolved application language uses English, even if a
+manifest declares another translation. Missing, blank or incomplete Chinese
+metadata falls back as a whole pair, not field by field. The same metadata map
+declares the plugin's available translated catalogs, so its published views
+receive English when the Chinese entry is incomplete too. Translated catalogs
+must be complete; the shipped plugins use required copy-struct fields rather
+than optional per-key lookups, with no independent language setting or persisted
+locale. Further languages are deferred until needed; the application's own
+language catalogs remain unchanged.
 
-Both shipped plugins (pomodoro, typing-sound) carry only English and Simplified
-Chinese (`zh-CN`) copy; all other host locales fall back to English in their
-metadata and published views. Additional translations are deferred until needed;
-the SDK remains capable of resolving other plugins' declared locales without
-restricting the application's language catalogs. Both plugins declare a glyph
-for every button they publish. The typing sound preview button reports `loading`
-from its own playback state instead of
-publishing a text node, and the failure it can report is an error code the plugin
-renders in the language on screen rather than a sentence frozen in English.
+A plugin declares `capability::LocalizedViewsV1` to localize its published views.
+The application configuration owner initializes the service with its resolved
+language before the overlay or settings window opens, and forwards subsequent
+language changes only after configuration commits succeed. Opening, rendering,
+closing or replacing the settings window is not a language writer. The registry
+normalizes and remembers the tag, deduplicates unchanged effective tags, and
+sends each plugin's supported catalog through `HostMessage::Locale`; a plugin
+started later (enable, upgrade or startup resume) receives the current tag too.
+The capability gates delivery so an older plugin is never sent a frame it cannot
+parse; one that advertises the capability but refuses the exchange fails like
+any other faulty tick. Framework copy (page title, card chrome and settings panel
+chrome) stays in `bongocat-i18n` and follows the application's language.
+
+Both plugins declare a glyph for every button they publish. The typing sound
+preview button reports `loading` from its own playback state instead of
+publishing a text node, and the failure it can report is an error code the
+plugin renders in the language on screen rather than a sentence frozen in English.
 
 Installed code, not catalog metadata, publishes action labels and icons. An old
 installed package without these declarations therefore keeps its English labels
@@ -103,20 +104,25 @@ dependency is introduced.
 
 ## Validation
 
-Unit tests cover tag resolution (whole tag, primary subtag, both Chinese scripts,
-single-script plugins, unknown tags), optional-field decoding of legacy frames,
+Unit tests cover supported-tag normalization, unsupported-language fallback,
+missing and incomplete translations, optional-field decoding of legacy frames,
 the shipped plugins' English fallback for unsupported host languages,
 per-control in-flight bookkeeping, grid column selection, the settings entry
 opening and closing one plugin's panel, action glyph mapping (including the
 neutral fallback), and that a plugin-reported loading state draws on its own
 button. Real-pipe tests check Pomodoro's localized action labels and play, pause
-and restart declarations together across timer transitions. `just check` (fmt,
-clippy across targets/features, workspace tests, release check) and
-`tools/validate-locales.py` pass.
+and restart declarations together across timer transitions. Real-process service
+tests cover whole-plugin English fallback for incomplete metadata. Application
+settings tests verify initialization without windows, all application languages,
+stale and failed commits, disable/enable and restart language propagation.
+`just check` (fmt, clippy across targets/features, workspace tests, release check)
+and `tools/validate-locales.py` pass.
+macOS `just dev-smoke` also passes bounded startup, settings window destruction
+and reopening with a fresh entity, runtime continuity and normal shutdown.
 
 ## Remaining Work
 
-macOS product smoke for the new grid, settings modal and localized copy is not
-yet recorded with evidence; Windows DPI/layout and real-audio checks remain a
-separate platform gate. No acceptance item above is claimed as verified on a
-platform that has not run it.
+Manual macOS visual acceptance for the grid, settings modal and localized
+tooltips, Windows DPI/layout and real-audio checks remain separate platform
+gates; the bounded product smoke does not replace them. No acceptance item above
+is claimed as verified on a platform that has not run it.

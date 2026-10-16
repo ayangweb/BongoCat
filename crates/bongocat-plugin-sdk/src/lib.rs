@@ -91,7 +91,9 @@ pub enum Capability {
 /// the two apart from the ones it invented.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginCopy {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub description: String,
 }
 
@@ -107,7 +109,7 @@ pub struct PluginMetadata {
     pub entry: String,
     pub icon: PluginIcon,
     pub capabilities: Vec<Capability>,
-    /// Per-locale name and description, keyed by locale tag (`zh-CN`, `zh-TW`).
+    /// Per-locale name and description; currently only `zh-CN` is served.
     ///
     /// The mandatory `name` and `description` above are the fallback a locale
     /// this map does not carry reads, so a plugin written before localization —
@@ -119,19 +121,34 @@ pub struct PluginMetadata {
 impl PluginMetadata {
     /// The name and description to show for `locale`.
     ///
-    /// `locale` is a catalog tag the host resolved, so the whole tag is what a
-    /// plugin declares and what is matched first. A plugin that declared only
-    /// the primary subtag — `vi` for a host sending `vi-VN` — is still served,
-    /// because that is the RFC 4647 fallback every other catalog follows.
-    /// Chinese is the one language this cannot decide: Simplified and
-    /// Traditional are different written forms, so a manifest has to name
-    /// `zh-CN` and `zh-TW` separately rather than relying on `zh`.
+    /// Missing or incomplete translations fall back as a pair, never field by
+    /// field, so a card cannot mix languages.
     pub fn localized_copy(&self, locale: &str) -> (&str, &str) {
         localized_copy(
             &self.localizations,
             locale,
             (self.name.as_str(), self.description.as_str()),
         )
+    }
+
+    /// The supported locale to send to this plugin's views. The metadata map
+    /// declares its translated catalogs, keeping the card and controls aligned.
+    pub fn view_locale(&self, locale: &str) -> &'static str {
+        if localized_entry(&self.localizations, locale).is_some() {
+            "zh-CN"
+        } else {
+            DEFAULT_LOCALE
+        }
+    }
+}
+
+/// Plugins follow the application's resolved language, without a separate
+/// preference. Only Simplified Chinese and English are currently supported.
+pub fn plugin_locale(locale: &str) -> &'static str {
+    if locale.replace('_', "-").eq_ignore_ascii_case("zh-CN") {
+        "zh-CN"
+    } else {
+        DEFAULT_LOCALE
     }
 }
 
@@ -152,59 +169,22 @@ pub fn localized_copy<'a>(
     })
 }
 
-/// The entry a plugin's own locale map serves for a resolved catalog tag.
-///
-/// The tag is matched whole first, then by its primary subtag. Chinese is the
-/// one case the primary subtag cannot settle: Simplified and Traditional are
-/// different written forms rather than regional variants, so a `zh` tag is
-/// resolved by script subtag instead, and a manifest has to name `zh-CN` and
-/// `zh-TW` separately rather than relying on `zh`.
+/// Only a complete Simplified Chinese entry overrides the English fallback.
 fn localized_entry<'a>(
     localizations: &'a BTreeMap<String, PluginCopy>,
     locale: &str,
 ) -> Option<&'a PluginCopy> {
-    let normalized = locale.replace('_', "-").to_ascii_lowercase();
-    if let Some(copy) = localizations.get(&normalized) {
-        return Some(copy);
-    }
-    let subtags = normalized.split('-').collect::<Vec<_>>();
-    let primary = subtags.first().copied().unwrap_or("");
-    if primary.is_empty() {
+    if plugin_locale(locale) != "zh-CN" {
         return None;
-    }
-    if primary == "zh" {
-        // The host already resolves a `zh` tag before it reaches a plugin, so
-        // this only serves a caller that resolved the script itself. `hant` is
-        // the one subtag that separates the written forms; without it the tag
-        // reads as Simplified, exactly as the application's own resolution does.
-        let wanted = if is_traditional_chinese(&normalized) {
-            "zh-TW"
-        } else {
-            "zh-CN"
-        };
-        return localizations.get(wanted);
     }
     localizations
         .iter()
-        .find(|(tag, _)| tag.split('-').next() == Some(primary) && tag.as_str() != "zh")
+        .find(|(tag, copy)| {
+            plugin_locale(tag) == "zh-CN"
+                && !copy.name.trim().is_empty()
+                && !copy.description.trim().is_empty()
+        })
         .map(|(_, copy)| copy)
-}
-
-/// Whether a resolved catalog tag names the Traditional Chinese written form.
-///
-/// Chinese is the one language an RFC 4647 primary-subtag fallback cannot
-/// settle — Simplified and Traditional are different written forms rather than
-/// regional variants — so every place that picks Chinese copy has to ask the
-/// script subtags rather than the region. The application resolves the tag
-/// before it ever reaches a plugin, and a plugin asks this of the tag it was
-/// handed, so both ends separate the scripts the same way.
-pub fn is_traditional_chinese(locale: &str) -> bool {
-    let normalized = locale.replace('_', "-").to_ascii_lowercase();
-    let mut subtags = normalized.split('-');
-    if subtags.next() != Some("zh") {
-        return false;
-    }
-    subtags.any(|subtag| matches!(subtag, "hant" | "tw" | "hk" | "mo"))
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -606,70 +586,73 @@ mod tests {
         }
     }
 
-    /// A whole-tag match wins, and Chinese resolves by script rather than by the
-    /// primary subtag: these are different written forms, not regional variants.
     #[test]
-    fn localization_matches_the_whole_tag_and_separates_the_chinese_scripts() {
-        let metadata = localized_metadata();
-        assert_eq!(metadata.localized_copy("zh-CN").0, "番茄钟");
-        assert_eq!(metadata.localized_copy("zh-TW").0, "番茄鐘");
-        // A script-qualified tag lands on the catalog that carries the script,
-        // and a bare `zh` reads as Simplified — the same rule the application
-        // applies before it ever hands a plugin a tag.
-        assert_eq!(metadata.localized_copy("zh_Hans_CN").0, "番茄钟");
-        assert_eq!(metadata.localized_copy("zh").0, "番茄钟");
-        assert_eq!(metadata.localized_copy("zh-Hant").0, "番茄鐘");
+    fn plugins_serve_only_simplified_chinese_and_english() {
+        let mut metadata = localized_metadata();
+        metadata.localizations.insert(
+            "fr-FR".into(),
+            PluginCopy {
+                name: "Minuteur".into(),
+                description: "Un minuteur".into(),
+            },
+        );
+        for locale in ["zh-CN", "zh_cn", "ZH-cn"] {
+            assert_eq!(plugin_locale(locale), "zh-CN");
+            assert_eq!(metadata.view_locale(locale), "zh-CN");
+            assert_eq!(metadata.localized_copy(locale), ("番茄钟", "专注计时器"));
+        }
+        for locale in [
+            "en-US",
+            "en-GB",
+            "zh-TW",
+            "zh-Hant",
+            "zh",
+            "zh-Hans-CN",
+            "ar-SA",
+            "vi-VN",
+            "pt-BR",
+            "ko-KR",
+            "fr-FR",
+            "",
+            "unknown",
+        ] {
+            assert_eq!(plugin_locale(locale), DEFAULT_LOCALE);
+            assert_eq!(metadata.view_locale(locale), DEFAULT_LOCALE);
+            assert_eq!(
+                metadata.localized_copy(locale),
+                ("Pomodoro", "A focus timer")
+            );
+        }
     }
 
-    /// A locale the plugin did not translate reads the manifest's own copy
-    /// rather than an empty string or another locale's text.
     #[test]
-    fn an_undeclared_locale_reads_the_manifest_fallback() {
-        let metadata = localized_metadata();
-        assert_eq!(metadata.localized_copy("fr-FR").0, "Pomodoro");
-
-        // A plugin written before localization declares no map at all and still
-        // resolves every locale.
-        let legacy = PluginMetadata {
-            localizations: BTreeMap::new(),
-            ..localized_metadata()
-        };
-        assert_eq!(legacy.localized_copy("zh-CN").0, "Pomodoro");
-    }
-
-    /// A plugin that translated only one Chinese script serves only that script,
-    /// rather than showing the other script's text to a reader of the first.
-    #[test]
-    fn a_single_chinese_script_does_not_serve_the_other() {
-        let metadata = PluginMetadata {
-            localizations: BTreeMap::from([(
-                "zh-TW".to_owned(),
-                PluginCopy {
-                    name: "番茄鐘".into(),
-                    description: "專注計時器".into(),
-                },
-            )]),
-            ..localized_metadata()
-        };
-        assert_eq!(metadata.localized_copy("zh-TW").0, "番茄鐘");
-        assert_eq!(metadata.localized_copy("zh-CN").0, "Pomodoro");
-    }
-
-    /// A manifest that declared only a primary subtag serves the host's tagged
-    /// locale, which is the RFC 4647 fallback every other catalog follows.
-    #[test]
-    fn a_primary_subtag_serves_its_regional_locale() {
-        let metadata = PluginMetadata {
-            localizations: BTreeMap::from([(
-                "vi".to_owned(),
-                PluginCopy {
-                    name: "Tiếng gõ".into(),
-                    description: "Âm thanh khi gõ".into(),
-                },
-            )]),
-            ..localized_metadata()
-        };
-        assert_eq!(metadata.localized_copy("vi-VN").0, "Tiếng gõ");
+    fn missing_or_partial_copy_falls_back_for_the_entire_plugin() {
+        for copy in [
+            None,
+            Some(PluginCopy {
+                name: "番茄钟".into(),
+                description: " ".into(),
+            }),
+            Some(PluginCopy {
+                name: "".into(),
+                description: "专注计时器".into(),
+            }),
+            Some(serde_json::from_str::<PluginCopy>(r#"{"name":"番茄钟"}"#).unwrap()),
+            Some(serde_json::from_str::<PluginCopy>(r#"{"description":"专注计时器"}"#).unwrap()),
+        ] {
+            let metadata = PluginMetadata {
+                localizations: copy
+                    .into_iter()
+                    .map(|copy| ("zh-CN".into(), copy))
+                    .collect(),
+                ..localized_metadata()
+            };
+            assert_eq!(metadata.view_locale("zh-CN"), DEFAULT_LOCALE);
+            assert_eq!(
+                metadata.localized_copy("zh-CN"),
+                ("Pomodoro", "A focus timer")
+            );
+        }
     }
 
     /// A button a plugin publishes without asking for a glyph still validates,

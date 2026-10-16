@@ -365,20 +365,6 @@ impl PluginHost {
         });
     }
 
-    /// Tell the service which catalog tag the host is showing.
-    ///
-    /// It is not a card command, so it does not read as one on screen: no
-    /// control waits for it, and the labels it changes arrive with the state the
-    /// service publishes next.
-    pub(crate) fn set_locale(&self, locale: &str) {
-        let Ok(client) = self.client() else {
-            return;
-        };
-        if let Ok(snapshot) = client.set_locale_blocking(locale) {
-            self.publish(snapshot.into());
-        }
-    }
-
     fn apply_command(
         &self,
         command_key: PluginInFlight,
@@ -479,18 +465,15 @@ mod tests {
         assert!(host.snapshot().error.is_some());
     }
 
-    /// A card resolves the tag the window is showing from the plugin's own copy
-    /// map, and falls back to the manifest for a language the plugin did not
-    /// translate.
+    /// Plugin cards support only Chinese and English, even when the manifest
+    /// offers additional translations.
     #[test]
     fn a_card_speaks_the_language_the_window_shows() {
         let card = sample_card();
         assert_eq!(card.copy("en-US").0, "A plugin with a longer title");
         assert_eq!(card.copy("zh-CN").0, "一个插件");
         assert_eq!(card.copy("zh-CN").1, "由插件自己书写的描述");
-        assert_eq!(card.copy("zh-TW").0, "一個外掛");
-        // A language the plugin never translated reads the manifest's own copy
-        // rather than an empty string or another locale's text.
+        assert_eq!(card.copy("zh-TW").0, "A plugin with a longer title");
         assert_eq!(card.copy("fr-FR").0, "A plugin with a longer title");
     }
 
@@ -574,7 +557,8 @@ mod tests {
         let host = PluginHost::new(service.client());
         host.refresh();
         host.set_enabled(PLUGIN_ID, true);
-        host.set_locale("zh-CN");
+        service.client().set_locale_blocking("zh-CN").unwrap();
+        host.refresh();
         let state = host.snapshot();
         let labels = state.cards[0]
             .actions
@@ -589,7 +573,8 @@ mod tests {
             "the plugin's own control reads Simplified Chinese: {labels:?}"
         );
         for locale in ["zh-TW", "fr-FR"] {
-            host.set_locale(locale);
+            service.client().set_locale_blocking(locale).unwrap();
+            host.refresh();
             let state = host.snapshot();
             let card = &state.cards[0];
             assert_eq!(card.copy(locale).0, "Pomodoro");
@@ -1078,39 +1063,5 @@ mod tests {
             assert!(!state.pending_action("com.example.card", "first"));
             assert!(state.pending_package("com.example.card", PluginPackageOperation::Reset));
         });
-    }
-
-    /// A locale is consumed only by an attached service. Attaching or replacing
-    /// the service must deliver it again even if the window language is unchanged.
-    #[gpui_kit::test]
-    fn the_window_named_locale_is_sent_once_per_change(cx: &mut TestAppContext) {
-        let (view, visual) = card_page(cx, vec![sample_card()], 720.);
-        view.update(visual, |view, cx| {
-            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
-        });
-        view.read_with(visual, |view, _| {
-            assert!(view.plugin_locale.is_none());
-        });
-        let root = tempfile::tempdir().unwrap();
-        let (service, _handles) = PluginService::start(root.path(), 4).unwrap();
-        view.update(visual, |view, cx| {
-            view.set_plugin_host(PluginHost::new(service.client()));
-            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
-            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
-            view.sync_plugin_locale(SettingsLanguage::ChineseSimplified, cx);
-            assert_eq!(view.plugin_locale.as_deref(), Some("zh-CN"));
-            view.sync_plugin_locale(SettingsLanguage::English, cx);
-        });
-        view.read_with(visual, |view, _| {
-            assert_eq!(view.plugin_locale.as_deref(), Some("en-US"));
-        });
-        view.update(visual, |view, cx| {
-            view.set_plugin_host(PluginHost::new(service.client()));
-            assert!(view.plugin_locale.is_none());
-            view.sync_plugin_locale(SettingsLanguage::English, cx);
-            assert_eq!(view.plugin_locale.as_deref(), Some("en-US"));
-        });
-        visual.run_until_parked();
-        service.shutdown().unwrap();
     }
 }

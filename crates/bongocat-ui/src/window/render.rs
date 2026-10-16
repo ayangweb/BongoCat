@@ -184,7 +184,6 @@ impl Render for SettingsView {
         self.sync_model_selection_dialog(window, cx);
         self.sync_mver_mode_dialog(window, cx);
         self.sync_plugin_settings_dialog(window, cx);
-        self.sync_plugin_locale(language, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()

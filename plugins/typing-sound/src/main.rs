@@ -182,8 +182,7 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
 
 /// The copy for a catalog tag, falling back to English.
 fn copy_for(locale: &str) -> &'static Copy {
-    let normalized = locale.replace('_', "-").to_ascii_lowercase();
-    if normalized == "zh-cn" {
+    if bongocat_plugin_sdk::plugin_locale(locale) == "zh-CN" {
         &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH

@@ -370,6 +370,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (None, None)
             }
         };
+    if let Some(service) = &plugin_service {
+        application.attach_plugin_service(service.client());
+    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),

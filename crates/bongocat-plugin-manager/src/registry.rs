@@ -284,6 +284,7 @@ impl PluginRegistry {
     /// The tag is remembered even when no plugin can use it, so a plugin
     /// started later receives it on its own `Start`.
     pub fn set_locale(&mut self, locale: &str) {
+        let locale = bongocat_plugin_sdk::plugin_locale(locale);
         if self.locale.as_deref() == Some(locale) {
             return;
         }
@@ -446,7 +447,7 @@ fn deliver_locale(entry: &mut Entry, locale: Option<&str>) {
         return;
     };
     match process.exchange(HostMessage::Locale {
-        locale: locale.to_owned(),
+        locale: entry.metadata.view_locale(locale).to_owned(),
     }) {
         Ok(output) => entry.last_output = output,
         Err(_) => {

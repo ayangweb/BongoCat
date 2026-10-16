@@ -235,12 +235,6 @@ pub struct SettingsView {
     /// A value rather than a flag because the view has to know which plugin the
     /// panel belongs to before it opens the layer at all (see `plugin_settings`).
     pub(crate) plugin_settings: Option<PluginSettingsDraft>,
-    /// The catalog tag the plugin service was last told about, if any.
-    ///
-    /// The tag is delivered once per change rather than once per frame: the
-    /// service re-labels the running plugins when it changes and does nothing
-    /// when it does not.
-    pub(crate) plugin_locale: Option<String>,
     #[cfg(target_os = "windows")]
     pub(crate) window_background_color: Entity<gpui_kit::component::color_picker::ColorPickerState>,
     #[cfg(target_os = "windows")]

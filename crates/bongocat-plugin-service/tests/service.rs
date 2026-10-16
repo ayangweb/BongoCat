@@ -17,6 +17,10 @@ const BINARY_FILE: &str = "bongocat-pomodoro";
 const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
 fn plugin_package() -> Option<Vec<u8>> {
+    plugin_package_with_manifest(|_| {})
+}
+
+fn plugin_package_with_manifest(edit: impl FnOnce(&mut serde_json::Value)) -> Option<Vec<u8>> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("plugins/pomodoro");
@@ -29,14 +33,52 @@ fn plugin_package() -> Option<Vec<u8>> {
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
     archive.start_file("plugin.json", options).ok()?;
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("plugin.json")).ok()?).ok()?;
+    edit(&mut manifest);
     archive
-        .write_all(&std::fs::read(root.join("plugin.json")).ok()?)
+        .write_all(&serde_json::to_vec(&manifest).ok()?)
         .ok()?;
     archive
         .start_file(BINARY_FILE, options.unix_permissions(0o755))
         .ok()?;
     archive.write_all(&std::fs::read(binary).ok()?).ok()?;
     archive.finish().ok().map(|cursor| cursor.into_inner())
+}
+
+#[test]
+fn an_incomplete_translation_falls_back_to_english_for_both_card_and_controls() {
+    for localizations in [
+        serde_json::json!({}),
+        serde_json::json!({"zh-CN": {"name": "番茄钟"}}),
+        serde_json::json!({"zh-CN": {"name": " ", "description": "专注计时器"}}),
+    ] {
+        let Some(bytes) = plugin_package_with_manifest(|manifest| {
+            manifest["metadata"]["localizations"] = localizations;
+        }) else {
+            return;
+        };
+        let store = tempfile::tempdir().unwrap();
+        let (service, _) = PluginService::start(store.path(), 4).unwrap();
+        let client = service.client();
+        client.set_locale_blocking("zh-CN").unwrap();
+        client.install_blocking(bytes).unwrap();
+        let center = client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+        let card = &center.cards[0];
+        assert_eq!(
+            bongocat_plugin_sdk::localized_copy(
+                &card.localizations,
+                "zh-CN",
+                (&card.name, &card.description),
+            ),
+            ("Pomodoro", "A focus timer you can pause and restart")
+        );
+        assert!(card.actions.iter().any(|node| matches!(node,
+            bongocat_plugin_sdk::UiNode::Button { id, label, .. }
+                if id == "toggle" && label == "Start"
+        )));
+        service.shutdown().unwrap();
+    }
 }
 
 /// Start a service on a private store and install the pomodoro package into it.
