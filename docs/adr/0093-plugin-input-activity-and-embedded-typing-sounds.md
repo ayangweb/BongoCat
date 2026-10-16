@@ -24,6 +24,20 @@ a way to publish a list of choices rather than a single number.
 
 ## Decision
 
+### The display name describes both devices
+
+The plugin is named **Keyboard & Mouse Sounds** in English and **键盘与鼠标音效** in
+Simplified Chinese. "Typing Sound / 打字音效" suggests text entry only, while
+"按键音效" is broader but does not make mouse support explicit. The chosen name
+matches the four supported keyboard/mouse press/release edges without implying
+gamepad, pointer movement or scroll sounds. The description makes the independent
+sound choices explicit; audio errors refer to a sound effect rather than typing.
+
+This is display copy only: the `com.bongocat.typing-sound` ID, executable, package
+version and persisted configuration keys stay unchanged. The complete Chinese
+name/description pair and plugin controls follow `zh-CN`; all other application
+languages use English, as required by the existing plugin locale contract.
+
 ### Activity is four counters, not one
 
 `Capability::InputActivityV1` gates `HostMessage::InputActivity`, which carries

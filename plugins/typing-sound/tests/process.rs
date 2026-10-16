@@ -111,6 +111,44 @@ fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
     assert!(process.child.wait().unwrap().success());
 }
 #[test]
+fn locale_switches_relabel_the_whole_panel_without_changing_saved_settings() {
+    let mut process = Process::start();
+    let english = process.exchange(HostMessage::Start {
+        config: [
+            ("volume".into(), ConfigValue::Integer(0)),
+            ("cooldown_ms".into(), ConfigValue::Integer(55)),
+            ("mouse_enabled".into(), ConfigValue::Boolean(true)),
+        ]
+        .into(),
+        state: Vec::new(),
+    });
+    let chinese = process.exchange(HostMessage::Locale {
+        locale: "zh-CN".into(),
+    });
+    assert_ne!(chinese.settings, english.settings);
+    assert_eq!(chinese.config, english.config);
+
+    for locale in [
+        "en-US", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR", "fr-FR", "unknown", "",
+    ] {
+        let fallback = process.exchange(HostMessage::Locale {
+            locale: locale.into(),
+        });
+        assert_eq!(fallback.settings, english.settings, "{locale}");
+        assert_eq!(fallback.config, english.config, "{locale}");
+        assert_eq!(fallback.state, english.state, "{locale}");
+
+        let localized = process.exchange(HostMessage::Locale {
+            locale: "zh-CN".into(),
+        });
+        assert_eq!(localized.settings, chinese.settings, "{locale}");
+        assert_eq!(localized.config, english.config, "{locale}");
+    }
+    process.exchange(HostMessage::Stop);
+    assert!(process.child.wait().unwrap().success());
+}
+
+#[test]
 #[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
 fn preview_and_device_activity_use_the_real_audio_output() {
     let mut process = Process::start();

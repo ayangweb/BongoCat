@@ -159,7 +159,7 @@ const ENGLISH: Copy = Copy {
     follow_keyboard: "Follow the keyboard sound",
     follow_mouse: "Follow the mouse sound",
     no_release: "no release sound",
-    decode_failed: "The typing sound could not be decoded.",
+    decode_failed: "The sound effect could not be decoded.",
     output_unavailable: "No audio output device is available.",
 };
 const SIMPLIFIED_CHINESE: Copy = Copy {
@@ -176,7 +176,7 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     follow_keyboard: "跟随键盘音效",
     follow_mouse: "跟随鼠标音效",
     no_release: "无弹起音",
-    decode_failed: "无法解码打字音效。",
+    decode_failed: "无法解码音效。",
     output_unavailable: "没有可用的音频输出设备。",
 };
 
@@ -1347,6 +1347,7 @@ mod tests {
     #[test]
     fn the_host_locale_relabels_the_settings_panel() {
         let mut plugin = TypingSound::default();
+        let english = plugin.output();
         assert_eq!(integer_label(&plugin.output(), "volume"), "Volume");
         assert_eq!(button_label(&plugin.output(), "preview"), "Preview");
         assert_eq!(
@@ -1368,6 +1369,7 @@ mod tests {
             "跟随键盘音效"
         );
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        let chinese = localized;
 
         for locale in ["zh_CN", "ZH-cn"] {
             let localized = plugin
@@ -1376,6 +1378,8 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(button_label(&localized, "preview"), "试听", "{locale}");
+            assert_eq!(localized.settings, chinese.settings, "{locale}");
+            assert_eq!(localized.config, english.config, "{locale}");
         }
 
         // A language this plugin does not carry reads English rather than the
@@ -1396,6 +1400,9 @@ mod tests {
                 "{locale}"
             );
             assert_eq!(plugin.volume, DEFAULT_VOLUME);
+            assert_eq!(fallback.settings, english.settings, "{locale}");
+            assert_eq!(fallback.config, english.config, "{locale}");
+            assert_eq!(fallback.state, english.state, "{locale}");
         }
     }
 
@@ -1405,33 +1412,41 @@ mod tests {
     fn a_playback_failure_reads_the_language_on_screen() {
         // The failure is injected rather than provoked: this asserts the copy a
         // failure reads as, not that this machine has (or lacks) an output device.
-        let mut plugin = TypingSound {
-            error: Some(AudioError::Output),
-            ..Default::default()
-        };
-        assert_eq!(
-            error_text(&plugin.output()),
-            "No audio output device is available."
-        );
+        for (error, english, chinese) in [
+            (
+                AudioError::Decode,
+                "The sound effect could not be decoded.",
+                "无法解码音效。",
+            ),
+            (
+                AudioError::Output,
+                "No audio output device is available.",
+                "没有可用的音频输出设备。",
+            ),
+        ] {
+            let mut plugin = TypingSound {
+                error: Some(error),
+                ..Default::default()
+            };
+            assert_eq!(error_text(&plugin.output()), english);
 
-        let localized = plugin
-            .handle(HostMessage::Locale {
-                locale: "zh-CN".into(),
-            })
-            .unwrap();
-        assert_eq!(error_text(&localized), "没有可用的音频输出设备。");
-
-        for locale in ["zh-TW", "zh-HK", "de-DE"] {
-            let fallback = plugin
+            let localized = plugin
                 .handle(HostMessage::Locale {
-                    locale: locale.into(),
+                    locale: "zh-CN".into(),
                 })
                 .unwrap();
-            assert_eq!(
-                error_text(&fallback),
-                "No audio output device is available.",
-                "{locale}"
-            );
+            assert_eq!(error_text(&localized), chinese);
+
+            for locale in [
+                "en-US", "zh-TW", "zh-HK", "ar-SA", "vi-VN", "pt-BR", "ko-KR", "fr-FR", "de-DE", "",
+            ] {
+                let fallback = plugin
+                    .handle(HostMessage::Locale {
+                        locale: locale.into(),
+                    })
+                    .unwrap();
+                assert_eq!(error_text(&fallback), english, "{locale}");
+            }
         }
     }
 

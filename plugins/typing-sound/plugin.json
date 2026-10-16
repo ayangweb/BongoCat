@@ -1,8 +1,8 @@
 {
   "metadata": {
     "id": "com.bongocat.typing-sound",
-    "name": "Typing Sound",
-    "description": "Play keyboard and mouse sounds as you type and click",
+    "name": "Keyboard & Mouse Sounds",
+    "description": "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
@@ -11,8 +11,8 @@
     "capabilities": ["configuration", "input_activity_v1", "localized_views_v1"],
     "localizations": {
       "zh-CN": {
-        "name": "打字音效",
-        "description": "打字与点击时播放键盘、鼠标音效"
+        "name": "键盘与鼠标音效",
+        "description": "键盘、鼠标按键按下或弹起时播放音效，支持分别设置"
       }
     }
   },

@@ -206,14 +206,18 @@ mod tests {
             let metadata = manifest.metadata;
             assert_eq!(metadata.localizations.len(), 1, "{}", metadata.id);
             let chinese = metadata.localizations.get("zh-CN").unwrap();
-            assert_eq!(
-                metadata.localized_copy("zh-CN"),
-                (chinese.name.as_str(), chinese.description.as_str()),
-            );
+            for locale in ["zh-CN", "zh_CN", "ZH-cn"] {
+                assert_eq!(metadata.view_locale(locale), "zh-CN");
+                assert_eq!(
+                    metadata.localized_copy(locale),
+                    (chinese.name.as_str(), chinese.description.as_str()),
+                );
+            }
             for locale in [
                 "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "ar-SA", "vi-VN", "pt-BR",
                 "ko-KR", "fr-FR", "de-DE", "",
             ] {
+                assert_eq!(metadata.view_locale(locale), "en-US");
                 assert_eq!(
                     metadata.localized_copy(locale),
                     (metadata.name.as_str(), metadata.description.as_str()),
@@ -222,6 +226,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sound_plugin_copy_covers_keyboard_and_mouse_without_changing_identity() {
+        let manifest: crate::PluginManifest =
+            serde_json::from_slice(include_bytes!("../../../plugins/typing-sound/plugin.json"))
+                .unwrap();
+        let metadata = manifest.metadata;
+        assert_eq!(metadata.id, "com.bongocat.typing-sound");
+        assert_eq!(metadata.entry, "bongocat-typing-sound");
+        assert_eq!(
+            metadata.localized_copy("en-US"),
+            (
+                "Keyboard & Mouse Sounds",
+                "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
+            ),
+        );
+        assert_eq!(
+            metadata.localized_copy("zh-CN"),
+            (
+                "键盘与鼠标音效",
+                "键盘、鼠标按键按下或弹起时播放音效，支持分别设置",
+            ),
+        );
     }
 
     #[test]
