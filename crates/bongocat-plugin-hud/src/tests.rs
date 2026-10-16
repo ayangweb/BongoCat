@@ -70,10 +70,12 @@ fn a_select_is_measured_by_its_chosen_option_without_an_action_target() {
         SelectOption {
             value: "skcm-blue".into(),
             label: "SKCM Blue".into(),
+            group: None,
         },
         SelectOption {
             value: "box-navy".into(),
             label: "Box Navy".into(),
+            group: None,
         },
     ];
     // The panel shows the option's label, not the value the plugin was handed

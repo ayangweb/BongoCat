@@ -674,6 +674,7 @@ mod tests {
             options: vec![bongocat_plugin_sdk::SelectOption {
                 value: "one".into(),
                 label: "One".into(),
+                group: None,
             }],
             preview,
         };

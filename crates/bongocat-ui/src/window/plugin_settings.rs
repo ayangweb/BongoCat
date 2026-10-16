@@ -12,7 +12,7 @@
 
 use super::*;
 use bongocat_plugin_sdk::{ConfigValue, UiNode};
-use gpui_kit::{AnyElement, assets::IconName, base::TestSupportExt as _};
+use gpui_kit::{AnyElement, Task, assets::IconName, base::TestSupportExt as _};
 use plugins_page::action_icon;
 
 type PreviewCallback = Rc<dyn Fn(SharedString, bool, &mut App)>;
@@ -34,6 +34,8 @@ const PLUGIN_SETTINGS_PANEL_WIDTH: Pixels = px(440.0);
 pub(crate) struct PluginSettingsSelectChoice {
     value: SharedString,
     label: SharedString,
+    /// The optional category row this choice belongs under.
+    group: Option<SharedString>,
     preview: Option<PreviewCallback>,
 }
 
@@ -42,8 +44,16 @@ impl PluginSettingsSelectChoice {
         Self {
             value: SharedString::from(value.to_owned()),
             label: SharedString::from(label.to_owned()),
+            group: None,
             preview: None,
         }
+    }
+
+    fn with_group(mut self, group: Option<&str>) -> Self {
+        self.group = group
+            .filter(|group| !group.is_empty())
+            .map(SharedString::from);
+        self
     }
 }
 
@@ -79,6 +89,95 @@ impl SearchableListItem for PluginSettingsSelectChoice {
                 )
             })
     }
+}
+
+/// Delegate filtering, indexing and header styling to the stock component.
+/// Older plugins retain a flat list without a synthetic empty heading.
+#[derive(Clone)]
+pub(crate) enum PluginSettingsSelectGroups {
+    Flat(SearchableVec<PluginSettingsSelectChoice>),
+    Grouped(SearchableVec<SearchableGroup<PluginSettingsSelectChoice>>),
+}
+
+impl PluginSettingsSelectGroups {
+    fn new(choices: Vec<PluginSettingsSelectChoice>) -> Self {
+        // Keep partial metadata readable without inventing a host-owned group.
+        if choices.iter().any(|choice| choice.group.is_none()) {
+            Self::Flat(SearchableVec::new(choices))
+        } else {
+            Self::Grouped(SearchableVec::new(plugin_select_groups(choices)))
+        }
+    }
+}
+
+impl SearchableListDelegate for PluginSettingsSelectGroups {
+    type Item = PluginSettingsSelectChoice;
+
+    fn sections_count(&self, cx: &App) -> usize {
+        match self {
+            Self::Flat(items) => items.sections_count(cx),
+            Self::Grouped(groups) => groups.sections_count(cx),
+        }
+    }
+
+    fn items_count(&self, section: usize) -> usize {
+        match self {
+            Self::Flat(items) => items.items_count(section),
+            Self::Grouped(groups) => groups.items_count(section),
+        }
+    }
+
+    fn item(&self, ix: IndexPath) -> Option<&Self::Item> {
+        match self {
+            Self::Flat(items) => items.item(ix),
+            Self::Grouped(groups) => groups.item(ix),
+        }
+    }
+
+    fn position<V>(&self, value: &V) -> Option<IndexPath>
+    where
+        Self::Item: SearchableListItem<Value = V>,
+        V: PartialEq,
+    {
+        match self {
+            Self::Flat(items) => items.position(value),
+            Self::Grouped(groups) => groups.position(value),
+        }
+    }
+
+    fn perform_search(&mut self, query: &str, window: &mut Window, cx: &mut App) -> Task<()> {
+        match self {
+            Self::Flat(items) => items.perform_search(query, window, cx),
+            Self::Grouped(groups) => groups.perform_search(query, window, cx),
+        }
+    }
+
+    #[allow(deprecated)]
+    fn section(&self, section: usize) -> Option<AnyElement> {
+        match self {
+            Self::Flat(_) => None,
+            Self::Grouped(groups) => groups.section(section),
+        }
+    }
+}
+
+/// Build the component's grouped data from the plugin's flat option list.
+///
+/// A plugin publishes its preferred order; choices that name the same category
+/// share a section. Lists with no groups (or only a partial set of groups) use
+/// the stock flat list so older and malformed plugin output remains readable.
+fn plugin_select_groups(
+    choices: Vec<PluginSettingsSelectChoice>,
+) -> Vec<SearchableGroup<PluginSettingsSelectChoice>> {
+    let mut groups: Vec<SearchableGroup<PluginSettingsSelectChoice>> = Vec::new();
+    for choice in choices {
+        let title = choice.group.clone().unwrap_or_default();
+        match groups.iter_mut().find(|group| group.title == title) {
+            Some(group) => group.items.push(choice),
+            None => groups.push(SearchableGroup::new(title).item(choice)),
+        }
+    }
+    groups
 }
 
 /// The dropdowns one open panel draws, keyed by the config key each writes.
@@ -341,13 +440,12 @@ fn sync_plugin_selects(
         };
         let mut choices: Vec<PluginSettingsSelectChoice> = options
             .iter()
-            .map(|option| PluginSettingsSelectChoice::new(&option.value, &option.label))
+            .map(|option| {
+                PluginSettingsSelectChoice::new(&option.value, &option.label)
+                    .with_group(option.group.as_deref())
+            })
             .collect();
         let selected = SharedString::from(value.clone());
-        let current = choices
-            .iter()
-            .position(|choice| choice.value == selected)
-            .unwrap_or(0);
         let mut selects = selects.borrow_mut();
         let lifetime = lifetime.clone();
         let preview = supports_preview.then(|| {
@@ -376,11 +474,13 @@ fn sync_plugin_selects(
         for choice in &mut choices {
             choice.preview = preview.clone();
         }
+        let data = PluginSettingsSelectGroups::new(choices);
+        let selected_index = data.position(&selected).unwrap_or_default();
         match selects.entities.get(key) {
             Some(entity) => {
                 entity.update(cx, |state, cx| {
                     if changed {
-                        state.set_items(SearchableVec::new(choices), window, cx);
+                        state.set_items(data, window, cx);
                     }
                     // A refused write republishes the same nodes. Restore its
                     // value too, without resetting an unchanged menu cursor.
@@ -390,21 +490,14 @@ fn sync_plugin_selects(
                 });
             }
             None => {
-                let entity = cx.new(|cx| {
-                    SelectState::new(
-                        SearchableVec::new(choices),
-                        Some(IndexPath::default().row(current)),
-                        window,
-                        cx,
-                    )
-                });
+                let entity = cx.new(|cx| SelectState::new(data, Some(selected_index), window, cx));
                 let (field_plugin, field_key) = (plugin.to_owned(), key.clone());
                 let subscription = cx.subscribe_in(
                     &entity,
                     window,
                     move |view: &mut SettingsView,
                           _: &Entity<PluginSettingsSelectState>,
-                          event: &SelectEvent<SearchableVec<PluginSettingsSelectChoice>>,
+                          event: &SelectEvent<PluginSettingsSelectGroups>,
                           _: &mut Window,
                           cx: &mut Context<SettingsView>| {
                         let SelectEvent::Confirm(Some(value)) = event else {
@@ -716,7 +809,9 @@ fn settings_field(
                 .expect("every select node has its dropdown before the panel draws it");
             let labels: Vec<SharedString> = options
                 .iter()
-                .map(|option| SharedString::from(option.label.clone()))
+                .flat_map(|option| std::iter::once(&option.label).chain(option.group.iter()))
+                .cloned()
+                .map(SharedString::from)
                 .collect();
             row.child(
                 div()
@@ -763,13 +858,14 @@ mod tests {
                 .into_iter()
                 .map(|value| {
                     let mut choice = PluginSettingsSelectChoice::new(value, value);
+                    choice.group = Some(choice.label.clone());
                     choice.preview = Some(callback.clone());
                     choice
                 })
                 .collect::<Vec<_>>();
             let state = cx.new(|cx| {
                 SelectState::new(
-                    SearchableVec::new(choices),
+                    PluginSettingsSelectGroups::new(choices),
                     Some(IndexPath::default().row(0)),
                     window,
                     cx,
@@ -825,6 +921,77 @@ mod tests {
             assert_eq!(
                 state.selected_value().map(|value| value.as_ref()),
                 Some("second")
+            );
+        });
+        // Relabeling and regrouping must restore by value, not a stale flat row.
+        visual.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_items(
+                    PluginSettingsSelectGroups::new(vec![
+                        PluginSettingsSelectChoice::new("second", "Second localized")
+                            .with_group(Some("New category")),
+                        PluginSettingsSelectChoice::new("first", "First localized")
+                            .with_group(Some("Another category")),
+                    ]),
+                    window,
+                    cx,
+                );
+                state.set_selected_value(&SharedString::from("second"), window, cx);
+                assert_eq!(state.selected_value(), Some(&SharedString::from("second")));
+                assert_eq!(state.selected_index(cx), Some(IndexPath::default()));
+            });
+        });
+    }
+
+    #[gpui_kit::test]
+    #[allow(deprecated)]
+    fn select_groups_keep_the_plugins_categories_and_flat_legacy_lists(cx: &mut TestAppContext) {
+        let grouped = vec![
+            PluginSettingsSelectChoice::new("auto", "Follow").with_group(Some("Follow")),
+            PluginSettingsSelectChoice::new("blue", "SKCM Blue").with_group(Some("Keyboard")),
+            PluginSettingsSelectChoice::new("navy", "Box Navy").with_group(Some("Keyboard")),
+        ];
+        let mut grouped = PluginSettingsSelectGroups::new(grouped);
+        let legacy = PluginSettingsSelectGroups::new(vec![
+            PluginSettingsSelectChoice::new("auto", "Follow"),
+            PluginSettingsSelectChoice::new("blue", "SKCM Blue"),
+        ]);
+        let mixed = PluginSettingsSelectGroups::new(vec![
+            PluginSettingsSelectChoice::new("auto", "Follow"),
+            PluginSettingsSelectChoice::new("blue", "SKCM Blue").with_group(Some("Keyboard")),
+        ]);
+
+        let visual = cx.add_empty_window();
+        visual.update(|window, cx| {
+            assert_eq!(SearchableListDelegate::sections_count(&grouped, cx), 2);
+            assert_eq!(SearchableListDelegate::items_count(&grouped, 1), 2);
+            assert!(SearchableListDelegate::section(&grouped, 0).is_some());
+            assert_eq!(
+                SearchableListDelegate::position(&grouped, &SharedString::from("navy")),
+                Some(IndexPath::default().section(1).row(1))
+            );
+            // A plugin that has not adopted groups keeps its flat dropdown.
+            assert_eq!(SearchableListDelegate::sections_count(&legacy, cx), 1);
+            assert!(SearchableListDelegate::section(&legacy, 0).is_none());
+            assert_eq!(SearchableListDelegate::sections_count(&mixed, cx), 1);
+            assert!(SearchableListDelegate::section(&mixed, 0).is_none());
+            _ = grouped.perform_search("navy", window, cx);
+            assert_eq!(grouped.sections_count(cx), 1);
+            assert_eq!(grouped.items_count(0), 1);
+            assert_eq!(
+                grouped.position(&SharedString::from("navy")),
+                Some(IndexPath::default())
+            );
+            _ = grouped.perform_search("Keyboard", window, cx);
+            assert_eq!(grouped.sections_count(cx), 1);
+            assert_eq!(grouped.items_count(0), 0);
+            assert!(SearchableListDelegate::section(&grouped, 0).is_some());
+            _ = grouped.perform_search("missing", window, cx);
+            assert_eq!(grouped.sections_count(cx), 0);
+            _ = grouped.perform_search("", window, cx);
+            assert_eq!(
+                grouped.position(&SharedString::from("navy")),
+                Some(IndexPath::default().section(1).row(1))
             );
         });
     }

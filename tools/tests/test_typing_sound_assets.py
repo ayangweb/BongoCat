@@ -82,6 +82,8 @@ class TypingSoundAssetTests(unittest.TestCase):
             "src/packs.rs lists sets in a different order than index.json",
         )
         self.assertEqual(len(ids), len(set(ids)), "a set is embedded twice")
+        brands = re.findall(r'(?m)^        brand: "([^"]+)",$', self.source)
+        self.assertEqual(brands, [pack["brand"] for pack in self.packs])
         for pack in self.packs:
             category = pack["category"]
             self.assertIn(f"category: PackCategory::{category.capitalize()},", self.source)

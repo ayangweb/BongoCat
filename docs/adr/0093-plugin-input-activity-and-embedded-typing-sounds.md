@@ -71,12 +71,28 @@ counter block to the plugin owner without copying the model or the pressed set.
 ### A plugin may publish a list of choices
 
 `UiNode::Select { key, label, value, options }` carries its own
-`Vec<SelectOption { value, label }>`. The list travels with the node because the
+`Vec<SelectOption { value, label, group }>`. The optional `group` is plugin-owned
+display metadata: options with the same non-empty group are shown under one
+stock `gpui-kit` section header, while an omitted group keeps the legacy flat
+list. The list travels with the node because the
 options are the plugin's own vocabulary — which typing sounds it carries, which
 of them a user may pick — and the host has no way to invent them. Validation
 requires `value` to be one of `options`, every value to be a valid key, and the
 list to be non-empty and bounded by `SELECT_OPTION_LIMIT` (64), so a plugin can
 never publish a selection the list cannot show.
+
+The host does not infer categories from plugin ids or labels. It reuses the
+component's grouped delegate for filtering, row indexing, selection restoration
+and muted section headers. A list that mixes grouped and ungrouped options falls
+back to the flat delegate, which keeps older or partially upgraded plugins
+readable without inventing a host-local category. The typing-sound plugin groups
+its embedded sets by the source soundpack brand and keeps the localized “Follow”
+choice in its own group; brand names are provenance metadata and therefore do not
+need translation. Unknown-brand sets use a localized "Other sounds" heading.
+Group headings and follow labels use the same English/Chinese locale selection
+and English fallback as the rest of the panel; changing language never changes
+option ids or persisted selections. Menu width includes section titles as well
+as option labels.
 
 The settings panel draws one `gpui-kit` `Select` per node, created once for the
 life of the open panel and only refreshed afterwards: recreating it on every

@@ -260,6 +260,13 @@ pub enum UiNode {
 pub struct SelectOption {
     pub value: String,
     pub label: String,
+    /// The category row this option belongs under.
+    ///
+    /// A plugin groups its own vocabulary, and `None` means the list is not
+    /// grouped, which is what a plugin written before this field reads as. The
+    /// label is localized by the plugin like every other option label.
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// The glyph a plugin asks the host to draw on one of its buttons.
@@ -356,6 +363,10 @@ impl PluginView {
                                 && valid_key(&option.value)
                                 && option.value.len() <= 128
                                 && option.label.len() <= 128
+                                && option
+                                    .group
+                                    .as_ref()
+                                    .is_none_or(|group| !group.is_empty() && group.len() <= 128)
                         })
                         && options.iter().any(|option| &option.value == value)
                 }
@@ -593,10 +604,12 @@ mod tests {
                     SelectOption {
                         value: "one".into(),
                         label: "One".into(),
+                        group: None,
                     },
                     SelectOption {
                         value: "one".into(),
                         label: "Also one".into(),
+                        group: None,
                     },
                 ],
                 preview: false,
@@ -754,10 +767,12 @@ mod tests {
             SelectOption {
                 value: "alps-skcm-blue".into(),
                 label: "SKCM Blue · Alps".into(),
+                group: None,
             },
             SelectOption {
                 value: "kailh-box-navy".into(),
                 label: "Box Navy · Kailh".into(),
+                group: None,
             },
         ];
         let view = PluginView {
@@ -770,6 +785,10 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(legacy, UiNode::Select { preview: false, .. }));
+        let UiNode::Select { options, .. } = legacy else {
+            panic!("the legacy select node round trips");
+        };
+        assert_eq!(options[0].group, None);
 
         for invalid in [
             node("unknown-pack", options.clone()),
@@ -779,6 +798,7 @@ mod tests {
                 vec![SelectOption {
                     value: "../escape".into(),
                     label: "Box Navy".into(),
+                    group: None,
                 }],
             ),
         ] {
@@ -790,6 +810,32 @@ mod tests {
                 .validate()
             );
         }
+
+        for group in [Some(String::new()), Some("x".repeat(129))] {
+            assert!(
+                !PluginView {
+                    nodes: vec![node(
+                        "kailh-box-navy",
+                        vec![SelectOption {
+                            value: "kailh-box-navy".into(),
+                            label: "Box Navy".into(),
+                            group,
+                        }],
+                    )],
+                    ..Default::default()
+                }
+                .validate()
+            );
+        }
+
+        let grouped: UiNode = serde_json::from_str(
+            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One","group":"Keyboard"}]}"#,
+        )
+        .unwrap();
+        let UiNode::Select { options, .. } = grouped else {
+            panic!("the select node round trips");
+        };
+        assert_eq!(options[0].group.as_deref(), Some("Keyboard"));
     }
 
     /// The activity message carries counters and nothing else, and a plugin

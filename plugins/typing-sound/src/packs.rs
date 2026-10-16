@@ -11,6 +11,7 @@ pub struct PackAsset {
     pub id: &'static str,
     pub category: PackCategory,
     pub label: &'static str,
+    pub brand: &'static str,
     /// Whether the set carries a release sound at all.
     pub supports_key_up: bool,
     pub down: &'static [&'static [u8]],
@@ -22,6 +23,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "skcm-blue",
         category: PackCategory::Keyboard,
         label: "SKCM Blue · Alps",
+        brand: "Alps",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -60,6 +62,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "black-abs",
         category: PackCategory::Keyboard,
         label: "Black ABS · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -89,6 +92,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "black-pbt",
         category: PackCategory::Keyboard,
         label: "Black PBT · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -118,6 +122,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "blue-abs",
         category: PackCategory::Keyboard,
         label: "Blue ABS · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -147,6 +152,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "blue-pbt",
         category: PackCategory::Keyboard,
         label: "Blue PBT · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -176,6 +182,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "brown-abs",
         category: PackCategory::Keyboard,
         label: "Brown ABS · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -205,6 +212,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "brown-pbt",
         category: PackCategory::Keyboard,
         label: "Brown PBT · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -234,6 +242,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "red-abs",
         category: PackCategory::Keyboard,
         label: "Red ABS · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -263,6 +272,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "red-pbt",
         category: PackCategory::Keyboard,
         label: "Red PBT · Cherry MX",
+        brand: "Cherry MX",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -292,6 +302,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "holy-panda",
         category: PackCategory::Keyboard,
         label: "Holy Panda · Drop",
+        brand: "Drop",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -324,6 +335,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "alpaca",
         category: PackCategory::Keyboard,
         label: "Alpaca · Durock",
+        brand: "Durock",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -356,6 +368,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "crystal-purple",
         category: PackCategory::Keyboard,
         label: "Crystal Purple · Everglide",
+        brand: "Everglide",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -385,6 +398,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "oreo",
         category: PackCategory::Keyboard,
         label: "Oreo · Everglide",
+        brand: "Everglide",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -414,6 +428,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "ink-black",
         category: PackCategory::Keyboard,
         label: "Ink Black · Gateron",
+        brand: "Gateron",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -446,6 +461,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "ink-red",
         category: PackCategory::Keyboard,
         label: "Ink Red · Gateron",
+        brand: "Gateron",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -478,6 +494,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "turquoise-tealios",
         category: PackCategory::Keyboard,
         label: "Turquoise Tealios · Gateron",
+        brand: "Gateron",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -510,6 +527,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "box-navy",
         category: PackCategory::Keyboard,
         label: "Box Navy · Kailh",
+        brand: "Kailh",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -542,6 +560,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "cream",
         category: PackCategory::Keyboard,
         label: "Cream · NovelKeys",
+        brand: "NovelKeys",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -574,6 +593,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "purple-hybrid-pbt",
         category: PackCategory::Keyboard,
         label: "Purple Hybrid PBT · Topre",
+        brand: "Topre",
         supports_key_up: false,
         down: &[
             include_bytes!(concat!(
@@ -603,6 +623,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "unknown",
         category: PackCategory::Keyboard,
         label: "Unknown · Topre",
+        brand: "Topre",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -635,6 +656,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "unknown-unknown",
         category: PackCategory::Keyboard,
         label: "Unknown · Unknown · webdevcody",
+        brand: "Unknown",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -701,6 +723,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "buckling-spring",
         category: PackCategory::Keyboard,
         label: "Buckling Spring · IBM",
+        brand: "IBM",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -733,6 +756,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "quack",
         category: PackCategory::Keyboard,
         label: "Quack · Quirky",
+        brand: "Quirky",
         supports_key_up: false,
         down: &[include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -744,6 +768,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "orochi-v2",
         category: PackCategory::Mouse,
         label: "Orochi V2 · Razer",
+        brand: "Razer",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(
@@ -770,6 +795,7 @@ pub static PACKS: &[PackAsset] = &[
         id: "pixabay-unknown-unknown",
         category: PackCategory::Mouse,
         label: "Unknown · Unknown · pixabay",
+        brand: "Unknown",
         supports_key_up: true,
         down: &[
             include_bytes!(concat!(

@@ -141,6 +141,8 @@ struct Copy {
     volume: &'static str,
     cooldown: &'static str,
     mouse_enabled: &'static str,
+    follow_group: &'static str,
+    other_group: &'static str,
     keyboard_pack: &'static str,
     keyboard_down_pack: &'static str,
     keyboard_up_pack: &'static str,
@@ -158,6 +160,8 @@ const ENGLISH: Copy = Copy {
     volume: "Volume",
     cooldown: "Minimum gap (ms)",
     mouse_enabled: "Play mouse sounds",
+    follow_group: "Follow",
+    other_group: "Other sounds",
     keyboard_pack: "Keyboard sound",
     keyboard_down_pack: "Keyboard press sound",
     keyboard_up_pack: "Keyboard release sound",
@@ -174,6 +178,8 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     volume: "音量",
     cooldown: "最小间隔（毫秒）",
     mouse_enabled: "播放鼠标音效",
+    follow_group: "跟随",
+    other_group: "其他音效",
     keyboard_pack: "键盘音效",
     keyboard_down_pack: "键盘按下音效",
     keyboard_up_pack: "键盘弹起音效",
@@ -193,6 +199,16 @@ fn copy_for(locale: &str) -> &'static Copy {
         &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH
+    }
+}
+
+impl PackAsset {
+    fn group_label(&self, copy: &Copy) -> &'static str {
+        if self.brand == "Unknown" {
+            copy.other_group
+        } else {
+            self.brand
+        }
     }
 }
 
@@ -752,6 +768,7 @@ impl TypingSound {
             } else {
                 copy.follow_mouse.to_owned()
             },
+            group: Some(copy.follow_group.to_owned()),
         }];
         options.extend(category.packs().map(|pack| SelectOption {
             value: pack.id.into(),
@@ -762,6 +779,9 @@ impl TypingSound {
             } else {
                 pack.label.to_owned()
             },
+            // Group sound sets by the source's device/brand metadata rather
+            // than making the host infer categories from plugin-specific IDs.
+            group: Some(pack.group_label(copy).to_owned()),
         }));
         options
     }
@@ -791,6 +811,7 @@ impl TypingSound {
             .map(|pack| SelectOption {
                 value: pack.id.into(),
                 label: pack.label.into(),
+                group: Some(pack.group_label(self.copy()).into()),
             })
             .collect();
         let (key, value) = match category {
@@ -1397,6 +1418,43 @@ mod tests {
         assert!(!plugin.admit(Action::KeyboardDown, 20_000));
     }
 
+    #[test]
+    fn every_sound_select_publishes_localized_categories_without_changing_ids() {
+        let mut plugin = TypingSound::default();
+        let original_config = plugin.output().config;
+        for locale in ["en-US", "zh-CN", "de-DE"] {
+            let output = plugin
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            let copy = copy_for(locale);
+            assert_eq!(output.config, original_config);
+            assert!(output.settings.validate());
+            for node in output.settings.nodes {
+                let UiNode::Select { key, options, .. } = node else {
+                    continue;
+                };
+                let category = if key.starts_with("keyboard_") {
+                    PackCategory::Keyboard
+                } else {
+                    PackCategory::Mouse
+                };
+                for option in options {
+                    if option.value == FOLLOW {
+                        assert_eq!(option.group.as_deref(), Some(copy.follow_group));
+                    } else {
+                        let pack = category
+                            .packs()
+                            .find(|pack| pack.id == option.value)
+                            .unwrap();
+                        assert_eq!(option.group.as_deref(), Some(pack.group_label(copy)));
+                    }
+                }
+            }
+        }
+    }
+
     /// The settings panel is the plugin's own copy, so switching language
     /// re-labels it without touching what the user has configured.
     #[test]
@@ -1407,6 +1465,22 @@ mod tests {
         assert_eq!(
             select_label(&plugin.output(), "keyboard_down_pack"),
             "Keyboard press sound"
+        );
+        assert_eq!(
+            select_option_group(&plugin.output(), "keyboard_down_pack", FOLLOW),
+            "Follow"
+        );
+        assert_eq!(
+            select_option_group(&english, "mouse_pack", "pixabay-unknown-unknown"),
+            "Other sounds"
+        );
+        assert_eq!(
+            select_option_group(
+                &plugin.output(),
+                "keyboard_down_pack",
+                PackCategory::Keyboard.default_pack().id
+            ),
+            PackCategory::Keyboard.default_pack().brand
         );
 
         let localized = plugin
@@ -1420,6 +1494,22 @@ mod tests {
         assert_eq!(
             select_option_label(&localized, "keyboard_up_pack", FOLLOW),
             "跟随键盘音效"
+        );
+        assert_eq!(
+            select_option_group(&localized, "keyboard_up_pack", FOLLOW),
+            "跟随"
+        );
+        assert_eq!(
+            select_option_group(&localized, "mouse_pack", "pixabay-unknown-unknown"),
+            "其他音效"
+        );
+        assert_eq!(
+            select_option_group(
+                &localized,
+                "mouse_down_pack",
+                PackCategory::Mouse.default_pack().id
+            ),
+            PackCategory::Mouse.default_pack().brand
         );
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
         let chinese = localized;
@@ -1861,6 +1951,24 @@ mod tests {
         }) {
             Some(label) => label,
             None => panic!("the settings panel always publishes the {key} dropdown"),
+        }
+    }
+
+    /// The category heading one dropdown publishes for an option.
+    fn select_option_group<'a>(output: &'a PluginOutput, key: &str, value: &str) -> &'a str {
+        match output.settings.nodes.iter().find_map(|node| match node {
+            UiNode::Select {
+                key: node_key,
+                options,
+                ..
+            } if node_key == key => options
+                .iter()
+                .find(|option| option.value == value)
+                .and_then(|option| option.group.as_deref()),
+            _ => None,
+        }) {
+            Some(group) => group,
+            None => panic!("the settings panel always groups the {key} option {value}"),
         }
     }
 

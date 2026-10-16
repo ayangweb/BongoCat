@@ -31,7 +31,7 @@ use gpui_kit::component::{
     group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
-    searchable_list::SearchableListItem,
+    searchable_list::{SearchableGroup, SearchableListDelegate, SearchableListItem},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
@@ -208,7 +208,7 @@ pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModel
 /// is not a fixed catalog: it is rebuilt from whatever the open plugin published
 /// last.
 pub(crate) type PluginSettingsSelectState =
-    SelectState<SearchableVec<plugin_settings::PluginSettingsSelectChoice>>;
+    SelectState<plugin_settings::PluginSettingsSelectGroups>;
 
 /// The appearance a settings window paints its first frame with.
 ///

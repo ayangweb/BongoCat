@@ -899,10 +899,12 @@ mod tests {
                         bongocat_plugin_sdk::SelectOption {
                             value: "auto".into(),
                             label: "Follow the keyboard sound".into(),
+                            group: None,
                         },
                         bongocat_plugin_sdk::SelectOption {
                             value: "skcm-blue".into(),
                             label: "SKCM Blue · Alps".into(),
+                            group: None,
                         },
                     ],
                     preview: false,
