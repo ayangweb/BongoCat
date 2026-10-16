@@ -1,4 +1,4 @@
-# Typing-sound assets
+# Button-sounds assets
 
 Every `.wav` under `resources/packs/` is a copy of one recording published in
 Thock's soundpack registry
@@ -48,11 +48,11 @@ entry each time it runs.
 ## Reproducing
 
 ```text
-python3 plugins/typing-sound/resources/fetch_packs.py
+python3 plugins/button-sounds/resources/fetch_packs.py
 ```
 
 The script downloads the registry manifest and each pack, writes the kept
 recordings under `resources/packs/<category>/<set-id>/`, and regenerates both
-`resources/index.json` and `src/packs.rs`. `tools/tests/test_typing_sound_assets.py`
+`resources/index.json` and `src/packs.rs`. `tools/tests/test_button_sounds_assets.py`
 checks that the three stay in agreement, that no proprietary set is carried and
 that no set claims the reserved `auto` id.

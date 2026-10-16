@@ -236,7 +236,7 @@ pub enum UiNode {
     /// One choice out of a list the plugin itself publishes.
     ///
     /// The list travels with the node rather than living in the host because the
-    /// options are the plugin's own vocabulary — which typing sounds it carries,
+    /// options are the plugin's own vocabulary — the sounds it carries,
     /// which of them the user may pick — and the host has no way to invent them.
     /// `value` is the option currently selected and always one of `options`, so a
     /// plugin cannot publish a selection the list does not contain.
@@ -281,7 +281,7 @@ pub enum ActionIcon {
     Play,
     Pause,
     Restart,
-    /// Auditioning or controlling a sound, such as a typing sound's preview.
+    /// Auditioning or controlling a sound, such as previewing a sound.
     Volume,
 }
 
@@ -416,7 +416,8 @@ pub enum HostMessage {
     ///
     /// Counters rather than events because the boundary is a coalesced,
     /// best-effort signal: the plugin plays a sound for "the keyboard was
-    /// released since I last looked", which is what a typing sound is, and the
+    /// released since I last looked", which is what button-sound activity represents,
+    /// and the
     /// reliable edge queue never waits behind it (ADR-0091).
     InputActivity {
         elapsed_ms: u64,

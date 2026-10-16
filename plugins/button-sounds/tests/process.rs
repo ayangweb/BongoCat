@@ -15,7 +15,7 @@ struct Process {
 }
 impl Process {
     fn start() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_bongocat-typing-sound"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_bongocat-button-sounds"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -31,7 +31,7 @@ impl Process {
         };
         process.exchange(HostMessage::Handshake {
             protocol_version: 1,
-            id: "com.bongocat.typing-sound".into(),
+            id: "com.bongocat.button-sounds".into(),
         });
         process
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch the typing-sound asset set and regenerate `src/packs.rs`.
+"""Fetch the button-sounds asset set and regenerate `src/packs.rs`.
 
 The plugin plays from sound sets copied out of Thock's public soundpack registry
 (https://github.com/kamillobinski/thock-soundpacks) and committed here, so a user
@@ -22,7 +22,7 @@ application alone, so it is skipped and reported.
 
 Run from anywhere:
 
-    python3 plugins/typing-sound/resources/fetch_packs.py
+    python3 plugins/button-sounds/resources/fetch_packs.py
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ def rust_sound_list(category: str, pack_id: str, names: list[str]) -> str:
 
 def main() -> None:
     manifest = json.loads(fetch(REGISTRY_MANIFEST))
-    work = Path(tempfile.mkdtemp(prefix="bongocat-typing-sound-"))
+    work = Path(tempfile.mkdtemp(prefix="bongocat-button-sounds-"))
     try:
         staged: list[Staged] = []
         skipped: list[str] = []

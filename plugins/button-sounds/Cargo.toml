@@ -1,5 +1,5 @@
 [package]
-name = "bongocat-typing-sound"
+name = "bongocat-button-sounds"
 version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true

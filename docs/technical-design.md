@@ -106,14 +106,15 @@ Rust 2024 edition application
   HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
 - Development 的 `just dev` / `just dev-smoke` 先经打包工具把本地插件构建为 ZIP 写入
   `target/plugins`，构建工具不写入应用数据目录；Development 构建启动后由产品自身的安装
-  目录发现可用插件，不自动安装或重新安装已卸载的插件。生产环境从 GitHub release 的签名
+  目录发现可用插件；全部本地插件构建成功后清理不再对应源码插件的旧 ZIP，避免改名后残留目录项，
+  不自动安装或重新安装已卸载的插件。生产环境从 GitHub release 的签名
   `plugins.json` 发现列表；两个环境复用插件中心的安装、更新、启用、禁用和卸载路径。
   清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。
-  番茄钟、键盘与鼠标音效均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。
+  番茄钟、按键音效均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。
   Production 不读取本地源码目录，不接受手动导入或运行时目录覆盖。签名清单与各平台 ZIP
   由打包工具 `just plugin-catalog` 组装，未发布签名资源时显示可重试错误，不回退到未签名数据。
 - 首个验证插件是番茄钟（#996）：它在模型窗口显示独立倒计时区域，并与插件的开始、暂停、重置
-  保持同步。键盘与鼠标音效（#90，英文名 Keyboard & Mouse Sounds）也作为独立插件维护音频、音量、
+  保持同步。按键音效（#90，英文名 Button Sounds）也作为独立插件维护音频、音量、
   限流和设备生命周期；runtime 只
   提供去重后的匿名输入活动计数（键盘按下／弹起、鼠标按下／弹起四个计数器），service 经
   `input_activity_v1` capability 发送合并的单调计数，不传递具体按键、文本、修饰键或指针位置。

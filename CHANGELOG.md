@@ -4,7 +4,7 @@
 
 ### ✨ Features
 
-- Added a plugin system and Plugin Center to manage plugins and extend the model window, with Pomodoro and Keyboard & Mouse Sounds plugins.
+- Added a plugin system and Plugin Center to manage plugins and extend the model window, with Pomodoro and Button Sounds plugins.
 
 ## 2.3.1 - 2026-10-13
 

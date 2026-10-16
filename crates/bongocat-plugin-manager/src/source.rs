@@ -200,7 +200,7 @@ mod tests {
     fn bundled_plugin_copy_is_simplified_chinese_or_english() {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/typing-sound/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
             let metadata = manifest.metadata;
@@ -229,24 +229,24 @@ mod tests {
     }
 
     #[test]
-    fn sound_plugin_copy_covers_keyboard_and_mouse_without_changing_identity() {
+    fn button_sounds_plugin_identity_and_copy_cover_keyboard_and_mouse() {
         let manifest: crate::PluginManifest =
-            serde_json::from_slice(include_bytes!("../../../plugins/typing-sound/plugin.json"))
+            serde_json::from_slice(include_bytes!("../../../plugins/button-sounds/plugin.json"))
                 .unwrap();
         let metadata = manifest.metadata;
-        assert_eq!(metadata.id, "com.bongocat.typing-sound");
-        assert_eq!(metadata.entry, "bongocat-typing-sound");
+        assert_eq!(metadata.id, "com.bongocat.button-sounds");
+        assert_eq!(metadata.entry, "bongocat-button-sounds");
         assert_eq!(
             metadata.localized_copy("en-US"),
             (
-                "Keyboard & Mouse Sounds",
+                "Button Sounds",
                 "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
             ),
         );
         assert_eq!(
             metadata.localized_copy("zh-CN"),
             (
-                "键盘与鼠标音效",
+                "按键音效",
                 "键盘、鼠标按键按下或弹起时播放音效，支持分别设置",
             ),
         );
@@ -256,7 +256,7 @@ mod tests {
     fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/typing-sound/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
             let requirement = VersionReq::parse(&manifest.metadata.app_versions).unwrap();

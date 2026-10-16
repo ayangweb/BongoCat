@@ -803,6 +803,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-button-sounds"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "rodio",
+]
+
+[[package]]
 name = "bongocat-config"
 version = "2.3.1"
 dependencies = [
@@ -1071,14 +1079,6 @@ version = "2.3.1"
 dependencies = [
  "atomic-write-file",
  "tempfile",
-]
-
-[[package]]
-name = "bongocat-typing-sound"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "rodio",
 ]
 
 [[package]]

@@ -61,11 +61,28 @@ pub(super) fn prepare(workspace: &Path) -> Result<Vec<PathBuf>> {
             .ok_or("Cargo did not report the plugin executable")?;
         packages.push(package_plugin(workspace, &manifest, &bytes, &executable)?);
     }
+    prune_packages(&output, &packages)?;
     Ok(packages)
 }
 
+/// Only current source plugins should be discoverable after a successful build.
+/// Prune after every build succeeds so a failed preparation retains its outputs.
+fn prune_packages(output: &Path, current: &[PathBuf]) -> Result<()> {
+    for entry in fs::read_dir(output)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_file()
+            && path.extension().is_some_and(|extension| extension == "zip")
+            && !current.contains(&path)
+        {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
 /// Write one plugin's ZIP, containing its manifest and its executable.
-fn package_plugin(
+pub(super) fn package_plugin(
     workspace: &Path,
     manifest: &PluginManifest,
     manifest_bytes: &[u8],
@@ -200,5 +217,75 @@ mod tests {
         for value in ["", ".", "..", "../plugin", "C:\\plugin", "/plugin"] {
             assert!(!bongocat_plugin_manager::install::valid_basename(value));
         }
+    }
+
+    #[test]
+    fn preparing_plugins_prunes_obsolete_archives_but_not_other_outputs() {
+        let output = tempfile::tempdir().unwrap();
+        let current = output.path().join("com.bongocat.button-sounds-1.0.0.zip");
+        let obsolete = output.path().join("removed-plugin-1.0.0.zip");
+        let note = output.path().join("notes.txt");
+        let directory = output.path().join("directory.zip");
+        for path in [&current, &obsolete, &note] {
+            fs::write(path, b"keep or prune").unwrap();
+        }
+        fs::create_dir(&directory).unwrap();
+        prune_packages(output.path(), std::slice::from_ref(&current)).unwrap();
+        assert!(current.is_file());
+        assert!(!obsolete.exists());
+        assert!(note.is_file());
+        assert!(directory.is_dir());
+        // A removed final plugin must not remain discoverable either.
+        prune_packages(output.path(), &[]).unwrap();
+        assert!(!current.exists());
+    }
+
+    #[test]
+    fn button_sounds_identity_survives_discovery_install_update_reset_and_uninstall() {
+        use bongocat_plugin_manager::PluginSource;
+        use std::sync::atomic::AtomicBool;
+
+        let workspace = tempfile::tempdir().unwrap();
+        let bytes = include_bytes!("../../../plugins/button-sounds/plugin.json");
+        let mut manifest: PluginManifest = serde_json::from_slice(bytes).unwrap();
+        let id = manifest.metadata.id.clone();
+        assert_eq!(id, "com.bongocat.button-sounds");
+        let executable = workspace.path().join(&manifest.metadata.entry);
+        fs::write(&executable, b"test executable").unwrap();
+        let package = package_plugin(workspace.path(), &manifest, bytes, &executable).unwrap();
+        assert_eq!(
+            package.file_name().unwrap(),
+            "com.bongocat.button-sounds-1.0.0.zip"
+        );
+        let stop = AtomicBool::new(false);
+        let source = PluginSource::Development(workspace.path().join(PLUGIN_OUTPUT_DIRECTORY));
+        let available = source.discover("2.3.1", &stop).unwrap();
+        assert_eq!(available.len(), 1);
+        assert_eq!(available[0].metadata.id, id);
+        assert_eq!(available[0].metadata.localized_copy("zh-CN").0, "按键音效");
+        assert_eq!(
+            available[0].metadata.localized_copy("zh-TW").0,
+            "Button Sounds"
+        );
+
+        let store = tempfile::tempdir().unwrap();
+        let mut manager = PluginManager::new(store.path().into()).unwrap();
+        manager.install(&available[0].read(&stop).unwrap()).unwrap();
+        assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.0"));
+        let data = manager.data_root(&id, true).unwrap();
+        assert!(data.ends_with("data/com.bongocat.button-sounds"));
+        fs::write(data.join("marker"), b"keep on update").unwrap();
+
+        manifest.metadata.version = "1.0.1".into();
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        let package = package_plugin(workspace.path(), &manifest, &bytes, &executable).unwrap();
+        manager.install(&fs::read(package).unwrap()).unwrap();
+        assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.1"));
+        assert!(data.join("marker").is_file());
+        assert!(manager.reset(&id).unwrap());
+        assert!(!data.join("marker").exists());
+        assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.1"));
+        assert!(manager.uninstall(&id).unwrap());
+        assert_eq!(manager.installed_version(&id), None);
     }
 }

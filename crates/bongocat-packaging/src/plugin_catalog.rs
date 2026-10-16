@@ -132,4 +132,45 @@ mod tests {
                 .is_empty()
         );
     }
+
+    #[test]
+    fn button_sounds_catalog_and_asset_names_use_the_manifest_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let bytes = include_bytes!("../../../plugins/button-sounds/plugin.json");
+        let manifest: bongocat_plugin_manager::PluginManifest =
+            serde_json::from_slice(bytes).unwrap();
+        let executable = workspace.path().join(&manifest.metadata.entry);
+        fs::write(&executable, b"test executable").unwrap();
+        super::super::dev_plugins::package_plugin(workspace.path(), &manifest, bytes, &executable)
+            .unwrap();
+        let keys = cargo_packager::sign::generate_key(Some(String::new())).unwrap();
+        let signing = SigningConfig::new().private_key(keys.sk).password("");
+        let output = directory.path().join("plugins.json");
+        let target = ReleaseTarget::host().unwrap();
+        publish(
+            &output,
+            &[(
+                target,
+                workspace
+                    .path()
+                    .join(super::super::dev_plugins::PLUGIN_OUTPUT_DIRECTORY),
+            )],
+            &signing,
+        )
+        .unwrap();
+        let catalog =
+            bongocat_plugin_manager::parse_catalog(&fs::read(output).unwrap(), &keys.pk).unwrap();
+        assert_eq!(catalog.plugins.len(), 1);
+        let entry = &catalog.plugins[0];
+        assert_eq!(entry.id, "com.bongocat.button-sounds");
+        assert_eq!(entry.name, "Button Sounds");
+        assert_eq!(entry.localizations["zh-CN"].name, "按键音效");
+        let name = format!(
+            "com.bongocat.button-sounds-1.0.0-{}.zip",
+            target.manifest_platform()
+        );
+        assert_eq!(entry.downloads[target.manifest_platform()], name);
+        assert!(directory.path().join(name).is_file());
+    }
 }
