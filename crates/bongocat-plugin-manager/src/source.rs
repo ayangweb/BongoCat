@@ -195,6 +195,34 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn bundled_plugin_copy_is_simplified_chinese_or_english() {
+        for bytes in [
+            include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/typing-sound/plugin.json").as_slice(),
+        ] {
+            let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
+            let metadata = manifest.metadata;
+            assert_eq!(metadata.localizations.len(), 1, "{}", metadata.id);
+            let chinese = metadata.localizations.get("zh-CN").unwrap();
+            assert_eq!(
+                metadata.localized_copy("zh-CN"),
+                (chinese.name.as_str(), chinese.description.as_str()),
+            );
+            for locale in [
+                "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "ar-SA", "vi-VN", "pt-BR",
+                "ko-KR", "fr-FR", "de-DE", "",
+            ] {
+                assert_eq!(
+                    metadata.localized_copy(locale),
+                    (metadata.name.as_str(), metadata.description.as_str()),
+                    "{} fallback for {locale}",
+                    metadata.id,
+                );
+            }
+        }
+    }
+
+    #[test]
     fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),

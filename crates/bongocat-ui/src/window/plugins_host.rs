@@ -560,7 +560,7 @@ mod tests {
         let card = &state.cards[0];
         assert_eq!(card.copy("en-US").0, "Pomodoro");
         assert_eq!(card.copy("zh-CN").0, "番茄钟");
-        assert_eq!(card.copy("zh-TW").0, "番茄鐘");
+        assert_eq!(card.copy("zh-TW").0, "Pomodoro");
         service.shutdown().unwrap();
     }
 
@@ -588,6 +588,24 @@ mod tests {
             labels.contains(&"开始") && labels.contains(&"重新计时"),
             "the plugin's own control reads Simplified Chinese: {labels:?}"
         );
+        for locale in ["zh-TW", "fr-FR"] {
+            host.set_locale(locale);
+            let state = host.snapshot();
+            let card = &state.cards[0];
+            assert_eq!(card.copy(locale).0, "Pomodoro");
+            let labels = card
+                .actions
+                .iter()
+                .filter_map(|node| match node {
+                    UiNode::Button { label, .. } => Some(label.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                labels.contains(&"Start") && labels.contains(&"Restart"),
+                "unsupported plugin locale {locale} reads English: {labels:?}"
+            );
+        }
         service.shutdown().unwrap();
     }
 

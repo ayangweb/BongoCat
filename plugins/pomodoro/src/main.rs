@@ -31,12 +31,6 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     restart: "重新计时",
     minutes: "时长（分钟）",
 };
-const TRADITIONAL_CHINESE: Copy = Copy {
-    start: "開始",
-    pause: "暫停",
-    restart: "重新計時",
-    minutes: "時長（分鐘）",
-};
 
 /// The copy for a catalog tag, falling back to English.
 ///
@@ -45,17 +39,10 @@ const TRADITIONAL_CHINESE: Copy = Copy {
 /// showing a raw locale to the user.
 fn copy_for(locale: &str) -> &'static Copy {
     let normalized = locale.replace('_', "-").to_ascii_lowercase();
-    let mut subtags = normalized.split('-');
-    match subtags.next() {
-        Some("zh") => {
-            let traditional = subtags.any(|subtag| matches!(subtag, "hant" | "tw" | "hk" | "mo"));
-            if traditional {
-                &TRADITIONAL_CHINESE
-            } else {
-                &SIMPLIFIED_CHINESE
-            }
-        }
-        _ => &ENGLISH,
+    if normalized == "zh-cn" {
+        &SIMPLIFIED_CHINESE
+    } else {
+        &ENGLISH
     }
 }
 
@@ -462,20 +449,30 @@ mod tests {
         let minutes = integer_label(&localized);
         assert_eq!(minutes, "时长（分钟）");
 
-        let traditional = p
-            .handle(HostMessage::Locale {
-                locale: "zh-TW".into(),
-            })
-            .unwrap();
-        assert_eq!(button_label(&traditional, "restart"), "重新計時");
+        for locale in ["zh_CN", "ZH-cn"] {
+            let localized = p
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            assert_eq!(button_label(&localized, "restart"), "重新计时", "{locale}");
+        }
 
-        // An unknown language reads English rather than the raw tag.
-        let unknown = p
-            .handle(HostMessage::Locale {
-                locale: "de-DE".into(),
-            })
-            .unwrap();
-        assert_eq!(button_label(&unknown, "restart"), "Restart");
+        for locale in [
+            "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh", "ar-SA", "vi-VN",
+            "pt-BR", "ko-KR", "fr-FR", "de-DE", "",
+        ] {
+            let fallback = p
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            assert_eq!(button_label(&fallback, "toggle"), "Pause", "{locale}");
+            assert_eq!(button_label(&fallback, "restart"), "Restart", "{locale}");
+            assert_eq!(integer_label(&fallback), "Minutes", "{locale}");
+            assert_eq!(clock_text(&fallback), "24:55", "{locale}");
+            assert!(p.running);
+        }
     }
 
     /// The locale the host named is not part of the saved timer.

@@ -71,9 +71,13 @@ receives it too. Framework copy (page title, card chrome, tooltips, the panel
 title and its empty state) stays in `bongocat-i18n`, which now carries
 `plugins.settings.{open,title,empty}` in all eight catalogs.
 
-Both shipped plugins (pomodoro, typing-sound) carry English, Simplified and
-Traditional copy and declare a glyph for every button they publish. The typing
-sound preview button reports `loading` from its own playback state instead of
+Both shipped plugins (pomodoro, typing-sound) carry only English and Simplified
+Chinese (`zh-CN`) copy; all other host locales fall back to English in their
+metadata and published views. Additional translations are deferred until needed;
+the SDK remains capable of resolving other plugins' declared locales without
+restricting the application's language catalogs. Both plugins declare a glyph
+for every button they publish. The typing sound preview button reports `loading`
+from its own playback state instead of
 publishing a text node, and the failure it can report is an error code the plugin
 renders in the language on screen rather than a sentence frozen in English.
 
@@ -90,6 +94,7 @@ dependency is introduced.
 
 Unit tests cover tag resolution (whole tag, primary subtag, both Chinese scripts,
 single-script plugins, unknown tags), optional-field decoding of legacy frames,
+the shipped plugins' English fallback for unsupported host languages,
 per-control in-flight bookkeeping, grid column selection, the settings entry
 opening and closing one plugin's panel, action glyph mapping (including the
 neutral fallback), and that a plugin-reported loading state draws on its own

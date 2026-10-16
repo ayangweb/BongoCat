@@ -180,7 +180,7 @@ mod tests {
         // The package carries the plugin's own localized copy, so the center can
         // show the name in the language the window is already using.
         assert_eq!(metadata.localized_copy("zh-CN").0, "番茄钟");
-        assert_eq!(metadata.localized_copy("zh-TW").0, "番茄鐘");
+        assert_eq!(metadata.localized_copy("zh-TW").0, "Pomodoro");
         assert_eq!(metadata.localized_copy("fr-FR").0, "Pomodoro");
         assert_eq!(
             manager

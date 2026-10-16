@@ -179,36 +179,12 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     decode_failed: "无法解码打字音效。",
     output_unavailable: "没有可用的音频输出设备。",
 };
-const TRADITIONAL_CHINESE: Copy = Copy {
-    volume: "音量",
-    cooldown: "最小間隔（毫秒）",
-    preview: "試聽",
-    mouse_enabled: "播放滑鼠音效",
-    keyboard_pack: "鍵盤音效",
-    keyboard_down_pack: "鍵盤按下音效",
-    keyboard_up_pack: "鍵盤彈起音效",
-    mouse_pack: "滑鼠音效",
-    mouse_down_pack: "滑鼠按下音效",
-    mouse_up_pack: "滑鼠彈起音效",
-    follow_keyboard: "跟隨鍵盤音效",
-    follow_mouse: "跟隨滑鼠音效",
-    no_release: "無彈起音",
-    decode_failed: "無法解碼打字音效。",
-    output_unavailable: "沒有可用的音訊輸出裝置。",
-};
 
 /// The copy for a catalog tag, falling back to English.
 fn copy_for(locale: &str) -> &'static Copy {
-    if locale
-        .replace('_', "-")
-        .to_ascii_lowercase()
-        .starts_with("zh")
-    {
-        if bongocat_plugin_sdk::is_traditional_chinese(locale) {
-            &TRADITIONAL_CHINESE
-        } else {
-            &SIMPLIFIED_CHINESE
-        }
+    let normalized = locale.replace('_', "-").to_ascii_lowercase();
+    if normalized == "zh-cn" {
+        &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH
     }
@@ -1374,22 +1350,34 @@ mod tests {
         );
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
 
-        let traditional = plugin
-            .handle(HostMessage::Locale {
-                locale: "zh-TW".into(),
-            })
-            .unwrap();
-        assert_eq!(button_label(&traditional, "preview"), "試聽");
-        assert_eq!(select_label(&traditional, "mouse_pack"), "滑鼠音效");
+        for locale in ["zh_CN", "ZH-cn"] {
+            let localized = plugin
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            assert_eq!(button_label(&localized, "preview"), "试听", "{locale}");
+        }
 
         // A language this plugin does not carry reads English rather than the
         // raw tag the host happened to send.
-        let unknown = plugin
-            .handle(HostMessage::Locale {
-                locale: "de-DE".into(),
-            })
-            .unwrap();
-        assert_eq!(button_label(&unknown, "preview"), "Preview");
+        for locale in [
+            "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh", "ar-SA", "vi-VN",
+            "pt-BR", "ko-KR", "fr-FR", "de-DE", "",
+        ] {
+            let fallback = plugin
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            assert_eq!(button_label(&fallback, "preview"), "Preview", "{locale}");
+            assert_eq!(
+                select_label(&fallback, "mouse_pack"),
+                "Mouse sound",
+                "{locale}"
+            );
+            assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        }
     }
 
     /// A playback failure is reported in the language on screen, and a language
@@ -1414,12 +1402,18 @@ mod tests {
             .unwrap();
         assert_eq!(error_text(&localized), "没有可用的音频输出设备。");
 
-        let unknown = plugin
-            .handle(HostMessage::Locale {
-                locale: "de-DE".into(),
-            })
-            .unwrap();
-        assert_eq!(error_text(&unknown), "No audio output device is available.");
+        for locale in ["zh-TW", "zh-HK", "de-DE"] {
+            let fallback = plugin
+                .handle(HostMessage::Locale {
+                    locale: locale.into(),
+                })
+                .unwrap();
+            assert_eq!(
+                error_text(&fallback),
+                "No audio output device is available.",
+                "{locale}"
+            );
+        }
     }
 
     /// Auditioning is what the preview button is, so its glyph never changes,

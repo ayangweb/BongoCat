@@ -89,6 +89,8 @@ Rust 2024 edition application
   name／description，`localized_views_v1` capability 声明插件会本地化自己发布的视图，主程序用
   窗口当前语言标签经 `HostMessage::Locale` 告知插件；插件中心自身的框架文案仍取自
   `bongocat-i18n` 目录。声明前者的旧插件不接收该消息，继续使用清单里的回退文案。
+- 当前番茄钟和打字音效插件仅提供简体中文（`zh-CN`）与英文文案；其他窗口语言统一回退英文，
+  包括插件名称、描述和插件自身发布的界面，不改变主程序支持的语言范围。
 - 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
   画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
