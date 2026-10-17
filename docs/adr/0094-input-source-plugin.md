@@ -41,8 +41,10 @@ and `kTISNotifySelectedKeyboardInputSourceChanged` on the distributed notificati
 center. The plugin's main thread services the default CFRunLoop without waiting
 on each existing host tick; notifications only mark the snapshot dirty. A one
 second reconciliation handles missed notifications and application-specific
-source restoration. Icons are decoded only when identity changes, using the TIS
-icon URL and AppKit/CoreGraphics, never arbitrary plugin paths or network URLs.
+source restoration. On macOS the system's own icon is preferred, with the TIS
+icon URL as the fallback for an input method that ships one; see ADR-0095.
+Icons are decoded only when identity changes, using AppKit/CoreGraphics, never
+arbitrary plugin paths or network URLs.
 The observer is removed before its callback state is freed.
 
 Windows samples the foreground thread's HKL at the existing 200 ms tick cadence.

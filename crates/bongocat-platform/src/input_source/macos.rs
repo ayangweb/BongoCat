@@ -1,12 +1,18 @@
 use super::{InputSource, InputSourceError};
-use objc2::{AnyThread, MainThreadMarker, rc::autoreleasepool};
+use objc2::{
+    AnyThread, MainThreadMarker,
+    encode::{Encode, Encoding, RefEncode},
+    msg_send,
+    rc::{Retained, autoreleasepool},
+    runtime::{AnyClass, AnyObject},
+};
 use objc2_app_kit::NSImage;
 use objc2_core_foundation::{
     CFDictionary, CFNotificationCenter, CFNotificationName, CFNotificationSuspensionBehavior,
     CFRetained, CFRunLoop, CFString, CFType, CFURL, CGPoint, CGRect, CGSize, kCFRunLoopDefaultMode,
 };
 use objc2_core_graphics::{
-    CGBitmapContextCreate, CGColorSpace, CGContext, CGImageAlphaInfo, CGImageByteOrderInfo,
+    CGBitmapContextCreate, CGColorSpace, CGContext, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo,
 };
 use objc2_foundation::{NSURL, ns_string};
 use std::{
@@ -27,6 +33,26 @@ unsafe extern "C-unwind" {
     static kTISPropertyLocalizedName: &'static CFString;
     static kTISPropertyIconImageURL: &'static CFString;
     static kTISNotifySelectedKeyboardInputSourceChanged: &'static CFString;
+}
+
+/// The input source the system's own icon manager takes. Its parameter is
+/// declared as `struct __TISInputSource *`, and a checked message send compares
+/// encodings, so that pointer shape is spelled out here.
+#[repr(C)]
+struct TisInputSource {
+    _private: [u8; 0],
+}
+
+// SAFETY: the type is only ever built from a pointer to a live TIS input
+// source, and `@encode(struct __TISInputSource *)` is what the runtime reports
+// for `-[KLInputSourceIconManager imageForTISInputSource:]`.
+unsafe impl Encode for TisInputSource {
+    const ENCODING: Encoding = Encoding::Struct("__TISInputSource", &[]);
+}
+
+// SAFETY: as above; a reference to the type is that struct pointer.
+unsafe impl RefEncode for TisInputSource {
+    const ENCODING_REF: Encoding = Encoding::Pointer(&Self::ENCODING);
 }
 
 pub(super) struct Monitor {
@@ -137,9 +163,19 @@ fn read_source(cached: Option<&InputSource>) -> Result<InputSource, InputSourceE
         if let Some(cached) = cached.filter(|cached| cached.id == id && cached.name == name) {
             return Ok(cached.clone());
         }
-        let icon_rgba = property(&source, kTISPropertyIconImageURL)
-            .and_then(|value| value.downcast_ref::<CFURL>())
-            .and_then(icon);
+        // The system's own artwork comes first: it is what the input menu and
+        // the switcher show, and for a keyboard layout it is the only icon that
+        // exists. An input method that ships its icon instead is read from the
+        // documented URL, and a source with neither renders as a badge.
+        let icon_rgba = system_icon(&source)
+            .as_deref()
+            .and_then(rasterize_icon)
+            .or_else(|| {
+                property(&source, kTISPropertyIconImageURL)
+                    .and_then(|value| value.downcast_ref::<CFURL>())
+                    .and_then(load_icon_image)
+                    .and_then(|image| rasterize_icon(&image))
+            });
         Ok(InputSource {
             id,
             name,
@@ -148,10 +184,50 @@ fn read_source(cached: Option<&InputSource>) -> Result<InputSource, InputSourceE
     }
 }
 
-fn icon(url: &CFURL) -> Option<Vec<u8>> {
-    // SAFETY: CFURL and NSURL are toll-free bridged. The NSImage and CGImage
-    // remain alive throughout drawing; the context borrows this fixed buffer
-    // and is dropped before its bytes are accessed or moved.
+/// The framework that registers the system's input source icon manager.
+const SYSTEM_ICON_FRAMEWORK: &std::ffi::CStr =
+    c"/System/Library/PrivateFrameworks/KeyboardLayouts.framework/KeyboardLayouts";
+
+/// The icon the system itself draws for `source`, if it draws one.
+///
+/// Keyboard layouts carry no icon URL on current releases: the system renders
+/// their icon from a label ("A" for ABC) with artwork that is only reachable
+/// through its private icon manager, which is also what System Settings uses.
+/// Anything missing here — framework, class, or image — leaves the URL
+/// fallback and, after that, the badge in place.
+fn system_icon(source: &CFType) -> Option<Retained<NSImage>> {
+    // The manager caches its artwork for the life of the process, so the loaded
+    // framework is deliberately never closed: dlclose could unload the class
+    // while images derived from it are still in use. Later calls only raise the
+    // reference count dlopen already holds.
+    let handle = unsafe {
+        libc::dlopen(
+            SYSTEM_ICON_FRAMEWORK.as_ptr(),
+            libc::RTLD_LAZY | libc::RTLD_LOCAL,
+        )
+    };
+    if handle.is_null() {
+        return None;
+    }
+    // SAFETY: the handle above keeps the framework's classes registered for the
+    // rest of the process. `source` is a live TIS input source, both messages
+    // exist on the class, and their results are autoreleased, so
+    // `Retained::retain` takes ownership before the caller's pool drains.
+    unsafe {
+        let class = AnyClass::get(c"KLInputSourceIconManager")?;
+        let manager: *mut AnyObject = msg_send![class, managerWithAllInputSources];
+        let image: *mut NSImage = msg_send![
+            manager,
+            imageForTISInputSource: ptr::from_ref(source).cast::<TisInputSource>()
+        ];
+        Retained::retain(image)
+    }
+}
+
+/// The image an input method ships, per the documented TIS icon URL.
+fn load_icon_image(url: &CFURL) -> Option<Retained<NSImage>> {
+    // SAFETY: CFURL and NSURL are toll-free bridged, and a URL that is not a
+    // local file is rejected before AppKit touches the file system.
     unsafe {
         let url = &*(url as *const CFURL).cast::<NSURL>();
         if !url.isFileURL() {
@@ -159,7 +235,7 @@ fn icon(url: &CFURL) -> Option<Vec<u8>> {
         }
         // Apple's TIS header explicitly permits a misdeclared extension. Try
         // the common local variants before falling back to a language badge.
-        let image = NSImage::initWithContentsOfURL(NSImage::alloc(), url).or_else(|| {
+        NSImage::initWithContentsOfURL(NSImage::alloc(), url).or_else(|| {
             let base = url.URLByDeletingPathExtension()?;
             [ns_string!("tiff"), ns_string!("png"), ns_string!("pdf")]
                 .into_iter()
@@ -167,7 +243,15 @@ fn icon(url: &CFURL) -> Option<Vec<u8>> {
                     let alternate = base.URLByAppendingPathExtension(extension)?;
                     NSImage::initWithContentsOfURL(NSImage::alloc(), &alternate)
                 })
-        })?;
+        })
+    }
+}
+
+fn rasterize_icon(image: &NSImage) -> Option<Vec<u8>> {
+    // SAFETY: the NSImage and its CGImage remain alive throughout drawing; the
+    // context borrows this fixed buffer and is dropped before its bytes are
+    // accessed or moved.
+    unsafe {
         let cg_image = image.CGImageForProposedRect_context_hints(ptr::null_mut(), None, None)?;
         let space = CGColorSpace::new_device_rgb()?;
         let mut pixels = vec![0; 32 * 32 * 4];
@@ -184,7 +268,10 @@ fn icon(url: &CFURL) -> Option<Vec<u8>> {
         CGContext::scale_ctm(Some(&context), 1.0, -1.0);
         CGContext::draw_image(
             Some(&context),
-            CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(32.0, 32.0)),
+            fitted_rect(
+                CGImage::width(Some(&cg_image)) as f64,
+                CGImage::height(Some(&cg_image)) as f64,
+            ),
             Some(&cg_image),
         );
         drop(context);
@@ -209,6 +296,24 @@ fn icon(url: &CFURL) -> Option<Vec<u8>> {
     }
 }
 
+/// Where a native icon lands inside the fixed square slot the HUD reserves.
+///
+/// System artwork is not always square — an input source icon label is 44x32 —
+/// so an icon is fitted into the slot and centered instead of being stretched
+/// to fill it.
+fn fitted_rect(width: f64, height: f64) -> CGRect {
+    const SIDE: f64 = 32.0;
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(SIDE, SIDE));
+    }
+    let scale = (SIDE / width).min(SIDE / height);
+    let size = CGSize::new(width * scale, height * scale);
+    CGRect::new(
+        CGPoint::new((SIDE - size.width) / 2.0, (SIDE - size.height) / 2.0),
+        size,
+    )
+}
+
 fn flip_rows(pixels: &mut [u8]) {
     const ROW_BYTES: usize = 32 * 4;
     for row in 0..16 {
@@ -221,7 +326,7 @@ fn flip_rows(pixels: &mut [u8]) {
 
 #[cfg(test)]
 mod tests {
-    use super::flip_rows;
+    use super::{fitted_rect, flip_rows};
 
     #[test]
     fn native_icon_rows_are_normalized_to_top_down_order() {
@@ -233,5 +338,37 @@ mod tests {
 
         assert_eq!(&pixels[..4], &[5, 6, 7, 8]);
         assert_eq!(&pixels[(31 * 32 * 4)..(31 * 32 * 4 + 4)], &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn square_icons_fill_the_whole_slot() {
+        let rect = fitted_rect(64.0, 64.0);
+
+        assert_eq!(rect.origin.x, 0.0);
+        assert_eq!(rect.origin.y, 0.0);
+        assert_eq!(rect.size.width, 32.0);
+        assert_eq!(rect.size.height, 32.0);
+    }
+
+    #[test]
+    fn label_icons_keep_their_aspect_ratio_and_center() {
+        // The system's input source label artwork is wider than it is tall, so
+        // it is letterboxed rather than stretched into a square slot.
+        let rect = fitted_rect(44.0, 32.0);
+
+        assert_eq!(rect.size.width, 32.0);
+        assert!((rect.size.height - (32.0 * 32.0 / 44.0)).abs() < 0.001);
+        assert_eq!(rect.origin.x, 0.0);
+        assert!((rect.origin.y - (32.0 - rect.size.height) / 2.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn unusable_icon_sizes_fall_back_to_the_full_slot() {
+        for (width, height) in [(0.0, 0.0), (f64::NAN, 32.0), (32.0, -1.0)] {
+            let rect = fitted_rect(width, height);
+
+            assert_eq!(rect.size.width, 32.0);
+            assert_eq!(rect.size.height, 32.0);
+        }
     }
 }
