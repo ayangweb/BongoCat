@@ -562,9 +562,7 @@
     "settings": {
       "open": "설정",
       "title": "%{name} 설정",
-      "empty": "이 플러그인에는 설정이 없습니다.",
-      "decrease": "줄이기",
-      "increase": "늘리기"
+      "empty": "이 플러그인에는 설정이 없습니다."
     },
     "version": "버전 %{version}"
   }

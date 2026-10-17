@@ -132,6 +132,13 @@ longest option is the one a user scanning the list is looking for. The model
 window draws a select as `label: selected option`, exactly as it draws a number;
 picking another option is a panel action.
 
+Integer nodes use one persistent `gpui-kit` `NumberInput` per config key. Users
+can type a value, submit it with Enter or blur, and step it with Up/Down or the
+component's buttons. Every accepted path is clamped to the `min..=max` range the
+plugin published and saved through the same typed configuration command as the
+other controls; an empty or incomplete draft does not issue a command and is
+restored to the plugin's last published value on blur.
+
 Select nodes may opt into `preview: true`. The settings window keeps the existing
 Select component, but gives each opted-in option row a hover listener that sends
 a typed `Preview { key, value }` message without committing configuration. The

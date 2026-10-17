@@ -562,9 +562,7 @@
     "settings": {
       "open": "Paramètres",
       "title": "Paramètres de %{name}",
-      "empty": "Ce plugin n’a aucun paramètre.",
-      "decrease": "Diminuer",
-      "increase": "Augmenter"
+      "empty": "Ce plugin n’a aucun paramètre."
     },
     "version": "Version %{version}"
   }

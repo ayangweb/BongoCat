@@ -562,9 +562,7 @@
     "settings": {
       "open": "Cài đặt",
       "title": "Cài đặt %{name}",
-      "empty": "Tiện ích này không có cài đặt nào.",
-      "decrease": "Giảm",
-      "increase": "Tăng"
+      "empty": "Tiện ích này không có cài đặt nào."
     },
     "version": "Phiên bản %{version}"
   }

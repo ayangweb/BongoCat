@@ -562,9 +562,7 @@
     "settings": {
       "open": "設定",
       "title": "%{name} 設定",
-      "empty": "此外掛沒有可設定的項目。",
-      "decrease": "減少",
-      "increase": "增加"
+      "empty": "此外掛沒有可設定的項目。"
     },
     "version": "版本 %{version}"
   }

@@ -12,7 +12,11 @@
 
 use super::*;
 use bongocat_plugin_sdk::{ConfigValue, UiNode};
-use gpui_kit::{AnyElement, Task, assets::IconName, base::TestSupportExt as _};
+use gpui_kit::component::{
+    Sizable as _, Size,
+    input::{NumberInput, NumberInputEvent, StepAction},
+};
+use gpui_kit::{AnyElement, Task, base::TestSupportExt as _};
 use image::ImageEncoder as _;
 use plugins_page::action_icon;
 
@@ -264,6 +268,58 @@ struct PluginSettingsSelects {
     nodes: Vec<UiNode>,
 }
 
+/// The stateful controls one open panel draws, in the places their sync callbacks
+/// keep it.
+///
+/// Both maps hold entities because that is what the components' own state is, and
+/// both are held for the life of the panel so a plugin republishing its tree does
+/// not close a menu the user has open or discard the caret they just placed. The
+/// builder takes one of these rather than the two maps separately: the drawer of
+/// a row should not have to know where each component's state happens to live.
+#[derive(Clone)]
+struct PluginSettingsControls {
+    selects: Rc<RefCell<PluginSettingsSelects>>,
+    numbers: Rc<RefCell<PluginSettingsNumbers>>,
+}
+
+/// The number fields one open panel draws, keyed by the config key each writes.
+///
+/// A number field is an `InputState`: keeping it for the life of the panel is
+/// what preserves the caret and an in-progress edit while the plugin republishes
+/// its tree. `published` is the last value the plugin sent, not the last value
+/// the user typed, so a reply that is still in flight cannot overwrite the edit
+/// that produced it.
+#[derive(Default)]
+pub(super) struct PluginSettingsNumbers {
+    pub(super) entities: BTreeMap<String, PluginSettingsNumberState>,
+    subscriptions: Vec<gpui_kit::Subscription>,
+}
+
+pub(super) struct PluginSettingsNumberState {
+    pub(super) input: Entity<InputState>,
+    /// Whether this field owned the keyboard on the previous frame.
+    ///
+    /// Focus is tracked from the frame rather than trusted to arrive as an
+    /// event: `InputEvent` only delivers its focus events for an active
+    /// platform window, and an edit still has to be committed wherever the
+    /// focus went.
+    focused: bool,
+    /// Whether the text the user typed has not been written back yet.
+    ///
+    /// Without it every focus change would commit the field, so a frame that
+    /// merely observed a field leaving focus would send the published value
+    /// back to the plugin.
+    dirty: bool,
+    published: i64,
+    /// A value this field sent but whose reply has not replaced `published`.
+    ///
+    /// The component's blur hook can run before its `Blur` event reaches this
+    /// panel, and a plugin reply can land while the field is regaining focus.
+    /// Keeping the last submitted value here prevents that older frame from
+    /// overwriting the field with the value the user just replaced.
+    submitted: Option<i64>,
+}
+
 /// The one plugin whose configuration panel is open.
 ///
 /// The open panel is a value rather than a window flag because the view has to
@@ -282,6 +338,8 @@ pub(crate) struct PluginSettingsDraft {
     pub(crate) snapshot: Rc<RefCell<PluginSettingsSnapshot>>,
     /// The dropdowns this panel draws, one per select the plugin published.
     selects: Rc<RefCell<PluginSettingsSelects>>,
+    /// The number fields this panel draws, one per integer the plugin published.
+    pub(super) numbers: Rc<RefCell<PluginSettingsNumbers>>,
     preview_lifetime: std::sync::Arc<()>,
 }
 
@@ -368,6 +426,12 @@ impl SettingsView {
             window,
             cx,
         );
+        let numbers = draft.numbers.clone();
+        // An edit a field left behind when it lost focus is written before the
+        // frame repaints it, so closing the panel never discards a value the
+        // user had already typed.
+        self.commit_left_number(window, cx);
+        sync_plugin_numbers(&numbers, &plugin, &snapshot.nodes, window, cx);
         let draft = self
             .plugin_settings
             .as_mut()
@@ -382,12 +446,15 @@ impl SettingsView {
         }
         draft.open = true;
         let snapshot = draft.snapshot.clone();
-        let selects = draft.selects.clone();
         let view = cx.entity().downgrade();
+        let controls = PluginSettingsControls {
+            selects: draft.selects.clone(),
+            numbers: draft.numbers.clone(),
+        };
         window.open_dialog(cx, move |dialog, _, cx| {
             build_plugin_settings_dialog(
                 snapshot.clone(),
-                selects.clone(),
+                controls.clone(),
                 view.clone(),
                 dialog,
                 cx,
@@ -434,6 +501,7 @@ impl SettingsView {
                 pending_keys: BTreeSet::new(),
             })),
             selects: Rc::new(RefCell::new(PluginSettingsSelects::default())),
+            numbers: Rc::new(RefCell::new(PluginSettingsNumbers::default())),
             preview_lifetime: std::sync::Arc::default(),
         });
         self.sync_plugin_settings_dialog(window, cx);
@@ -443,6 +511,47 @@ impl SettingsView {
     pub(super) fn close_plugin_settings(&mut self, cx: &mut Context<Self>) {
         self.plugin_settings = None;
         cx.notify();
+    }
+
+    /// Write the number field that was being edited when it lost the keyboard.
+    ///
+    /// Blur is observed from the frame rather than awaited as an event, which is
+    /// what makes leaving the field by any route -- a click, a Tab, closing the
+    /// panel -- save the value that was typed instead of dropping it. An
+    /// unparsable draft is not a value the protocol can carry, so it is put back
+    /// to what the plugin last published rather than written.
+    fn commit_left_number(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(draft) = self.plugin_settings.as_ref() else {
+            return;
+        };
+        let plugin = draft.plugin.clone();
+        // A field is only left behind once: focus observed on the previous frame
+        // and absent on this one. A field still holding the keyboard keeps its
+        // draft whatever it currently shows, so typing a value is never written
+        // midway through the edit.
+        let left = draft
+            .numbers
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .filter_map(|(key, state)| {
+                let held = std::mem::replace(&mut state.focused, false);
+                let focused = state.input.read(cx).focus_handle(cx).is_focused(window);
+                // A draft is retired only on a frame that can write it: a field
+                // that still owns the keyboard keeps it until the frame that
+                // watches the keyboard move away.
+                let left = held && !focused && state.dirty;
+                if left {
+                    state.dirty = false;
+                }
+                left.then(|| (key.clone(), state.input.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (key, input) in left {
+            if !commit_plugin_number(&plugin, &key, &input, self, window, cx) {
+                restore_plugin_number(&plugin, &key, &input, self, window, cx);
+            }
+        }
     }
 
     /// Send one action published by the plugin whose panel is open.
@@ -473,6 +582,358 @@ impl SettingsView {
         };
         self.configure_plugin(&plugin, key, value, cx);
     }
+}
+
+/// Keep one number field per integer node the panel draws in step with the plugin.
+///
+/// The component's own step, min and max configuration is refreshed on every
+/// frame because a plugin may republish a narrower range. Its text is owned by
+/// the user only while they edit it. Otherwise a reply from the plugin, which
+/// remains the source of truth, is written back to the field.
+fn sync_plugin_numbers(
+    numbers: &Rc<RefCell<PluginSettingsNumbers>>,
+    plugin: &str,
+    nodes: &[UiNode],
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) {
+    for node in nodes {
+        let UiNode::Integer {
+            key,
+            value,
+            min,
+            max,
+            ..
+        } = node
+        else {
+            continue;
+        };
+        let published = *value;
+        let Some(input) = numbers
+            .borrow()
+            .entities
+            .get(key)
+            .map(|state| state.input.clone())
+        else {
+            let field_key = key.clone();
+            let field_plugin = plugin.to_owned();
+            let input = cx.new(|cx| {
+                let mut input = InputState::new(window, cx)
+                    .default_value(value.to_string())
+                    .validate(valid_integer_input)
+                    .min(*min as f64)
+                    .max(*max as f64);
+                // The panel owns stepping so typing, keys and buttons take one
+                // save path; letting the component write its own text would
+                // emit Change for every keystroke of a longer draft instead.
+                input.set_step(None, window, cx);
+                input
+            });
+            let subscription = cx.subscribe_in(
+                &input,
+                window,
+                move |view: &mut SettingsView,
+                      input: &Entity<InputState>,
+                      event: &InputEvent,
+                      window: &mut Window,
+                      cx: &mut Context<SettingsView>| {
+                    match event {
+                        // A change is kept local while the user types: a
+                        // multi-digit value would otherwise be written once per
+                        // keystroke, and the first of those writes disables the
+                        // field while its reply is in flight. What is recorded
+                        // is only that the field has something left to write.
+                        InputEvent::Change => mark_number_drafted(view, &field_key),
+                        InputEvent::PressEnter { .. } => {
+                            commit_plugin_number(
+                                &field_plugin,
+                                &field_key,
+                                input,
+                                view,
+                                window,
+                                cx,
+                            );
+                            clear_number_draft(view, &field_key);
+                        }
+                        InputEvent::Focus => {}
+                        InputEvent::Blur => {}
+                    }
+                },
+            );
+            numbers.borrow_mut().subscriptions.push(subscription);
+            let field_key = key.clone();
+            let field_plugin = plugin.to_owned();
+            let subscription = cx.subscribe_in(
+                &input,
+                window,
+                move |view: &mut SettingsView,
+                      input: &Entity<InputState>,
+                      event: &NumberInputEvent,
+                      window: &mut Window,
+                      cx: &mut Context<SettingsView>| {
+                    let NumberInputEvent::Step(action) = event;
+                    step_plugin_number(&field_plugin, &field_key, input, *action, view, window, cx);
+                },
+            );
+            let mut numbers = numbers.borrow_mut();
+            numbers.subscriptions.push(subscription);
+            numbers.entities.insert(
+                key.clone(),
+                PluginSettingsNumberState {
+                    input,
+                    focused: false,
+                    dirty: false,
+                    published: *value,
+                    submitted: None,
+                },
+            );
+            continue;
+        };
+        // The plugin is the source of truth, so the field is only left alone
+        // while it owns the keyboard: otherwise a reply writes its value back.
+        {
+            let mut numbers = numbers.borrow_mut();
+            let state = numbers
+                .entities
+                .get_mut(key)
+                .expect("the existing field must still be present");
+            state.published = published;
+            if state.submitted == Some(published) {
+                state.submitted = None;
+            }
+        }
+        let submitted = numbers.borrow().entities[key].submitted;
+        input.update(cx, |input, cx| {
+            input.set_step(None, window, cx);
+            input.set_min(Some(*min as f64), window, cx);
+            input.set_max(Some(*max as f64), window, cx);
+            // The field owns its text while it owns the keyboard, so a reply can
+            // never replace the draft that produced it. Once it is idle it shows
+            // the last value the plugin confirmed.
+            if !input.focus_handle(cx).is_focused(window)
+                && input.value() != submitted.unwrap_or(published).to_string()
+            {
+                input.set_value(
+                    SharedString::from(submitted.unwrap_or(published).to_string()),
+                    window,
+                    cx,
+                );
+            }
+        });
+        let focused = input.read(cx).focus_handle(cx).is_focused(window);
+        numbers
+            .borrow_mut()
+            .entities
+            .get_mut(key)
+            .expect("the field was just read")
+            .focused = focused;
+    }
+}
+
+/// Move one field by one unit and save the result.
+///
+/// The step event is handled here rather than by `InputState` so keyboard steps
+/// and the component's buttons both follow the same typed save path as Enter
+/// and blur. The value is based on what is currently shown, with an unfinished
+/// draft falling back to the last value the plugin published.
+fn step_plugin_number(
+    plugin: &str,
+    key: &str,
+    input: &Entity<InputState>,
+    action: StepAction,
+    view: &mut SettingsView,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) {
+    let Some((current, min, max, published)) = view.plugin_settings.as_ref().and_then(|draft| {
+        if draft.plugin != plugin {
+            return None;
+        }
+        let numbers = draft.numbers.borrow();
+        let state = numbers.entities.get(key)?;
+        let (min, max) = draft
+            .snapshot
+            .borrow()
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                UiNode::Integer {
+                    key: node_key,
+                    min,
+                    max,
+                    ..
+                } if node_key == key => Some((*min, *max)),
+                _ => None,
+            })?;
+        let current = input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<i64>()
+            .unwrap_or(state.published);
+        Some((current, min, max, state.published))
+    }) else {
+        return;
+    };
+    let value = match action {
+        StepAction::Increment => current.saturating_add(1),
+        StepAction::Decrement => current.saturating_sub(1),
+    }
+    .clamp(min, max);
+    input.update(cx, |input, cx| {
+        input.set_value(SharedString::from(value.to_string()), window, cx);
+    });
+    if published != value {
+        set_published_plugin_number(view, plugin, key, value);
+        mark_submitted_plugin_number(view, plugin, key, value);
+        view.configure_plugin(plugin, key, ConfigValue::Integer(value), cx);
+    }
+}
+
+/// Commit one valid integer from an open number field.
+///
+/// Intermediate text such as an empty field or a lone minus sign is tolerated by
+/// the input mask but is not a value the typed command can carry. Out-of-range
+/// text is clamped here as well as by the component, so every save path sees the
+/// same value even before a blur.
+fn commit_plugin_number(
+    plugin: &str,
+    key: &str,
+    input: &Entity<InputState>,
+    view: &mut SettingsView,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> bool {
+    let Some(value) = view
+        .plugin_settings
+        .as_ref()
+        .and_then(|draft| {
+            if draft.plugin != plugin {
+                return None;
+            }
+            draft
+                .snapshot
+                .borrow()
+                .nodes
+                .iter()
+                .find_map(|node| match node {
+                    UiNode::Integer {
+                        key: node_key,
+                        min,
+                        max,
+                        ..
+                    } if node_key == key => Some((*min, *max)),
+                    _ => None,
+                })
+        })
+        .and_then(|(min, max)| {
+            input
+                .read(cx)
+                .value()
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .map(|value| value.clamp(min, max))
+        })
+    else {
+        return false;
+    };
+    input.update(cx, |input, cx| {
+        let current = input.value();
+        if current.trim() != value.to_string() {
+            input.set_value(SharedString::from(value.to_string()), window, cx);
+        }
+    });
+    let published = published_plugin_number(view, plugin, key);
+    if published == Some(value) {
+        return true;
+    }
+    set_published_plugin_number(view, plugin, key, value);
+    mark_submitted_plugin_number(view, plugin, key, value);
+    view.configure_plugin(plugin, key, ConfigValue::Integer(value), cx);
+    true
+}
+
+fn published_plugin_number(view: &SettingsView, plugin: &str, key: &str) -> Option<i64> {
+    let draft = view.plugin_settings.as_ref()?;
+    (draft.plugin == plugin).then(|| {
+        draft
+            .numbers
+            .borrow()
+            .entities
+            .get(key)
+            .map(|state| state.published)
+    })?
+}
+
+fn set_published_plugin_number(view: &SettingsView, plugin: &str, key: &str, value: i64) {
+    if let Some(draft) = view.plugin_settings.as_ref()
+        && draft.plugin == plugin
+        && let Some(state) = draft.numbers.borrow_mut().entities.get_mut(key)
+    {
+        state.published = value;
+    }
+}
+
+fn mark_submitted_plugin_number(view: &SettingsView, plugin: &str, key: &str, value: i64) {
+    if let Some(draft) = view.plugin_settings.as_ref()
+        && draft.plugin == plugin
+        && let Some(state) = draft.numbers.borrow_mut().entities.get_mut(key)
+    {
+        state.submitted = Some(value);
+    }
+}
+
+/// Record that one field holds text the plugin has not been told about yet.
+///
+/// The mark belongs to the field rather than to a callback's capture so the
+/// frame that notices the field lost focus reads the same flag the keystroke
+/// that wrote it set.
+fn mark_number_drafted(view: &SettingsView, key: &str) {
+    number_field_mut(view, key, |state| state.dirty = true);
+}
+
+/// Retire that mark once the text it described is written back.
+fn clear_number_draft(view: &SettingsView, key: &str) {
+    number_field_mut(view, key, |state| state.dirty = false);
+}
+
+fn number_field_mut(
+    view: &SettingsView,
+    key: &str,
+    edit: impl FnOnce(&mut PluginSettingsNumberState),
+) {
+    if let Some(draft) = view.plugin_settings.as_ref()
+        && let Some(state) = draft.numbers.borrow_mut().entities.get_mut(key)
+    {
+        edit(state);
+    }
+}
+
+/// Put back the last value the plugin published after an empty or incomplete
+/// field loses focus. The field is a configuration editor, not a second source
+/// of truth, so an unparsable draft leaves the current setting untouched.
+fn restore_plugin_number(
+    plugin: &str,
+    key: &str,
+    input: &Entity<InputState>,
+    view: &mut SettingsView,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) {
+    let Some(value) = published_plugin_number(view, plugin, key) else {
+        return;
+    };
+    input.update(cx, |input, cx| {
+        input.set_value(SharedString::from(value.to_string()), window, cx);
+    });
+}
+
+/// NumberInput accepts decimals and a lone sign while the user is typing. The
+/// plugin protocol has no floating-point configuration value, so keep the field
+/// to text that can become an `i64`.
+fn valid_integer_input(text: &str, _: &mut App) -> bool {
+    text.is_empty() || text == "-" || text.parse::<i64>().is_ok()
 }
 
 /// Keep one dropdown per select node the panel draws in step with the plugin.
@@ -602,7 +1063,7 @@ fn sync_plugin_selects(
 /// stays the only thing that decides what its configuration is.
 fn build_plugin_settings_dialog(
     snapshot: Rc<RefCell<PluginSettingsSnapshot>>,
-    selects: Rc<RefCell<PluginSettingsSelects>>,
+    controls: PluginSettingsControls,
     view: WeakEntity<SettingsView>,
     dialog: Dialog,
     _cx: &mut App,
@@ -674,15 +1135,7 @@ fn build_plugin_settings_dialog(
                     .w_full()
                     .gap_3()
                     .children(nodes.iter().enumerate().map(|(index, node)| {
-                        settings_field(
-                            node,
-                            index,
-                            locale,
-                            busy,
-                            &pending_keys,
-                            view.clone(),
-                            &selects,
-                        )
+                        settings_field(node, index, busy, &pending_keys, view.clone(), &controls)
                     })),
             )
         })
@@ -721,11 +1174,10 @@ impl RenderOnce for PluginSettingsSelect {
 fn settings_field(
     node: &UiNode,
     index: usize,
-    locale: &'static str,
     busy: bool,
     pending_keys: &BTreeSet<String>,
     view: WeakEntity<SettingsView>,
-    selects: &Rc<RefCell<PluginSettingsSelects>>,
+    controls: &PluginSettingsControls,
 ) -> AnyElement {
     match node {
         UiNode::IconText { icon, text } => PluginStatus {
@@ -796,66 +1248,48 @@ fn settings_field(
                 )
                 .into_any_element()
         }
-        UiNode::Integer {
-            key,
-            label,
-            value,
-            min,
-            max,
-        } => {
-            // The plugin declares the range and validates the value it is handed;
-            // a stepper keeps the value inside `min..=max` by construction, which
-            // is the same guarantee the model library's number fields get from
-            // its own engine.
-            let row = div()
+        UiNode::Integer { key, label, .. } => {
+            let pending = pending_keys.contains(key);
+            let input = controls
+                .numbers
+                .borrow()
+                .entities
+                .get(key)
+                .map(|state| state.input.clone())
+                .expect("every integer node has its input before the panel draws it");
+            div()
                 .id(("plugin-setting-integer", index))
                 .test_support()
                 .flex()
                 .items_center()
                 .justify_between()
                 .gap_2()
-                .child(div().min_w_0().flex_1().text_sm().child(label.clone()));
-            let mut controls = div().flex().flex_shrink_0().items_center().gap_2();
-            let pending = pending_keys.contains(key);
-            for (suffix, delta) in [("decrease", -1), ("increase", 1)] {
-                let target = view.clone();
-                let step_key = key.clone();
-                let next = value.saturating_add(delta).clamp(*min, *max);
-                let enabled = next != *value;
-                // The stepper's own label is the field it steps, so the tooltip
-                // only has to name the direction: a translated word rather than
-                // a `-`/`+` glyph glued onto a plugin-supplied label.
-                let direction = bongocat_i18n::text(
-                    locale,
-                    if delta < 0 {
-                        "plugins.settings.decrease"
-                    } else {
-                        "plugins.settings.increase"
-                    },
-                );
-                if delta > 0 {
-                    controls = controls.child(div().text_sm().child(value.to_string()));
-                }
-                controls = controls.child(
-                    Button::new(SharedString::from(format!(
-                        "plugin-setting-integer-{key}-{suffix}"
-                    )))
-                    .icon(if delta < 0 {
-                        IconName::Minus
-                    } else {
-                        IconName::Plus
-                    })
-                    .tooltip(direction)
-                    .disabled(busy || pending || !enabled)
-                    .on_click(move |_, _, cx| {
-                        let key = step_key.clone();
-                        let _ = target.update(cx, |view, cx| {
-                            view.configure_open_plugin(&key, ConfigValue::Integer(next), cx);
-                        });
-                    }),
-                );
-            }
-            row.child(controls).into_any_element()
+                .child(div().min_w_0().flex_1().text_sm().child(label.clone()))
+                .child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "plugin-setting-integer-{key}-input"
+                        )))
+                        .test_support()
+                        .flex_shrink_0()
+                        .w_32()
+                        .child(
+                            div()
+                                // `InputState` propagates Enter so a form can submit,
+                                // but this panel's dialog binds Enter to close. A
+                                // number commit must not dismiss the control that
+                                // just wrote the value.
+                                .on_action(|_: &gpui_kit::base::input::Enter, _, cx| {
+                                    cx.stop_propagation();
+                                })
+                                .child(
+                                    NumberInput::new(&input)
+                                        .disabled(busy || pending)
+                                        .with_size(Size::Small),
+                                ),
+                        ),
+                )
+                .into_any_element()
         }
         UiNode::Select {
             key,
@@ -875,7 +1309,8 @@ fn settings_field(
             // paints, and its own list is what sizes the menu: a plugin's option
             // labels are its own, so the menu has to be measured from them rather
             // than from the trigger the component would otherwise size itself by.
-            let select = selects
+            let select = controls
+                .selects
                 .borrow()
                 .entities
                 .get(key)

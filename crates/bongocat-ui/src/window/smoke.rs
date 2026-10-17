@@ -91,8 +91,6 @@ impl SettingsView {
             "plugins.settings.open",
             "plugins.settings.title",
             "plugins.settings.empty",
-            "plugins.settings.decrease",
-            "plugins.settings.increase",
         ] {
             if bongocat_i18n::text(locale, key).is_empty() {
                 return Err(format!("the plugin center is missing {key}"));

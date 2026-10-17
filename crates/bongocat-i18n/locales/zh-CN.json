@@ -562,9 +562,7 @@
     "settings": {
       "open": "设置",
       "title": "%{name} 设置",
-      "empty": "该插件没有可配置项。",
-      "decrease": "减少",
-      "increase": "增加"
+      "empty": "该插件没有可配置项。"
     },
     "version": "版本 %{version}"
   }

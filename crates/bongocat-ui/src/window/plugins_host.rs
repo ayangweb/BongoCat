@@ -527,7 +527,9 @@ mod tests {
     use super::*;
     use crate::window::*;
     use bongocat_plugin_sdk::{PluginCopy, UiNode};
-    use bongocat_plugin_service::{PluginService, plugin_directory};
+    use bongocat_plugin_service::{
+        PluginCommand, PluginService, PluginServiceClient, PluginServiceEndpoint, plugin_directory,
+    };
     use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
     use std::io::Write as _;
 
@@ -789,7 +791,7 @@ mod tests {
             return;
         };
         cx.update(gpui_kit::init);
-        let (client, _endpoint) = SettingsClient::bounded(4);
+        let (client, _settings_endpoint) = SettingsClient::bounded(4);
         let plugin_client = service.client();
         let (_, visual) = cx.add_window_view(move |window, cx| {
             let view = cx.new(|cx| {
@@ -924,13 +926,30 @@ mod tests {
         cards: Vec<PluginCardView>,
         width: f32,
     ) -> (Entity<SettingsView>, &mut VisualTestContext) {
+        let PluginPage {
+            view,
+            visual,
+            endpoint: _,
+        } = plugin_page(cx, cards, width);
+        (view, visual)
+    }
+
+    struct PluginPage {
+        view: Entity<SettingsView>,
+        visual: &'static mut VisualTestContext,
+        endpoint: PluginServiceEndpoint,
+    }
+
+    /// The same page, with the plugin-service endpoint a test can inspect.
+    fn plugin_page(cx: &mut TestAppContext, cards: Vec<PluginCardView>, width: f32) -> PluginPage {
         cx.update(gpui_kit::init);
         let (client, _endpoint) = SettingsClient::bounded(4);
+        let (plugin_client, endpoint) = PluginServiceClient::bounded(8);
         let capture = Rc::new(RefCell::new(None));
         let built = capture.clone();
         let window = cx.open_window(size(px(width), px(900.0)), move |window, cx| {
             let view = cx.new(|cx| {
-                let view = SettingsView::new(
+                let mut view = SettingsView::new(
                     client,
                     SettingsWindowSeed {
                         language: SettingsLanguage::ChineseSimplified,
@@ -941,6 +960,7 @@ mod tests {
                     window,
                     cx,
                 );
+                view.set_plugin_host(PluginHost::new(plugin_client));
                 view.plugin_host.publish(PluginHubState {
                     cards,
                     error: None,
@@ -955,7 +975,11 @@ mod tests {
         let view = capture.borrow_mut().take().unwrap();
         let visual = VisualTestContext::from_window(*window, cx).into_mut();
         visual.run_until_parked();
-        (view, visual)
+        PluginPage {
+            view,
+            visual,
+            endpoint,
+        }
     }
 
     #[gpui_kit::test]
@@ -1154,7 +1178,7 @@ mod tests {
         // The panel is the plugin's own tree: its fields are drawn by the plugin's
         // keys and labels, not by a host-side schema.
         for id in [
-            "plugin-setting-integer-duration-increase",
+            "plugin-setting-integer-duration-input",
             "plugin-setting-toggle-sound",
             "plugin-setting-button-preview",
         ] {
@@ -1165,6 +1189,22 @@ mod tests {
                 );
             });
         }
+        // The integer row is the component's spinbutton, not a pair of host-owned
+        // step buttons.
+        visual.update(|window, _| {
+            assert!(
+                window
+                    .try_find("plugin-setting-integer-duration-increase")
+                    .is_none(),
+                "the old increase button must be replaced by NumberInput"
+            );
+            assert!(
+                window
+                    .try_find("plugin-setting-integer-duration-decrease")
+                    .is_none(),
+                "the old decrease button must be replaced by NumberInput"
+            );
+        });
         // A select draws the component's own trigger, and its bounds prove the
         // plugin's options reached a real dropdown with room to draw in. The row
         // itself is published by the panel, and the panel would have panicked
@@ -1197,6 +1237,274 @@ mod tests {
         view.read_with(visual, |view, _| {
             assert!(view.plugin_settings.is_none());
         });
+    }
+
+    /// The number row is a real spinbutton: typed values and keyboard steps
+    /// reach the plugin's typed configuration command, and leaving an
+    /// out-of-range draft saves the clamped value.
+    #[gpui_kit::test]
+    fn a_plugin_integer_setting_is_edited_with_number_input(cx: &mut TestAppContext) {
+        let PluginPage {
+            view,
+            visual,
+            endpoint,
+        } = plugin_page(cx, vec![sample_card()], 720.);
+        let responder =
+            std::thread::spawn(move || respond_to_integer_commands(endpoint, [30, 31, 180]));
+        visual.update(|window, cx| window.click("plugin-settings-com.example.card", cx));
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        let input_focus = visual.update(|_, cx| {
+            let draft = view.read(cx).plugin_settings.as_ref().unwrap();
+            draft.numbers.borrow().entities["duration"]
+                .input
+                .read(cx)
+                .focus_handle(cx)
+        });
+        visual.update(|window, cx| window.focus(&input_focus, cx));
+        visual.run_until_parked();
+        let input = view.read_with(visual, |view, _| {
+            view.plugin_settings
+                .as_ref()
+                .unwrap()
+                .numbers
+                .borrow()
+                .entities["duration"]
+                .input
+                .clone()
+        });
+        visual.update(|window, cx| {
+            input.update(cx, |input, cx| input.select_all(window, cx));
+            window.input("30", cx);
+        });
+        visual.update(|_, cx| {
+            assert_eq!(
+                view.read(cx)
+                    .plugin_settings
+                    .as_ref()
+                    .unwrap()
+                    .numbers
+                    .borrow()
+                    .entities["duration"]
+                    .input
+                    .read(cx)
+                    .value(),
+                "30",
+                "typing replaces the selected number"
+            );
+        });
+        visual.run_until_parked();
+
+        // Enter commits the field. The input propagates that action so a form can
+        // submit, but the plugin panel must remain open instead of running the
+        // dialog's confirm action.
+        visual.update(|window, cx| window.press("enter", cx));
+        visual.run_until_parked();
+        visual.update(|window, cx| assert!(window.has_active_dialog(cx)));
+
+        // Up/Down are the component's own step keys. The panel commits the
+        // resulting value through the same typed command as Enter.
+        visual.update(|window, cx| {
+            input_focus.dispatch_action(&gpui_kit::base::Increment, window, cx);
+        });
+        visual.run_until_parked();
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        assert_eq!(
+            input.read_with(visual, |input, _| input.value()),
+            "31",
+            "a keyboard step writes the next value returned by the plugin"
+        );
+
+        // Out-of-range text is allowed while editing. Moving focus away commits
+        // the clamped value rather than leaving it in the field.
+        visual.update(|window, cx| {
+            input.update(cx, |input, cx| input.select_all(window, cx));
+            window.input("999", cx);
+        });
+        assert_eq!(
+            input.read_with(visual, |input, _| input.value()),
+            "999",
+            "an out-of-range draft is accepted while the field has focus"
+        );
+        visual.update(|window, cx| {
+            assert!(
+                input.read(cx).focus_handle(cx).is_focused(window),
+                "the number field must still own focus before blur"
+            );
+        });
+        // A real click on a sibling control moves focus along the dialog's
+        // rendered focus path, which is what delivers InputState::Blur. Moving
+        // to a detached focus handle (or clearing window focus) would not.
+        visual.update(|window, cx| window.click("plugin-setting-toggle-sound", cx));
+        visual.update(|window, cx| {
+            assert!(
+                !input.read(cx).focus_handle(cx).is_focused(window),
+                "clicking a sibling must move focus off the number field"
+            );
+        });
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        visual.run_until_parked();
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        assert_eq!(
+            input.read_with(visual, |input, _| input.value()),
+            "180",
+            "blur commits the clamped maximum"
+        );
+
+        // An incomplete draft is put back to the last published value on blur,
+        // and never becomes a configuration command in its own right.
+        visual.update(|window, cx| window.focus(&input_focus, cx));
+        visual.update(|window, cx| {
+            input.update(cx, |input, cx| input.select_all(window, cx));
+            window.press("backspace", cx);
+        });
+        visual.update(|window, cx| window.click("plugin-setting-toggle-sound", cx));
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        assert_eq!(
+            input.read_with(visual, |input, _| input.value()),
+            "180",
+            "an empty draft returns to the latest accepted value"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        visual.update(|window, cx| window.click("plugin-settings-close", cx));
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        view.read_with(visual, |view, _| {
+            assert!(view.plugin_settings.is_none());
+        });
+        let report = responder
+            .join()
+            .expect("the command responder must not panic");
+        assert_eq!(report.observed, [30, 31, 180]);
+        assert!(
+            report.unexpected.is_empty(),
+            "an empty draft must not issue a configuration command: {:?}",
+            report.unexpected
+        );
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct IntegerCommandReport {
+        observed: Vec<i64>,
+        unexpected: Vec<i64>,
+    }
+
+    /// Stand in for the plugin service while the window's blocking command runs
+    /// on the test executor. The service replies with the state it committed, so
+    /// the panel continues from the same value it sent.
+    ///
+    /// The card it answers from is held for the whole run, exactly as a running
+    /// plugin would hold its own configuration: a reply to some other key is
+    /// then a fresh read of that same state rather than a reset to the values
+    /// the fixture started with.
+    fn respond_to_integer_commands(
+        endpoint: PluginServiceEndpoint,
+        expected: [i64; 3],
+    ) -> IntegerCommandReport {
+        let mut report = IntegerCommandReport {
+            observed: Vec::new(),
+            unexpected: Vec::new(),
+        };
+        let mut card = sample_card();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while report.observed.len() < expected.len() && std::time::Instant::now() < deadline {
+            let Ok(Some(command)) = endpoint.try_recv() else {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                continue;
+            };
+            let Some(value) =
+                reply_to_integer_command(command, expected[report.observed.len()], &mut card)
+            else {
+                continue;
+            };
+            report.observed.push(value);
+        }
+
+        // Give a stray command time to arrive, and answer it so the test
+        // executor cannot remain blocked on an unhandled reply.
+        let grace = std::time::Instant::now() + std::time::Duration::from_millis(250);
+        while std::time::Instant::now() < grace {
+            let Ok(Some(command)) = endpoint.try_recv() else {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                continue;
+            };
+            let Some(value) =
+                reply_to_integer_command(command, *expected.last().unwrap(), &mut card)
+            else {
+                continue;
+            };
+            report.unexpected.push(value);
+        }
+        report
+    }
+
+    /// Answer one command with `expected` as the committed duration, reporting
+    /// the integer the field actually sent. A command for another key is answered
+    /// from the card as it stands, so it cannot undo the number just stored.
+    fn reply_to_integer_command(
+        command: PluginCommand,
+        expected: i64,
+        card: &mut PluginCardView,
+    ) -> Option<i64> {
+        let PluginCommand::Configure {
+            plugin,
+            key,
+            value,
+            reply,
+        } = command
+        else {
+            return None;
+        };
+        if plugin != "com.example.card" || key != "duration" {
+            reply
+                .respond(Ok(plugin_center_snapshot(card.clone())))
+                .unwrap();
+            return None;
+        }
+        let bongocat_plugin_sdk::ConfigValue::Integer(value) = value else {
+            panic!("the number field must write an integer");
+        };
+        let Some(UiNode::Integer {
+            value: published, ..
+        }) = card.settings.first_mut()
+        else {
+            unreachable!("the sample card's first setting is an integer");
+        };
+        *published = expected;
+        reply
+            .respond(Ok(plugin_center_snapshot(card.clone())))
+            .unwrap();
+        Some(value)
+    }
+
+    fn plugin_center_snapshot(
+        card: PluginCardView,
+    ) -> bongocat_plugin_service::PluginCenterSnapshot {
+        bongocat_plugin_service::PluginCenterSnapshot {
+            cards: vec![bongocat_plugin_service::PluginCard {
+                id: card.id,
+                name: card.name,
+                description: card.description,
+                localizations: card.localizations,
+                icon: card.icon,
+                enabled: card.enabled,
+                failed: card.failed,
+                version: card.version,
+                available_version: card.available_version,
+                update_available: card.update_available,
+                actions: card.actions,
+                settings: card.settings,
+            }],
+            error: None,
+            loading: false,
+        }
     }
 
     /// A command a user started is marked on the GPUI thread, so the button that

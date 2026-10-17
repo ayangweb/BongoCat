@@ -562,9 +562,7 @@
     "settings": {
       "open": "Settings",
       "title": "%{name} settings",
-      "empty": "This plugin has no settings.",
-      "decrease": "Decrease",
-      "increase": "Increase"
+      "empty": "This plugin has no settings."
     },
     "version": "Version %{version}"
   }
