@@ -1,12 +1,12 @@
 {
   "metadata": {
-    "id": "com.bongocat.button-sounds",
-    "name": "Button Sounds",
+    "id": "com.bongocat.key-sounds",
+    "name": "Key Sounds",
     "description": "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
-    "entry": "bongocat-button-sounds",
+    "entry": "bongocat-key-sounds",
     "icon": { "type": "emoji", "value": "🐱" },
     "capabilities": ["configuration", "input_activity_v1", "localized_views_v1"],
     "localizations": {

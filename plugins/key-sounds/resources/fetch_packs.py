@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch the button-sounds asset set and regenerate `src/packs.rs`.
+"""Fetch the key-sounds asset set and regenerate `src/packs.rs`.
 
 The plugin plays from sound sets copied out of Thock's public soundpack registry
 (https://github.com/kamillobinski/thock-soundpacks) and committed here, so a user
@@ -22,7 +22,7 @@ application alone, so it is skipped and reported.
 
 Run from anywhere:
 
-    python3 plugins/button-sounds/resources/fetch_packs.py
+    python3 plugins/key-sounds/resources/fetch_packs.py
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ def rust_sound_list(category: str, pack_id: str, names: list[str]) -> str:
 
 def main() -> None:
     manifest = json.loads(fetch(REGISTRY_MANIFEST))
-    work = Path(tempfile.mkdtemp(prefix="bongocat-button-sounds-"))
+    work = Path(tempfile.mkdtemp(prefix="bongocat-key-sounds-"))
     try:
         staged: list[Staged] = []
         skipped: list[str] = []
@@ -143,21 +143,9 @@ def main() -> None:
                     taken_ids,
                 )
                 taken_ids.add(pack_id)
-                staged.append(Staged(pack_id, category, "", entry, folder, down, up))
-
-        # A label has to name one set on its own, because it is all a row of a
-        # dropdown shows: two sets both called "Unknown" would be
-        # indistinguishable there.
-        bases = [
-            f"{pack.entry['metadata']['name']} · {pack.entry['metadata']['brand']}"
-            for pack in staged
-        ]
-        for pack, base in zip(staged, bases):
-            pack.label = (
-                base
-                if bases.count(base) == 1
-                else f"{base} · {pack.entry['metadata']['author']}"
-            )
+                staged.append(
+                    Staged(pack_id, category, metadata["name"], entry, folder, down, up)
+                )
 
         if PACKS_DIRECTORY.exists():
             shutil.rmtree(PACKS_DIRECTORY)

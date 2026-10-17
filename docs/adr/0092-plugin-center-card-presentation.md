@@ -32,7 +32,7 @@ background executor and retires the mark when the reply lands (typed
 `PluginInFlight` keys, counted so two overlapping sends stay apart), and a plugin
 reports its own long-running state through `UiNode::Button::loading` (a preview
 that is still audible). A busy control renders `Button::loading` and is disabled.
-The per-action placeholder the button-sounds plugin published ("Playing /
+The per-action placeholder the key-sounds plugin published ("Playing /
 正在播放", a second text node beside the preview control) is removed rather than
 kept next to the button: the button the user pressed is the thing that shows the
 action is still running. The page's own first-load state stays a page state — the
@@ -79,7 +79,7 @@ parse; one that advertises the capability but refuses the exchange fails like
 any other faulty tick. Framework copy (page title, card chrome and settings panel
 chrome) stays in `bongocat-i18n` and follows the application's language.
 
-Both plugins declare a glyph for every button they publish. The button-sounds
+Both plugins declare a glyph for every button they publish. The key-sounds
 preview button reports `loading` from its own playback state instead of
 publishing a text node, and the failure it can report is an error code the
 plugin renders in the language on screen rather than a sentence frozen in English.

@@ -473,9 +473,8 @@ pub enum HostMessage {
     ///
     /// Counters rather than events because the boundary is a coalesced,
     /// best-effort signal: the plugin plays a sound for "the keyboard was
-    /// released since I last looked", which is what button-sound activity represents,
-    /// and the
-    /// reliable edge queue never waits behind it (ADR-0091).
+    /// released since I last looked", which is what anonymous device activity
+    /// represents, and the reliable edge queue never waits behind it (ADR-0091).
     InputActivity {
         elapsed_ms: u64,
         activity: InputActivity,

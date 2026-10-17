@@ -134,10 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn button_sounds_catalog_and_asset_names_use_the_manifest_identity() {
+    fn key_sounds_catalog_and_asset_names_use_the_manifest_identity() {
         let directory = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let bytes = include_bytes!("../../../plugins/button-sounds/plugin.json");
+        let bytes = include_bytes!("../../../plugins/key-sounds/plugin.json");
         let manifest: bongocat_plugin_manager::PluginManifest =
             serde_json::from_slice(bytes).unwrap();
         let executable = workspace.path().join(&manifest.metadata.entry);
@@ -163,11 +163,11 @@ mod tests {
             bongocat_plugin_manager::parse_catalog(&fs::read(output).unwrap(), &keys.pk).unwrap();
         assert_eq!(catalog.plugins.len(), 1);
         let entry = &catalog.plugins[0];
-        assert_eq!(entry.id, "com.bongocat.button-sounds");
-        assert_eq!(entry.name, "Button Sounds");
+        assert_eq!(entry.id, "com.bongocat.key-sounds");
+        assert_eq!(entry.name, "Key Sounds");
         assert_eq!(entry.localizations["zh-CN"].name, "按键音效");
         let name = format!(
-            "com.bongocat.button-sounds-1.0.0-{}.zip",
+            "com.bongocat.key-sounds-1.0.0-{}.zip",
             target.manifest_platform()
         );
         assert_eq!(entry.downloads[target.manifest_platform()], name);

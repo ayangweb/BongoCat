@@ -803,14 +803,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bongocat-button-sounds"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "rodio",
-]
-
-[[package]]
 name = "bongocat-config"
 version = "2.3.1"
 dependencies = [
@@ -848,6 +840,14 @@ dependencies = [
  "bongocat-platform",
  "bongocat-plugin-sdk",
  "serde_json",
+]
+
+[[package]]
+name = "bongocat-key-sounds"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "rodio",
 ]
 
 [[package]]

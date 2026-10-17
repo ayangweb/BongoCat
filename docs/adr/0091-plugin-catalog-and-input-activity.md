@@ -23,7 +23,7 @@ an enabled process. A refused package must retain the previous selected version.
 > argument, the coalescing rule and the independent-process boundary are
 > unchanged.
 
-Issue #90 is implemented by an independent button-sounds process. The generic
+Issue #90 is implemented by an independent key-sounds process. The generic
 `keyboard_activity_v1` capability gates a new typed message carrying only a
 monotonic timestamp: no key identity, text, modifiers or release sequence crosses
 the plugin boundary. Activity is coalesced over the service cadence and never
@@ -31,7 +31,7 @@ shares or delays the reliable edge queue. The runtime counts only newly captured
 keyboard downs; repeats, mouse/gamepad input and reconciliation do not count.
 The plugin owns volume, cooldown, playback, device idle release and its audio.
 It reuses the workspace's pinned rodio, enabling its existing MP3 decoder feature
-only for the plugin. No audio dependency or button-sounds rule enters the host.
+only for the plugin. No audio dependency or key-sounds rule enters the host.
 
 The supplied `/Users/ayang/Downloads/0.mp3` is a temporary evaluation asset, copied
 into the plugin's own resources, not referenced by an absolute runtime path.

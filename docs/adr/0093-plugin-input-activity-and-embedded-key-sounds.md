@@ -1,11 +1,11 @@
-# ADR-0093: Per-device input activity, plugin-published selects and embedded button sounds
+# ADR-0093: Per-device input activity, plugin-published selects and embedded key sounds
 
 Status: accepted; implementation complete, platform acceptance tracked below
 Date: 2026-10-15
 
 ## Context
 
-ADR-0091 gave the button-sounds plugin one anonymous number: how many keyboard
+ADR-0091 gave the key-sounds plugin one anonymous number: how many keyboard
 presses the runtime had captured. That is enough for "play a sound while typing"
 and nothing more. The plugin cannot tell a press from a release, cannot tell the
 keyboard from the mouse, and cannot let a user choose which recording each of
@@ -26,18 +26,21 @@ a way to publish a list of choices rather than a single number.
 
 ### One name covers keyboard keys and mouse buttons
 
-The plugin is named **Button Sounds** in English and **按键音效** in Simplified
-Chinese. This concise name covers keyboard keys and mouse buttons; the
-description explicitly identifies both devices and their press/release edges,
-without implying gamepad, pointer movement or scroll sounds.
+The plugin is named **Key Sounds** in English and **按键音效** in Simplified
+Chinese. The name matches the product's key-sound vocabulary without suggesting
+UI button feedback. Because "key" alone can suggest keyboard-only behavior, the
+description explicitly identifies keyboard keys, mouse buttons and their
+press/release edges, without implying gamepad, pointer movement or scroll sounds.
 
-The directory is `plugins/button-sounds`, the Cargo package and executable are
-`bongocat-button-sounds`, the plugin ID is `com.bongocat.button-sounds`, and the Rust owner
-is `ButtonSounds`. This is a pre-release identity change across source, package
+The directory is `plugins/key-sounds`, the Cargo package and executable are
+`bongocat-key-sounds`, the plugin ID is `com.bongocat.key-sounds`, and the Rust owner
+is `KeySounds`. This is a pre-release identity change across source, package
 discovery, catalog entries and storage namespaces, not just display copy. No old
 ID aliases, directory fallback or data migration are provided. Configuration
 keys still describe their devices and actions; their vocabulary and the v1 data
 format do not change. The package version remains 1.0.0.
+Previously installed Development packages and their data are left untouched;
+testing the new identity requires installing its newly built package.
 
 The complete Chinese name/description pair and plugin controls follow `zh-CN`;
 all other application languages use English, as required by the existing plugin
@@ -85,7 +88,7 @@ counter block to the plugin owner without copying the model or the pressed set.
 display metadata: options with the same non-empty group are shown under one
 stock `gpui-kit` section header, while an omitted group keeps the legacy flat
 list. The list travels with the node because the
-options are the plugin's own vocabulary — which button sounds it carries, which
+options are the plugin's own vocabulary — which key sounds it carries, which
 of them a user may pick — and the host has no way to invent them. Validation
 requires `value` to be one of `options`, every value to be a valid key, and the
 list to be non-empty and bounded by `SELECT_OPTION_LIMIT` (64), so a plugin can
@@ -95,10 +98,13 @@ The host does not infer categories from plugin ids or labels. It reuses the
 component's grouped delegate for filtering, row indexing, selection restoration
 and muted section headers. A list that mixes grouped and ungrouped options falls
 back to the flat delegate, which keeps older or partially upgraded plugins
-readable without inventing a host-local category. The button-sounds plugin groups
+readable without inventing a host-local category. The key-sounds plugin groups
 its embedded sets by the source soundpack brand and keeps the localized “Follow”
 choice in its own group; brand names are provenance metadata and therefore do not
 need translation. Unknown-brand sets use a localized "Other sounds" heading.
+Option labels show only the soundpack name, without repeating the brand or
+author; release choices still append the localized missing-release warning
+when applicable. Source attribution remains in the resource index.
 Group headings and follow labels use the same English/Chinese locale selection
 and English fallback as the rest of the panel; changing language never changes
 option ids or persisted selections. Menu width includes section titles as well
@@ -118,7 +124,7 @@ picking another option is a panel action.
 Select nodes may opt into `preview: true`. The settings window keeps the existing
 Select component, but gives each opted-in option row a hover listener that sends
 a typed `Preview { key, value }` message without committing configuration. The
-button-sounds plugin stops the previous preview before starting the new one, so
+key-sounds plugin stops the previous preview before starting the new one, so
 rapid movement between options never leaves overlapping preview voices. The
 window keeps only the latest pending hover request; leaving a row cancels its
 unsent request, dismissing the menu cancels its pending request, and closing the
@@ -139,11 +145,11 @@ display-only numbers/selects and stale/loading controls never route actions.
 Control IDs are unique within each view, and option values within each select,
 so neither surface can ambiguously resolve a control or choice.
 
-### The button-sounds plugin owns four sound choices
+### The key-sounds plugin owns four sound choices
 
 The plugin carries 25 sound sets copied out of Thock's public soundpack registry
 and compiled into its own executable with `include_bytes!`, so nothing it needs
-is fetched at runtime and no audio dependency or button-sounds rule enters the
+is fetched at runtime and no audio dependency or key-sounds rule enters the
 host. Of each set it keeps only the groups it can address — the keyboard
 `default` group and the mouse `left`/`right` groups, split into their `down` and
 `up` recordings. Per-key recordings are dropped: the host reports anonymous
@@ -156,7 +162,9 @@ stored id this build no longer carries resolves to the device's default set and
 the resolved id is what the plugin publishes, so a value that names nothing
 repairs itself on the first frame instead of failing the exchange. A set with no
 release recording is silent on release rather than reusing a press sound, and the
-panel says so beside the option. Mouse sounds default to off, matching Thock.
+panel says so beside the option. Mouse sounds default to on for new or reset
+configurations and when the field is absent; an explicitly stored `false` stays
+off.
 
 ## Dependencies and licensing
 
@@ -166,7 +174,7 @@ is a WAV; the MP3 decoder ADR-0091 enabled for the temporary evaluation asset is
 no longer needed, and that asset is removed. The `zip` dependency the first draft
 of this plugin used to unpack downloaded soundpacks is removed as well: the
 recordings are now committed as files and embedded directly, which is what makes
-the plugin offline-capable and what keeps `cargo build -p bongocat-button-sounds`
+the plugin offline-capable and what keeps `cargo build -p bongocat-key-sounds`
 from depending on a zlib backend.
 
 Only soundpacks whose license permits redistribution are carried: 22 MIT sets,
@@ -176,14 +184,14 @@ and forbid only redistribution on a standalone basis. Thock's `Mamba Elite` set
 is licensed for the Thock application alone and is refused rather than reviewed
 case by case. `resources/index.json` records the author, license URL, source URL
 and per-file SHA-256 of every recording;
-`tools/tests/test_button_sounds_assets.py` checks that the index, the committed
+`tools/tests/test_key_sounds_assets.py` checks that the index, the committed
 files and the generated Rust table agree, and that no proprietary set is carried.
 
 ## Compatibility
 
 Every protocol addition is optional and defaults to the previous behavior: a
 plugin that declared only `keyboard_activity_v1` keeps receiving the older
-message and a view with no `Select` node is unaffected. The button-sounds
+message and a view with no `Select` node is unaffected. The key-sounds
 configuration vocabulary still accepts the same keys, so the exchanged session
 payload is unchanged. The ID rename itself is deliberately not migrated: no ID
 alias or session re-keying is present while the plugin is unreleased. No config,
@@ -222,11 +230,12 @@ message without persisting a selection. An opt-in audio-device unit test asserts
 one preview voice, output-device reuse during rapid switching and normal input
 recovery after completion; it remains separate from hardware-free CI tests.
 
-On 2026-10-16, `cargo test --locked -p bongocat-button-sounds -- --ignored`
-passed both opt-in tests on macOS with the real output device: rapid preview
-replacement/device reuse/input recovery, and preview/activity over real pipes.
+On 2026-10-16, both opt-in plugin tests passed on macOS with the real output
+device: rapid preview replacement/device reuse/input recovery, and
+preview/activity over real pipes.
 These are automated audio-output checks, not a manual listening or physical-input
-acceptance record.
+acceptance record. The current invocation is
+`cargo test --locked -p bongocat-key-sounds -- --ignored`.
 
 ## Remaining Work
 

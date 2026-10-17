@@ -1,5 +1,5 @@
 [package]
-name = "bongocat-button-sounds"
+name = "bongocat-key-sounds"
 version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true

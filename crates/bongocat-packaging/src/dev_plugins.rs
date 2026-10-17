@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn preparing_plugins_prunes_obsolete_archives_but_not_other_outputs() {
         let output = tempfile::tempdir().unwrap();
-        let current = output.path().join("com.bongocat.button-sounds-1.0.0.zip");
+        let current = output.path().join("com.bongocat.key-sounds-1.0.0.zip");
         let obsolete = output.path().join("removed-plugin-1.0.0.zip");
         let note = output.path().join("notes.txt");
         let directory = output.path().join("directory.zip");
@@ -241,21 +241,21 @@ mod tests {
     }
 
     #[test]
-    fn button_sounds_identity_survives_discovery_install_update_reset_and_uninstall() {
+    fn key_sounds_identity_survives_discovery_install_update_reset_and_uninstall() {
         use bongocat_plugin_manager::PluginSource;
         use std::sync::atomic::AtomicBool;
 
         let workspace = tempfile::tempdir().unwrap();
-        let bytes = include_bytes!("../../../plugins/button-sounds/plugin.json");
+        let bytes = include_bytes!("../../../plugins/key-sounds/plugin.json");
         let mut manifest: PluginManifest = serde_json::from_slice(bytes).unwrap();
         let id = manifest.metadata.id.clone();
-        assert_eq!(id, "com.bongocat.button-sounds");
+        assert_eq!(id, "com.bongocat.key-sounds");
         let executable = workspace.path().join(&manifest.metadata.entry);
         fs::write(&executable, b"test executable").unwrap();
         let package = package_plugin(workspace.path(), &manifest, bytes, &executable).unwrap();
         assert_eq!(
             package.file_name().unwrap(),
-            "com.bongocat.button-sounds-1.0.0.zip"
+            "com.bongocat.key-sounds-1.0.0.zip"
         );
         let stop = AtomicBool::new(false);
         let source = PluginSource::Development(workspace.path().join(PLUGIN_OUTPUT_DIRECTORY));
@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(available[0].metadata.localized_copy("zh-CN").0, "按键音效");
         assert_eq!(
             available[0].metadata.localized_copy("zh-TW").0,
-            "Button Sounds"
+            "Key Sounds"
         );
 
         let store = tempfile::tempdir().unwrap();
@@ -273,7 +273,7 @@ mod tests {
         manager.install(&available[0].read(&stop).unwrap()).unwrap();
         assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.0"));
         let data = manager.data_root(&id, true).unwrap();
-        assert!(data.ends_with("data/com.bongocat.button-sounds"));
+        assert!(data.ends_with("data/com.bongocat.key-sounds"));
         fs::write(data.join("marker"), b"keep on update").unwrap();
 
         manifest.metadata.version = "1.0.1".into();

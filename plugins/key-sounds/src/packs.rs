@@ -22,7 +22,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "skcm-blue",
         category: PackCategory::Keyboard,
-        label: "SKCM Blue · Alps",
+        label: "SKCM Blue",
         brand: "Alps",
         supports_key_up: true,
         down: &[
@@ -61,7 +61,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "black-abs",
         category: PackCategory::Keyboard,
-        label: "Black ABS · Cherry MX",
+        label: "Black ABS",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -91,7 +91,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "black-pbt",
         category: PackCategory::Keyboard,
-        label: "Black PBT · Cherry MX",
+        label: "Black PBT",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -121,7 +121,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "blue-abs",
         category: PackCategory::Keyboard,
-        label: "Blue ABS · Cherry MX",
+        label: "Blue ABS",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -151,7 +151,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "blue-pbt",
         category: PackCategory::Keyboard,
-        label: "Blue PBT · Cherry MX",
+        label: "Blue PBT",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -181,7 +181,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "brown-abs",
         category: PackCategory::Keyboard,
-        label: "Brown ABS · Cherry MX",
+        label: "Brown ABS",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -211,7 +211,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "brown-pbt",
         category: PackCategory::Keyboard,
-        label: "Brown PBT · Cherry MX",
+        label: "Brown PBT",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -241,7 +241,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "red-abs",
         category: PackCategory::Keyboard,
-        label: "Red ABS · Cherry MX",
+        label: "Red ABS",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -271,7 +271,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "red-pbt",
         category: PackCategory::Keyboard,
-        label: "Red PBT · Cherry MX",
+        label: "Red PBT",
         brand: "Cherry MX",
         supports_key_up: false,
         down: &[
@@ -301,7 +301,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "holy-panda",
         category: PackCategory::Keyboard,
-        label: "Holy Panda · Drop",
+        label: "Holy Panda",
         brand: "Drop",
         supports_key_up: true,
         down: &[
@@ -334,7 +334,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "alpaca",
         category: PackCategory::Keyboard,
-        label: "Alpaca · Durock",
+        label: "Alpaca",
         brand: "Durock",
         supports_key_up: true,
         down: &[
@@ -367,7 +367,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "crystal-purple",
         category: PackCategory::Keyboard,
-        label: "Crystal Purple · Everglide",
+        label: "Crystal Purple",
         brand: "Everglide",
         supports_key_up: false,
         down: &[
@@ -397,7 +397,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "oreo",
         category: PackCategory::Keyboard,
-        label: "Oreo · Everglide",
+        label: "Oreo",
         brand: "Everglide",
         supports_key_up: false,
         down: &[
@@ -427,7 +427,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "ink-black",
         category: PackCategory::Keyboard,
-        label: "Ink Black · Gateron",
+        label: "Ink Black",
         brand: "Gateron",
         supports_key_up: true,
         down: &[
@@ -460,7 +460,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "ink-red",
         category: PackCategory::Keyboard,
-        label: "Ink Red · Gateron",
+        label: "Ink Red",
         brand: "Gateron",
         supports_key_up: true,
         down: &[
@@ -493,7 +493,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "turquoise-tealios",
         category: PackCategory::Keyboard,
-        label: "Turquoise Tealios · Gateron",
+        label: "Turquoise Tealios",
         brand: "Gateron",
         supports_key_up: true,
         down: &[
@@ -526,7 +526,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "box-navy",
         category: PackCategory::Keyboard,
-        label: "Box Navy · Kailh",
+        label: "Box Navy",
         brand: "Kailh",
         supports_key_up: true,
         down: &[
@@ -559,7 +559,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "cream",
         category: PackCategory::Keyboard,
-        label: "Cream · NovelKeys",
+        label: "Cream",
         brand: "NovelKeys",
         supports_key_up: true,
         down: &[
@@ -592,7 +592,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "purple-hybrid-pbt",
         category: PackCategory::Keyboard,
-        label: "Purple Hybrid PBT · Topre",
+        label: "Purple Hybrid PBT",
         brand: "Topre",
         supports_key_up: false,
         down: &[
@@ -622,7 +622,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "unknown",
         category: PackCategory::Keyboard,
-        label: "Unknown · Topre",
+        label: "Unknown",
         brand: "Topre",
         supports_key_up: true,
         down: &[
@@ -655,7 +655,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "unknown-unknown",
         category: PackCategory::Keyboard,
-        label: "Unknown · Unknown · webdevcody",
+        label: "Unknown",
         brand: "Unknown",
         supports_key_up: true,
         down: &[
@@ -722,7 +722,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "buckling-spring",
         category: PackCategory::Keyboard,
-        label: "Buckling Spring · IBM",
+        label: "Buckling Spring",
         brand: "IBM",
         supports_key_up: true,
         down: &[
@@ -755,7 +755,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "quack",
         category: PackCategory::Keyboard,
-        label: "Quack · Quirky",
+        label: "Quack",
         brand: "Quirky",
         supports_key_up: false,
         down: &[include_bytes!(concat!(
@@ -767,7 +767,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "orochi-v2",
         category: PackCategory::Mouse,
-        label: "Orochi V2 · Razer",
+        label: "Orochi V2",
         brand: "Razer",
         supports_key_up: true,
         down: &[
@@ -794,7 +794,7 @@ pub static PACKS: &[PackAsset] = &[
     PackAsset {
         id: "pixabay-unknown-unknown",
         category: PackCategory::Mouse,
-        label: "Unknown · Unknown · pixabay",
+        label: "Unknown",
         brand: "Unknown",
         supports_key_up: true,
         down: &[

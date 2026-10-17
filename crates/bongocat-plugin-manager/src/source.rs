@@ -200,7 +200,7 @@ mod tests {
     fn bundled_plugin_copy_is_simplified_chinese_or_english() {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/key-sounds/plugin.json").as_slice(),
             include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
@@ -230,17 +230,17 @@ mod tests {
     }
 
     #[test]
-    fn button_sounds_plugin_identity_and_copy_cover_keyboard_and_mouse() {
+    fn key_sounds_plugin_identity_and_copy_cover_keyboard_and_mouse() {
         let manifest: crate::PluginManifest =
-            serde_json::from_slice(include_bytes!("../../../plugins/button-sounds/plugin.json"))
+            serde_json::from_slice(include_bytes!("../../../plugins/key-sounds/plugin.json"))
                 .unwrap();
         let metadata = manifest.metadata;
-        assert_eq!(metadata.id, "com.bongocat.button-sounds");
-        assert_eq!(metadata.entry, "bongocat-button-sounds");
+        assert_eq!(metadata.id, "com.bongocat.key-sounds");
+        assert_eq!(metadata.entry, "bongocat-key-sounds");
         assert_eq!(
             metadata.localized_copy("en-US"),
             (
-                "Button Sounds",
+                "Key Sounds",
                 "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
             ),
         );
@@ -257,7 +257,7 @@ mod tests {
     fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
         for bytes in [
             include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/button-sounds/plugin.json").as_slice(),
+            include_bytes!("../../../plugins/key-sounds/plugin.json").as_slice(),
             include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
         ] {
             let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();

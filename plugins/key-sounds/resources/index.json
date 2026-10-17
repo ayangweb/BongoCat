@@ -7,7 +7,7 @@
     {
       "id": "skcm-blue",
       "category": "keyboard",
-      "label": "SKCM Blue · Alps",
+      "label": "SKCM Blue",
       "name": "SKCM Blue",
       "brand": "Alps",
       "author": "tplai",
@@ -29,7 +29,7 @@
     {
       "id": "black-abs",
       "category": "keyboard",
-      "label": "Black ABS · Cherry MX",
+      "label": "Black ABS",
       "name": "Black ABS",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -49,7 +49,7 @@
     {
       "id": "black-pbt",
       "category": "keyboard",
-      "label": "Black PBT · Cherry MX",
+      "label": "Black PBT",
       "name": "Black PBT",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -69,7 +69,7 @@
     {
       "id": "blue-abs",
       "category": "keyboard",
-      "label": "Blue ABS · Cherry MX",
+      "label": "Blue ABS",
       "name": "Blue ABS",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -89,7 +89,7 @@
     {
       "id": "blue-pbt",
       "category": "keyboard",
-      "label": "Blue PBT · Cherry MX",
+      "label": "Blue PBT",
       "name": "Blue PBT",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -109,7 +109,7 @@
     {
       "id": "brown-abs",
       "category": "keyboard",
-      "label": "Brown ABS · Cherry MX",
+      "label": "Brown ABS",
       "name": "Brown ABS",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -129,7 +129,7 @@
     {
       "id": "brown-pbt",
       "category": "keyboard",
-      "label": "Brown PBT · Cherry MX",
+      "label": "Brown PBT",
       "name": "Brown PBT",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -149,7 +149,7 @@
     {
       "id": "red-abs",
       "category": "keyboard",
-      "label": "Red ABS · Cherry MX",
+      "label": "Red ABS",
       "name": "Red ABS",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -169,7 +169,7 @@
     {
       "id": "red-pbt",
       "category": "keyboard",
-      "label": "Red PBT · Cherry MX",
+      "label": "Red PBT",
       "name": "Red PBT",
       "brand": "Cherry MX",
       "author": "mechvibes",
@@ -189,7 +189,7 @@
     {
       "id": "holy-panda",
       "category": "keyboard",
-      "label": "Holy Panda · Drop",
+      "label": "Holy Panda",
       "name": "Holy Panda",
       "brand": "Drop",
       "author": "tplai",
@@ -210,7 +210,7 @@
     {
       "id": "alpaca",
       "category": "keyboard",
-      "label": "Alpaca · Durock",
+      "label": "Alpaca",
       "name": "Alpaca",
       "brand": "Durock",
       "author": "tplai",
@@ -231,7 +231,7 @@
     {
       "id": "crystal-purple",
       "category": "keyboard",
-      "label": "Crystal Purple · Everglide",
+      "label": "Crystal Purple",
       "name": "Crystal Purple",
       "brand": "Everglide",
       "author": "mechvibes",
@@ -251,7 +251,7 @@
     {
       "id": "oreo",
       "category": "keyboard",
-      "label": "Oreo · Everglide",
+      "label": "Oreo",
       "name": "Oreo",
       "brand": "Everglide",
       "author": "mechvibes",
@@ -271,7 +271,7 @@
     {
       "id": "ink-black",
       "category": "keyboard",
-      "label": "Ink Black · Gateron",
+      "label": "Ink Black",
       "name": "Ink Black",
       "brand": "Gateron",
       "author": "tplai",
@@ -292,7 +292,7 @@
     {
       "id": "ink-red",
       "category": "keyboard",
-      "label": "Ink Red · Gateron",
+      "label": "Ink Red",
       "name": "Ink Red",
       "brand": "Gateron",
       "author": "tplai",
@@ -313,7 +313,7 @@
     {
       "id": "turquoise-tealios",
       "category": "keyboard",
-      "label": "Turquoise Tealios · Gateron",
+      "label": "Turquoise Tealios",
       "name": "Turquoise Tealios",
       "brand": "Gateron",
       "author": "tplai",
@@ -334,7 +334,7 @@
     {
       "id": "box-navy",
       "category": "keyboard",
-      "label": "Box Navy · Kailh",
+      "label": "Box Navy",
       "name": "Box Navy",
       "brand": "Kailh",
       "author": "tplai",
@@ -355,7 +355,7 @@
     {
       "id": "cream",
       "category": "keyboard",
-      "label": "Cream · NovelKeys",
+      "label": "Cream",
       "name": "Cream",
       "brand": "NovelKeys",
       "author": "tplai",
@@ -376,7 +376,7 @@
     {
       "id": "purple-hybrid-pbt",
       "category": "keyboard",
-      "label": "Purple Hybrid PBT · Topre",
+      "label": "Purple Hybrid PBT",
       "name": "Purple Hybrid PBT",
       "brand": "Topre",
       "author": "mechvibes",
@@ -396,7 +396,7 @@
     {
       "id": "unknown",
       "category": "keyboard",
-      "label": "Unknown · Topre",
+      "label": "Unknown",
       "name": "Unknown",
       "brand": "Topre",
       "author": "tplai",
@@ -417,7 +417,7 @@
     {
       "id": "unknown-unknown",
       "category": "keyboard",
-      "label": "Unknown · Unknown · webdevcody",
+      "label": "Unknown",
       "name": "Unknown",
       "brand": "Unknown",
       "author": "webdevcody",
@@ -446,7 +446,7 @@
     {
       "id": "buckling-spring",
       "category": "keyboard",
-      "label": "Buckling Spring · IBM",
+      "label": "Buckling Spring",
       "name": "Buckling Spring",
       "brand": "IBM",
       "author": "tplai",
@@ -467,7 +467,7 @@
     {
       "id": "quack",
       "category": "keyboard",
-      "label": "Quack · Quirky",
+      "label": "Quack",
       "name": "Quack",
       "brand": "Quirky",
       "author": "Freesound Community",
@@ -483,7 +483,7 @@
     {
       "id": "orochi-v2",
       "category": "mouse",
-      "label": "Orochi V2 · Razer",
+      "label": "Orochi V2",
       "name": "Orochi V2",
       "brand": "Razer",
       "author": "Sadiquecat",
@@ -502,7 +502,7 @@
     {
       "id": "pixabay-unknown-unknown",
       "category": "mouse",
-      "label": "Unknown · Unknown · pixabay",
+      "label": "Unknown",
       "name": "Unknown",
       "brand": "Unknown",
       "author": "pixabay",

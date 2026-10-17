@@ -2,7 +2,7 @@
 //!
 //! The plugin plays a press sound and a release sound for the keyboard and for
 //! the mouse, out of sound sets embedded in this executable, so nothing it needs
-//! is fetched at runtime and no audio dependency or button-sounds rule enters the
+//! is fetched at runtime and no audio dependency or key-sounds rule enters the
 //! host. What it is told is anonymous: four counters, one per device and
 //! direction (ADR-0091). Everything else — which set is in use, how loud, how
 //! often, and what a set with no release sound does — is decided here.
@@ -134,7 +134,7 @@ const DEVICE_IDLE: Duration = Duration::from_secs(2);
 /// Every word this plugin publishes, in one language.
 ///
 /// The copy lives here rather than in the host's catalog because the plugin owns
-/// its own controls: the host has no button-sounds business rules to translate a
+/// its own controls: the host has no key-sounds business rules to translate a
 /// sound set's name from, and a plugin update could not correct a mistranslation
 /// without shipping a new application build.
 struct Copy {
@@ -545,7 +545,7 @@ impl Pick {
     }
 }
 
-struct ButtonSounds {
+struct KeySounds {
     volume: i64,
     cooldown_ms: i64,
     mouse_enabled: bool,
@@ -567,14 +567,14 @@ struct ButtonSounds {
     locale: Option<String>,
 }
 
-impl Default for ButtonSounds {
+impl Default for KeySounds {
     fn default() -> Self {
         let choices = Choices::from_config(&Configuration::new());
         let selection = Selection::resolve(&choices);
         Self {
             volume: DEFAULT_VOLUME,
             cooldown_ms: DEFAULT_COOLDOWN_MS,
-            mouse_enabled: false,
+            mouse_enabled: true,
             choices,
             selection,
             activity: None,
@@ -588,7 +588,7 @@ impl Default for ButtonSounds {
     }
 }
 
-impl ButtonSounds {
+impl KeySounds {
     /// The copy the panels should draw right now.
     fn copy(&self) -> &'static Copy {
         self.locale.as_deref().map_or(&ENGLISH, copy_for)
@@ -631,7 +631,7 @@ impl ButtonSounds {
             MIN_COOLDOWN_MS,
             MAX_COOLDOWN_MS,
         )?;
-        let mouse_enabled = boolean("mouse_enabled", false)?;
+        let mouse_enabled = boolean("mouse_enabled", true)?;
 
         if self.playback.previewing {
             self.playback.clear_voices();
@@ -932,9 +932,9 @@ fn is_known_key(key: &str) -> bool {
     )
 }
 
-impl Plugin for ButtonSounds {
+impl Plugin for KeySounds {
     fn id(&self) -> &'static str {
-        "com.bongocat.button-sounds"
+        "com.bongocat.key-sounds"
     }
     fn handle(&mut self, message: HostMessage) -> Result<PluginOutput, String> {
         match message {
@@ -996,7 +996,7 @@ impl Plugin for ButtonSounds {
 }
 
 fn main() -> std::io::Result<()> {
-    bongocat_plugin_sdk::run(&mut ButtonSounds::default())
+    bongocat_plugin_sdk::run(&mut KeySounds::default())
 }
 
 #[cfg(test)]
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[test]
     fn resetting_settings_keeps_the_application_language() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .handle(HostMessage::Locale {
                 locale: "zh-CN".into(),
@@ -1063,7 +1063,7 @@ mod tests {
     /// not take, not shown a number it never stored.
     #[test]
     fn the_configuration_vocabulary_is_closed_and_bounded() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         assert!(
             plugin
                 .handle(HostMessage::Start {
@@ -1074,7 +1074,7 @@ mod tests {
                 .validate()
         );
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
-        assert!(!plugin.mouse_enabled);
+        assert!(plugin.mouse_enabled);
 
         for invalid in [
             ("volume".to_owned(), ConfigValue::Integer(101)),
@@ -1102,12 +1102,56 @@ mod tests {
         assert!(plugin.mouse_enabled);
     }
 
+    #[test]
+    fn mouse_sounds_default_to_on_and_preserve_a_saved_opt_out() {
+        let mut plugin = KeySounds::default();
+        assert!(plugin.mouse_enabled);
+
+        for enabled in [false, true] {
+            let output = plugin
+                .handle(HostMessage::Start {
+                    config: Configuration::from([(
+                        "mouse_enabled".into(),
+                        ConfigValue::Boolean(enabled),
+                    )]),
+                    state: Vec::new(),
+                })
+                .unwrap();
+            assert_eq!(plugin.mouse_enabled, enabled);
+            assert_eq!(
+                output.config["mouse_enabled"],
+                ConfigValue::Boolean(enabled)
+            );
+            assert!(output.settings.nodes.iter().any(|node| matches!(
+                node,
+                UiNode::Toggle { key, value, .. } if key == "mouse_enabled" && *value == enabled
+            )));
+        }
+
+        plugin
+            .configure(&Configuration::from([(
+                "mouse_enabled".into(),
+                ConfigValue::Boolean(false),
+            )]))
+            .unwrap();
+        let output = plugin.handle(HostMessage::Reset).unwrap();
+        assert_eq!(output.config["mouse_enabled"], ConfigValue::Boolean(true));
+
+        plugin
+            .handle(HostMessage::Start {
+                config: Configuration::from([("volume".into(), ConfigValue::Integer(80))]),
+                state: Vec::new(),
+            })
+            .unwrap();
+        assert!(plugin.mouse_enabled);
+    }
+
     /// A per-action choice either follows the device's set or names one, and a
     /// value this build no longer carries resolves to the default rather than
     /// failing the exchange.
     #[test]
     fn a_stored_set_id_this_build_lost_repairs_itself_to_the_default() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([
                 ("keyboard_pack".into(), ConfigValue::Text("gone".into())),
@@ -1141,7 +1185,7 @@ mod tests {
             .packs()
             .nth(1)
             .expect("the keyboard ships more than one set");
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([(
                 "keyboard_down_pack".into(),
@@ -1167,7 +1211,7 @@ mod tests {
         assert!(silent.up.is_empty());
 
         let copy = &ENGLISH;
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([(
                 "keyboard_up_pack".into(),
@@ -1202,7 +1246,7 @@ mod tests {
     /// the first snapshot is a baseline, then down and up are independent edges.
     #[test]
     fn initial_activity_is_baselined_and_edges_play_separately() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 0,
@@ -1261,7 +1305,7 @@ mod tests {
     /// no sound at all — the counters are compared, not replayed.
     #[test]
     fn each_device_edge_plays_once_and_only_when_its_counter_moves() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([(
                 "mouse_enabled".into(),
@@ -1330,7 +1374,7 @@ mod tests {
         );
     }
 
-    /// Mouse sounds are opt-in, and turning them off silences both mouse edges
+    /// Turning mouse sounds off silences both mouse edges
     /// without touching the keyboard.
     #[test]
     fn the_mouse_switch_gates_both_mouse_edges() {
@@ -1340,7 +1384,13 @@ mod tests {
             mouse_down: 1,
             mouse_up: 1,
         };
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
+        plugin
+            .configure(&Configuration::from([(
+                "mouse_enabled".into(),
+                ConfigValue::Boolean(false),
+            )]))
+            .unwrap();
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 0,
@@ -1395,7 +1445,7 @@ mod tests {
     /// action, so a release is never swallowed by the press before it.
     #[test]
     fn cooldown_pause_and_mute_are_plugin_policy() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         assert!(plugin.admit(Action::KeyboardDown, 0));
         assert!(!plugin.admit(Action::KeyboardDown, DEFAULT_COOLDOWN_MS as u64 - 1));
         assert!(plugin.admit(Action::KeyboardDown, DEFAULT_COOLDOWN_MS as u64));
@@ -1420,7 +1470,7 @@ mod tests {
 
     #[test]
     fn every_sound_select_publishes_localized_categories_without_changing_ids() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         let original_config = plugin.output().config;
         for locale in ["en-US", "zh-CN", "de-DE"] {
             let output = plugin
@@ -1449,6 +1499,12 @@ mod tests {
                             .find(|pack| pack.id == option.value)
                             .unwrap();
                         assert_eq!(option.group.as_deref(), Some(pack.group_label(copy)));
+                        let expected_label = if key.ends_with("_up_pack") && !pack.supports_key_up {
+                            format!("{} · {}", pack.label, copy.no_release)
+                        } else {
+                            pack.label.to_owned()
+                        };
+                        assert_eq!(option.label, expected_label);
                     }
                 }
             }
@@ -1459,7 +1515,7 @@ mod tests {
     /// re-labels it without touching what the user has configured.
     #[test]
     fn the_host_locale_relabels_the_settings_panel() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         let english = plugin.output();
         assert_eq!(integer_label(&plugin.output(), "volume"), "Volume");
         assert_eq!(
@@ -1565,7 +1621,7 @@ mod tests {
                 "没有可用的音频输出设备。",
             ),
         ] {
-            let mut plugin = ButtonSounds {
+            let mut plugin = KeySounds {
                 error: Some(error),
                 ..Default::default()
             };
@@ -1595,7 +1651,7 @@ mod tests {
     /// action row in the settings panel.
     #[test]
     fn the_settings_panel_has_no_preview_button() {
-        let plugin = ButtonSounds::default();
+        let plugin = KeySounds::default();
         let output = plugin.output();
         assert!(
             !output
@@ -1608,7 +1664,7 @@ mod tests {
 
     #[test]
     fn hovering_a_sound_option_previews_without_committing_configuration() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([
                 ("volume".into(), ConfigValue::Integer(0)),
@@ -1654,7 +1710,7 @@ mod tests {
 
     #[test]
     fn every_published_preview_resolves_to_its_device_and_direction() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         let pinned = PackCategory::Keyboard.packs().nth(1).unwrap();
         plugin
             .configure(
@@ -1696,7 +1752,7 @@ mod tests {
         assert!(plugin.preview_choice("mouse_pack", "skcm-blue").is_err());
     }
 
-    fn install_test_voice(plugin: &mut ButtonSounds, preview: bool) {
+    fn install_test_voice(plugin: &mut KeySounds, preview: bool) {
         let (player, _output) = rodio::Player::new();
         player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(1)));
         plugin.playback.players.push(player);
@@ -1705,7 +1761,7 @@ mod tests {
 
     #[test]
     fn previews_suppress_input_without_replaying_edges_or_resetting_cooldown() {
-        let mut plugin = ButtonSounds {
+        let mut plugin = KeySounds {
             activity: Some(InputActivity::default()),
             ..Default::default()
         };
@@ -1731,7 +1787,7 @@ mod tests {
 
     #[test]
     fn finished_preview_releases_ownership_before_the_next_input_batch() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         let (player, mut output) = rodio::Player::new();
         player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_millis(1)));
         plugin.playback.players.push(player);
@@ -1754,7 +1810,7 @@ mod tests {
 
     #[test]
     fn silent_release_preview_replaces_old_voice_and_pause_mute_reset_stop_are_safe() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         let no_release = PackCategory::Keyboard
             .packs()
             .find(|pack| !pack.supports_key_up)
@@ -1780,7 +1836,7 @@ mod tests {
     #[test]
     #[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
     fn rapid_previews_replace_voices_reuse_output_and_recover_normal_input() {
-        let mut plugin = ButtonSounds {
+        let mut plugin = KeySounds {
             activity: Some(InputActivity::default()),
             ..Default::default()
         };
@@ -1824,7 +1880,7 @@ mod tests {
     /// budget the protocol gives it.
     #[test]
     fn the_published_panel_is_valid_and_bounded() {
-        let plugin = ButtonSounds::default();
+        let plugin = KeySounds::default();
         let view = plugin.output().settings;
         assert!(view.validate());
         assert!(view.nodes.len() <= 16);
@@ -1848,7 +1904,7 @@ mod tests {
     /// older message is read as "the keyboard was pressed".
     #[test]
     fn the_older_keyboard_activity_message_still_plays_a_press() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .handle(HostMessage::KeyboardActivity { elapsed_ms: 0 })
             .unwrap();
@@ -1867,7 +1923,7 @@ mod tests {
     /// afterwards is a new one rather than a stale edge.
     #[test]
     fn reset_clears_what_the_counters_had_seen() {
-        let mut plugin = ButtonSounds::default();
+        let mut plugin = KeySounds::default();
         plugin
             .handle(HostMessage::InputActivity {
                 elapsed_ms: 0,
