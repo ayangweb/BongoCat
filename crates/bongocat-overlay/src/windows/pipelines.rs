@@ -34,6 +34,12 @@ pub(crate) const SHADER_SOURCE: &str = r#"
         float3 padding;
     };
 
+    // The plugin layer's own uniforms, at the same slot the model quad uses so
+    // the layer can share the input layout and the samplers.
+    cbuffer LayerBuffer : register(b0) {
+        float4 layer_scale_offset;
+    };
+
     struct VertexInput {
         float2 position : POSITION;
         float2 uv : TEXCOORD;
@@ -75,6 +81,7 @@ pub(crate) const SHADER_SOURCE: &str = r#"
 
     Texture2D<float4> model_texture : register(t0);
     Texture2D<float4> mask_texture : register(t1);
+    Texture2D<float4> layer_texture : register(t0);
     SamplerState texture_sampler : register(s0);
 
     // Texture RGB is premultiplied by alpha before upload. Keep the encoded
@@ -101,6 +108,23 @@ pub(crate) const SHADER_SOURCE: &str = r#"
         float alpha = model_texture.Sample(texture_sampler, input.uv).a;
         return float4(0.0, 0.0, 0.0, alpha);
     }
+
+    // The plugin layer is one quad in the window's own pixel space rather than in
+    // model space, so it needs its own vertex shader for the pixel-to-clip
+    // transform the compositor hands down.
+    RasterVertex layer_vertex(VertexInput input) {
+        RasterVertex output;
+        output.position = float4(input.position * layer_scale_offset.xy
+                              + layer_scale_offset.zw, 0.0, 1.0);
+        output.uv = float2(input.uv.x, 1.0 - input.uv.y);
+        return output;
+    }
+
+    // The host's rasterizer already premultiplies the layer, so this only
+    // samples it and lets the normal blend factors apply.
+    float4 layer_fragment(RasterVertex input) : SV_TARGET {
+        return layer_texture.Sample(texture_sampler, input.uv);
+    }
 "#;
 
 #[repr(C)]
@@ -115,12 +139,26 @@ pub(crate) struct Uniforms {
     pub(crate) padding: [f32; 3],
 }
 
+/// The constants the plugin layer's vertex shader reads.
+///
+/// Only the pixel-to-clip transform: the layer carries no model colour, no mask
+/// and no corner radius, because those belong to the model and the window rather
+/// than to a plugin's panel.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct LayerUniforms {
+    pub(crate) scale_offset: [f32; 4],
+}
+
 pub(crate) struct Pipelines {
     pub(crate) vertex_shader: ID3D11VertexShader,
     pub(crate) fragment_shader: ID3D11PixelShader,
     pub(crate) mask_shader: ID3D11PixelShader,
+    pub(crate) layer_vertex_shader: ID3D11VertexShader,
+    pub(crate) layer_shader: ID3D11PixelShader,
     pub(crate) input_layout: ID3D11InputLayout,
     pub(crate) constant_buffer: ID3D11Buffer,
+    pub(crate) layer_buffer: ID3D11Buffer,
     pub(crate) sampler: ID3D11SamplerState,
     pub(crate) rasterizer: ID3D11RasterizerState,
     pub(crate) cull_back_rasterizer: ID3D11RasterizerState,
@@ -145,12 +183,18 @@ pub(crate) unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pi
     let vertex_blob = unsafe { compile_shader(s!("cubism_vertex"), s!("vs_5_0"))? };
     let fragment_blob = unsafe { compile_shader(s!("cubism_fragment"), s!("ps_5_0"))? };
     let mask_blob = unsafe { compile_shader(s!("cubism_mask_fragment"), s!("ps_5_0"))? };
+    let layer_vertex_blob = unsafe { compile_shader(s!("layer_vertex"), s!("vs_5_0"))? };
+    let layer_blob = unsafe { compile_shader(s!("layer_fragment"), s!("ps_5_0"))? };
     let vertex_bytes = unsafe { blob_bytes(&vertex_blob) };
     let fragment_bytes = unsafe { blob_bytes(&fragment_blob) };
     let mask_bytes = unsafe { blob_bytes(&mask_blob) };
+    let layer_vertex_bytes = unsafe { blob_bytes(&layer_vertex_blob) };
+    let layer_bytes = unsafe { blob_bytes(&layer_blob) };
     let mut vertex_shader = None;
     let mut fragment_shader = None;
     let mut mask_shader = None;
+    let mut layer_vertex_shader = None;
+    let mut layer_shader = None;
     unsafe {
         device.CreateVertexShader(
             vertex_bytes,
@@ -166,6 +210,16 @@ pub(crate) unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pi
             mask_bytes,
             None::<&ID3D11ClassLinkage>,
             Some(&mut mask_shader),
+        )?;
+        device.CreateVertexShader(
+            layer_vertex_bytes,
+            None::<&ID3D11ClassLinkage>,
+            Some(&mut layer_vertex_shader),
+        )?;
+        device.CreatePixelShader(
+            layer_bytes,
+            None::<&ID3D11ClassLinkage>,
+            Some(&mut layer_shader),
         )?;
     }
     let elements = [
@@ -198,6 +252,14 @@ pub(crate) unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pi
     };
     let mut constant_buffer = None;
     unsafe { device.CreateBuffer(&constant_desc, None, Some(&mut constant_buffer))? };
+    let layer_desc = D3D11_BUFFER_DESC {
+        ByteWidth: size_of::<LayerUniforms>() as u32,
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+        ..Default::default()
+    };
+    let mut layer_buffer = None;
+    unsafe { device.CreateBuffer(&layer_desc, None, Some(&mut layer_buffer))? };
     let sampler_desc = D3D11_SAMPLER_DESC {
         Filter: D3D11_FILTER_MIN_MAG_MIP_LINEAR,
         AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
@@ -215,8 +277,11 @@ pub(crate) unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pi
         vertex_shader: required(vertex_shader, "vertex shader")?,
         fragment_shader: required(fragment_shader, "fragment shader")?,
         mask_shader: required(mask_shader, "mask shader")?,
+        layer_vertex_shader: required(layer_vertex_shader, "layer vertex shader")?,
+        layer_shader: required(layer_shader, "layer shader")?,
         input_layout: required(input_layout, "input layout")?,
         constant_buffer: required(constant_buffer, "constant buffer")?,
+        layer_buffer: required(layer_buffer, "layer constant buffer")?,
         sampler: required(sampler, "sampler")?,
         rasterizer,
         cull_back_rasterizer,

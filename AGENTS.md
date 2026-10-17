@@ -31,12 +31,12 @@
 ### 2.2 开始前
 
 1. 检查当前分支和 `git status`，保留全部用户修改；先 `git fetch` 把上游同步到最新（见 §10）。
-2. 定位 TODO 中对应阶段、任务和退出门槛；读现有实现与测试，不从文档标题推断行为。
+2. 明确当前任务及相关 ADR 中的退出门槛；读现有实现与测试，不从文档标题推断行为。涉及用户可见变化时，先按 §9.5 判断它是独立发布变化，还是同一 PR 内尚未发布功能的继续完善。
 3. 明确最小交付范围、平台范围和验证方式；跨阶段门禁先完成前置 spike，否则明确报告阻塞。
 
 ### 2.3 实施
 
-1. 遵循既有模块边界与命名，改动只覆盖请求和当前 TODO 项；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
+1. 遵循既有模块边界与命名，改动只覆盖请求和当前任务；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
 2. 平台差异只放在 platform adapter 或 `cfg` 模块，不扩散到 runtime、model、config、UI。
 3. 新依赖说明用途、维护状态、许可证和替换边界。
 4. 不做无关重构、批量格式化，不覆盖用户未提交修改，不动无关 lockfile、生成文件与资产 metadata。
@@ -45,8 +45,8 @@
 
 1. 按 §9 跑与风险相称的格式化、静态检查、测试和平台 smoke test。
 2. 复查正常、错误、重启和 shutdown 路径，以及依赖方向、平台类型泄漏、`unsafe` 范围和日志隐私。
-3. 完成定义全部满足并有证据时才勾选 TODO checkbox；架构、行为协议或退出条件变化时同步 Technical Design、TODO 与 ADR。
-4. 最终报告列出改动、验证命令与结果、未运行测试、已知风险、CHANGELOG 判断和下一项未完成任务。文档任务无需声称运行代码测试。
+3. 完成定义全部满足并有证据时才宣称完成；架构、行为协议或退出条件变化时同步 Technical Design 与 ADR。
+4. 最终报告列出改动、验证命令与结果、未运行测试、已知风险、按 §9.5 作出的 CHANGELOG 判断和下一项未完成任务。文档任务无需声称运行代码测试。
 
 ## 3. 阶段与数据版本
 
@@ -141,7 +141,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - 语义色通过 `ActiveTheme::theme()` 读取；不重复硬编码颜色、字号、间距、圆角或控件高度，无明确产品需求时用组件默认值与 `Theme`。
 - 常用组件：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、`Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)` + `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、`Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog`、`Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`，分别订阅 `InputEvent` 与 `NumberInputEvent`；范围、步长和最终校验来自业务 schema，组件事件不得绕过 typed command。组件已在自身输入边界限制的条件不要再新增错误码或本地化文案。
-- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在 TODO 记录已迁移组件、剩余特殊控件和官方文档依据。
+- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在相关 ADR 记录已迁移组件、剩余特殊控件和官方文档依据。
 - visual-first 契约（ADR-0054）：不维护 screen-reader/AccessKit tree、辅助桥、隐藏 label/action 或仅供辅助技术的文案，也不新增直接 AccessKit 依赖。
 - 设置界面安静、紧凑、适合重复操作；图标表达常用工具并提供可见 tooltip；控件覆盖 hover、active、focus、disabled、loading、error；Development、Production 与 smoke 使用同一套可见组成，smoke 只改变驱动方式。
 - 支持浅色、深色、系统主题和现有本地化语言；文案遵循 `docs/localization-copy-conventions.md`（省略号只用单个 `…`，由 `tools/validate-locales.py` 强制）。
@@ -187,15 +187,24 @@ just schema                                             # 从 Rust 类型生成�
 - 退出不依赖强杀，所有 worker 在超时内 join；8 小时 soak 无持续内存、GPU、handle、线程或日志增长。
 - scaffold 不等于功能完成；编译通过不等于平台行为完成；单个模型通过不等于模型兼容完成；增加超时不等于修复 issue #47；未验证签名、权限和回滚不等于可发布。
 
-### 9.4 文档与 TODO
+### 9.4 文档与验收
 
 - 架构决策、约束变化和 go/no-go 结果写入 `docs/adr/`；Benchmark 写入 `docs/benchmark/`；历史考古写入 `docs/migration/`。
 - Technical Design 只描述当前目标架构，不写历史路线、候选方案比较或已放弃设计，也不把旧配置兼容重新纳入产品范围。
 - 根级用户/贡献者文档同时维护英文与简体中文：`README.md` / `README.zh-CN.md`、`CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`、`CHANGELOG.md` / `CHANGELOG.zh-CN.md`；英文文件不带语言后缀，修改一份必须同步另一份。
-- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design、TODO 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，必须保留替换、迁移、重写、默认行为变化和升级注意事项。
+- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，不是开发流水账；条目粒度与修改时机统一按 §9.5，必要的替换、迁移、重写、默认行为变化和升级注意事项合并进该 PR 的同一条摘要。
 - 仓库自有文件名与用户文档不使用历史重写阶段的名称或同义内部限定词；普通文案中的 `native` 只用于操作系统原生能力或 Cubism Native 官方产品名；既有 Rust 类型与 API 边界不因文档清理顺带重命名。
-- TODO checkbox 仅在完成定义完整满足后勾选；部分完成保持 `[ ]` 并写明状态与剩余工作；新任务放入正确 phase，标明依赖与退出条件。
+- 相关 ADR 中的验收项仅在完成定义完整满足后标记完成；部分完成写明状态与剩余工作，保留依赖与退出条件。
 - changelog 分段标题词表、版本标题和发版 commit 规则见 `docs/changelog-conventions.md`；没有对应的下一个版本标题时统一写入 `Unreleased`，不得自行创建版本标题。
+
+### 9.5 CHANGELOG：一个 PR 至多一条
+
+- **以整个 PR 的最终交付为单位，每种语言至多一条摘要**，不是每个 commit、每轮对话、每个子功能或每次修复各写一条。未开 PR 时，同一功能分支按一个待交付 PR 判断；中英文是同一条的翻译，不算两条。不得把同一 PR 拆到“新功能 / 界面 / 问题修复”等多个 section 重复记录。
+- **什么时候新增：**独立 PR 交付了用户可见的新功能，或修改了已发布版本的行为，才在最小闭环完成后、提交/推送前同步检查两份日志；需要记录时用一条简短摘要概括最终结果。纯内部重构、测试、CI、格式化、注释、文档、构建、依赖调整和未落地实现不写。
+- **什么时候不改：**同一 PR 内尚未发布功能的补全、调试、缺陷修复、布局调整、文案润色、测试和 review 修改，都属于该功能的开发过程，不新增条目，也不把这些细节追加到已有摘要中。不能仅因本轮改动“用户可见”就写日志；先确认它是否已由该 PR 的功能摘要覆盖。
+- **什么时候只改原条目：**仅当该 PR 已有摘要不再准确，或遗漏核心交付、必要升级注意事项时，原位改写同一条，不追加第二条、不追加子列表。实现过程、修复细节、测试证据和限制写入 PR 正文、ADR 或任务报告。涉及升级风险的必要提醒保留在同一条中，不因“一条”规则省略。
+- **检查范围：**先看 PR 相对目标分支的完整 diff（未开 PR 默认目标为 `origin/master`），再纳入本地未提交修改，辨认本 PR 已有条目。不能只看 `git log @{u}..HEAD`：已推送到功能分支的条目仍属于同一个 PR，不能因为后续又有 commit 就再写一条。
+- **交付前复核：**本 PR 对两份日志各贡献零条或一条，内容对应且归入同一个最合适的 section；已重复时合并并删除由此产生的空 section。不改其他 PR 的条目或已发布版本的历史记录。最终报告明确写“新增一条 / 改写原条目 / 跳过”及理由。
 
 ## 10. Git 与交付
 
@@ -204,7 +213,7 @@ just schema                                             # 从 Rust 类型生成�
 - Commit message 必须依据实际 staged diff，遵循 Conventional Commits：`<type>: <summary>`，只有 scope 有明确区分价值时用 `<type>(<scope>): <summary>`。type 用 `feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci`、`chore`，不用 `update`、`changes`、`misc`；summary 用简洁英文祈使句、不加句号、建议不超过 72 字符；不兼容变更加 `!` 并在正文写 `BREAKING CHANGE:`。提交前核对 staged diff，排除未暂存或无关改动。
 - **推送顺序固定为「先拉上游 → 解决冲突 → 验证 → 提交 → push」。** 动手写代码前先 `git fetch`（必要时 `git pull --ff-only`），在最新上游之上工作；提交前若发现远端已有新 commit，必须先把上游改动合入并解决冲突再提交，不得留下 `Merge remote-tracking branch 'origin/master' into <branch>` 这类 merge commit。合并后必须在最终树上重跑完整验证，不能沿用合入前的结论。
 - 冲突按实际语义逐个解决，不用 `checkout --ours/--theirs` 覆盖对方实质改动，解决后确认本任务改动仍在。合并后若出现失败测试，先判断是否由本次改动引入（在纯上游 commit 上单独复跑）；上游自身失败不代为修复，如实报告并交由用户决定。
-- push 前先完成 CHANGELOG 检查。判断范围是待推送 commit（`git log @{u}..HEAD`）及其 diff：存在用户可见的新增、移除、默认值/行为/性能/UI/平台/本地化/配置格式变化或升级注意事项时，同步更新两份 changelog 并沿用现有 section 与文案风格；纯内部重构、测试、CI、格式化、注释、构建、依赖调整和未落地实现跳过，不新增临时 section。CHANGELOG 修改必须先提交再 push，判断结论写入最终报告。
+- push 前必须按 §9.5 检查整个 PR 的 CHANGELOG，而不是按本次待推送 commit 追加条目；同一 PR 已有准确摘要且本次只是继续完善时不改。需要修改时同步两份日志、沿用既有 section 与文案风格，先提交再 push，判断结论写入最终报告。
 
 ### 10.1 推送代码与 PR
 

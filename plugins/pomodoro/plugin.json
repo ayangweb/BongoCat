@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "id": "com.bongocat.pomodoro",
+    "name": "Pomodoro",
+    "description": "A focus timer you can pause and restart",
+    "version": "1.0.0",
+    "app_versions": ">=2.3.1",
+    "protocol_version": 1,
+    "entry": "bongocat-pomodoro",
+    "icon": {
+      "type": "emoji",
+      "value": "🍅"
+    },
+    "capabilities": [
+      "model_ui",
+      "configuration",
+      "persistent_state",
+      "localized_views_v1"
+    ],
+    "localizations": {
+      "zh-CN": {
+        "name": "番茄钟",
+        "description": "支持暂停和重新计时的专注计时器"
+      }
+    }
+  },
+  "sha256": null
+}

@@ -27,6 +27,11 @@
     },
     "about": {
       "title": "About"
+    },
+    "plugins": {
+      "title": "Plugin Center",
+      "subtitle": "Extend the model window with plugins.",
+      "empty": "No plugins available."
     }
   },
   "system_menu": {
@@ -540,5 +545,25 @@
         "unsupported_build": "Running at startup is unavailable in development builds"
       }
     }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "failed": "Load failed",
+    "loading": "Loading plugins…",
+    "discovery_failed": "Could not load the plugin list. Try again.",
+    "retry": "Retry",
+    "install": "Install",
+    "update": "Update",
+    "refresh": "Refresh",
+    "available_version": "Available version %{version}",
+    "uninstall": "Uninstall",
+    "reset_data": "Reset data",
+    "settings": {
+      "open": "Settings",
+      "title": "%{name} settings",
+      "empty": "This plugin has no settings."
+    },
+    "version": "Version %{version}"
   }
 }

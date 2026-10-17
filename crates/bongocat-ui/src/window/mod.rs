@@ -31,12 +31,13 @@ use gpui_kit::component::{
     group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
-    searchable_list::SearchableListItem,
+    searchable_list::{SearchableGroup, SearchableListDelegate, SearchableListItem},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
         SettingPage, Settings,
     },
+    switch::Switch,
 };
 
 use gpui_kit::{
@@ -86,6 +87,11 @@ mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod plugins_host;
+use plugins_host::PluginHost;
+mod plugin_settings;
+use plugin_settings::PluginSettingsDraft;
+mod plugins_page;
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;
@@ -196,6 +202,14 @@ pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'stat
 
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
+/// One dropdown of a plugin's own configuration panel.
+///
+/// Its options are the plugin's, so unlike the window's own dropdowns the list
+/// is not a fixed catalog: it is rebuilt from whatever the open plugin published
+/// last.
+pub(crate) type PluginSettingsSelectState =
+    SelectState<plugin_settings::PluginSettingsSelectGroups>;
+
 /// The appearance a settings window paints its first frame with.
 ///
 /// The window is created and shown before the settings service answers its first
@@ -215,6 +229,12 @@ pub struct SettingsWindowSeed {
 }
 
 pub struct SettingsView {
+    pub(crate) plugin_host: PluginHost,
+    /// The one plugin whose configuration panel is open, if any.
+    ///
+    /// A value rather than a flag because the view has to know which plugin the
+    /// panel belongs to before it opens the layer at all (see `plugin_settings`).
+    pub(crate) plugin_settings: Option<PluginSettingsDraft>,
     #[cfg(target_os = "windows")]
     pub(crate) window_background_color: Entity<gpui_kit::component::color_picker::ColorPickerState>,
     #[cfg(target_os = "windows")]

@@ -177,6 +177,7 @@ pub(crate) struct ProductShutdown {
     pub(crate) overlay: ProductOverlaySession,
     pub(crate) settings_service: bongocat_app::ApplicationSettingsService,
     pub(crate) update_service: Option<bongocat_app::ApplicationUpdateService>,
+    pub(crate) plugin_service: Option<bongocat_plugin_service::PluginService>,
 }
 
 impl ProductShutdown {
@@ -194,6 +195,15 @@ impl ProductShutdown {
                 &failures,
                 "product frame source did not stop before runtime shutdown",
             );
+        }
+        // The plugin pump stops before the runtime does: it hands actions to the
+        // runtime, and an action sent after the runtime began shutting down is a
+        // command nobody will apply. Its join is also what guarantees no plugin
+        // process outlives the window it drew into.
+        if let Some(plugin_service) = self.plugin_service
+            && let Err(error) = plugin_service.shutdown()
+        {
+            record_failure(&failures, error.to_string());
         }
         let settings_client = self.settings_service.client();
         if let Ok(bounds) = self.overlay.window_bounds() {
@@ -272,11 +282,13 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         .take()
         .expect("settings service owner is present");
     let update_service = coordinator.update_service.take();
+    let plugin_service = coordinator.plugin_service.take();
     ProductShutdown {
         coordinator,
         overlay,
         settings_service,
         update_service,
+        plugin_service,
     }
 }
 

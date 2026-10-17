@@ -16,11 +16,18 @@ members = [
     "crates/bongocat-overlay",
     "crates/bongocat-packaging",
     "crates/bongocat-platform",
+    "crates/bongocat-plugin-sdk",
+    "crates/bongocat-plugin-manager",
+    "crates/bongocat-plugin-hud",
+    "crates/bongocat-plugin-service",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
+    "plugins/pomodoro",
+    "plugins/key-sounds",
+    "plugins/input-source",
 ]
 
 [workspace.package]
@@ -36,6 +43,7 @@ arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+base64 = "=0.23.1"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
@@ -67,7 +75,7 @@ time = { version = "=0.3.55", default-features = false, features = ["formatting"
 tray-icon = { version = "=0.26.1", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
-zip = { version = "=9.0.2", default-features = false }
+zip = { version = "=9.0.2", default-features = false, features = ["deflate-flate2"] }
 
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-input = { path = "crates/bongocat-input" }
@@ -82,6 +90,10 @@ bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
+bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
+bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
+bongocat-plugin-hud = { path = "crates/bongocat-plugin-hud" }
+bongocat-plugin-service = { path = "crates/bongocat-plugin-service" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 bongocat-storage = { path = "crates/bongocat-storage" }

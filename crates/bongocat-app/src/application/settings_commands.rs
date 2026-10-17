@@ -20,6 +20,29 @@ use bongocat_runtime::{
 };
 
 impl Application {
+    /// Initialize plugin language before either window is opened. The same
+    /// owner forwards subsequent committed application language changes.
+    pub fn attach_plugin_service(&mut self, client: bongocat_plugin_service::PluginServiceClient) {
+        self.plugin_client = Some(client);
+        self.sync_plugin_language();
+    }
+
+    fn sync_plugin_language(&self) {
+        if let Some(client) = &self.plugin_client
+            && client
+                .set_locale_blocking(self.effective_language().code())
+                .is_err()
+        {
+            self.record_log_once(
+                crate::ApplicationLogEvent::new(crate::ApplicationLogCode::ServiceDegraded)
+                    .with_context(crate::app_log::ApplicationLogContext::Service("plugin"))
+                    .with_context(crate::app_log::ApplicationLogContext::Reason(
+                        "plugin_locale_unavailable",
+                    )),
+            );
+        }
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;
@@ -100,6 +123,7 @@ impl Application {
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         self.config = next_config;
         self.config_revision = Some(next_revision);
+        self.sync_plugin_language();
         Ok(())
     }
 

@@ -27,6 +27,11 @@
     },
     "about": {
       "title": "Giới thiệu"
+    },
+    "plugins": {
+      "title": "Trung tâm tiện ích",
+      "subtitle": "Mở rộng cửa sổ mô hình bằng tiện ích.",
+      "empty": "Không có plugin khả dụng."
     }
   },
   "system_menu": {
@@ -540,5 +545,25 @@
         "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
       }
     }
+  },
+  "plugins": {
+    "enable": "Bật",
+    "disable": "Tắt",
+    "failed": "Tải thất bại",
+    "loading": "Đang tải tiện ích…",
+    "discovery_failed": "Không thể tải danh sách tiện ích. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "install": "Cài đặt",
+    "update": "Cập nhật",
+    "refresh": "Làm mới",
+    "available_version": "Phiên bản có sẵn %{version}",
+    "uninstall": "Gỡ cài đặt",
+    "reset_data": "Đặt lại dữ liệu",
+    "settings": {
+      "open": "Cài đặt",
+      "title": "Cài đặt %{name}",
+      "empty": "Tiện ích này không có cài đặt nào."
+    },
+    "version": "Phiên bản %{version}"
   }
 }

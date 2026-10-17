@@ -21,6 +21,7 @@
 
 #[cfg(test)]
 mod binary_tests;
+mod dev_plugins;
 mod gamepad_observer;
 mod model_cover;
 mod overlay_placement;
@@ -193,6 +194,12 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    /// The one owner of the installed plugins.
+    ///
+    /// It outlives every window on purpose: a plugin's timer keeps counting while
+    /// the settings window is closed, and the model window draws the panels the
+    /// service composes.
+    plugin_service: Option<bongocat_plugin_service::PluginService>,
     /// The currently open settings window, if any; close destroys it.
     settings_window: Option<SettingsWindowHandle>,
     /// Process-local memory for the last settings sidebar page.
@@ -327,6 +334,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
     let application_log = application.log_handle();
+    // The plugin service starts before the overlay, because the overlay is what
+    // draws the layer the service composes: the window has to be handed the
+    // consumer end before its first tick. A store that cannot be opened is not
+    // fatal — the plugin center reports it and the cat still runs.
+    let plugin_storage_root = application.storage_root().to_path_buf();
+    let activity_runtime = application.runtime_client();
+    let (plugin_service, plugin_overlay_handles) =
+        match bongocat_plugin_service::PluginService::start_with_source(
+            &plugin_storage_root,
+            16,
+            dev_plugins::source(),
+            // Device totals plus the bounded special-key subset let the plugin
+            // use Thock's per-key groups without receiving letters, text or
+            // pointer position (ADR-0091).
+            Some(Box::new(move || {
+                let diagnostics = activity_runtime.input_diagnostics();
+                bongocat_plugin_service::InputActivity {
+                    keyboard_down: diagnostics.keyboard_activity,
+                    keyboard_up: diagnostics.keyboard_release,
+                    mouse_down: diagnostics.mouse_activity,
+                    mouse_up: diagnostics.mouse_release,
+                    space_down: diagnostics.space_activity,
+                    space_up: diagnostics.space_release,
+                    enter_down: diagnostics.enter_activity,
+                    enter_up: diagnostics.enter_release,
+                    backspace_down: diagnostics.backspace_activity,
+                    backspace_up: diagnostics.backspace_release,
+                    tab_down: diagnostics.tab_activity,
+                    tab_up: diagnostics.tab_release,
+                    shift_left_down: diagnostics.shift_left_activity,
+                    shift_left_up: diagnostics.shift_left_release,
+                    shift_right_down: diagnostics.shift_right_activity,
+                    shift_right_up: diagnostics.shift_right_release,
+                    ctrl_left_down: diagnostics.ctrl_left_activity,
+                    ctrl_left_up: diagnostics.ctrl_left_release,
+                }
+            })),
+        ) {
+            Ok(started) => (Some(started.0), Some(started.1)),
+            Err(error) => {
+                application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                        .with_context(ApplicationLogContext::Service("plugin"))
+                        .with_context(ApplicationLogContext::Reason("plugin_service_unavailable")),
+                );
+                let _ = error;
+                (None, None)
+            }
+        };
+    if let Some(service) = &plugin_service {
+        application.attach_plugin_service(service.client());
+    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),
@@ -495,6 +554,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
                 resize_sender: Some(resize_sender),
+                hud_consumer: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.hud_consumer.clone()),
+                hud_interaction_sender: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.interaction_sender.clone()),
+                hud_viewport_reporter: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.viewport_reporter.clone()),
             },
         ) {
             Ok(overlay) => overlay,
@@ -611,6 +679,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
+            plugin_service,
             settings_window: None,
             settings_navigation_memory: SettingsNavigationMemory::new(),
             update_service: Some(update_service),

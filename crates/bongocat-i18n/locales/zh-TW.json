@@ -27,6 +27,11 @@
     },
     "about": {
       "title": "關於"
+    },
+    "plugins": {
+      "title": "外掛中心",
+      "subtitle": "使用外掛擴充模型視窗。",
+      "empty": "暫無可用外掛程式。"
     }
   },
   "system_menu": {
@@ -540,5 +545,25 @@
         "unsupported_build": "開發版本不支援開機自動啟動"
       }
     }
+  },
+  "plugins": {
+    "enable": "啟用",
+    "disable": "停用",
+    "failed": "載入失敗",
+    "loading": "正在載入外掛…",
+    "discovery_failed": "無法載入外掛清單，請重試。",
+    "retry": "重試",
+    "install": "安裝",
+    "update": "更新",
+    "refresh": "重新整理",
+    "available_version": "可用版本 %{version}",
+    "uninstall": "卸載",
+    "reset_data": "重設資料",
+    "settings": {
+      "open": "設定",
+      "title": "%{name} 設定",
+      "empty": "此外掛沒有可設定的項目。"
+    },
+    "version": "版本 %{version}"
   }
 }

@@ -27,6 +27,11 @@
     },
     "about": {
       "title": "À propos"
+    },
+    "plugins": {
+      "title": "Centre de plugins",
+      "subtitle": "Étendez la fenêtre du modèle avec des plugins.",
+      "empty": "Aucun plugin disponible."
     }
   },
   "system_menu": {
@@ -540,5 +545,25 @@
         "unsupported_build": "Le lancement au démarrage n’est pas disponible dans les versions de développement"
       }
     }
+  },
+  "plugins": {
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "failed": "Échec du chargement",
+    "loading": "Chargement des plugins…",
+    "discovery_failed": "Impossible de charger la liste des plugins. Réessayez.",
+    "retry": "Réessayer",
+    "install": "Installer",
+    "update": "Mettre à jour",
+    "refresh": "Actualiser",
+    "available_version": "Version disponible %{version}",
+    "uninstall": "Désinstaller",
+    "reset_data": "Réinitialiser les données",
+    "settings": {
+      "open": "Paramètres",
+      "title": "Paramètres de %{name}",
+      "empty": "Ce plugin n’a aucun paramètre."
+    },
+    "version": "Version %{version}"
   }
 }

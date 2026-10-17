@@ -38,6 +38,20 @@ impl RuntimeClient {
         self.with_transport_diagnostics(snapshot)
     }
 
+    /// The input counters, without copying the model or key data beside them.
+    ///
+    /// The plugin owner reads these every poll, so it asks for the copy-able
+    /// counter block rather than the whole snapshot: the counters are what the
+    /// anonymous keyboard and mouse activity a plugin may count is made of.
+    pub fn input_diagnostics(&self) -> InputDiagnostics {
+        self.snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .input
+            .diagnostics
+    }
+
     pub fn input_producer(&self) -> InputProducer {
         self.input_producer.clone()
     }

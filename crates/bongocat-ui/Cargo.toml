@@ -13,12 +13,18 @@ bongocat-config.workspace = true
 bongocat-i18n.workspace = true
 bongocat-ui-protocol.workspace = true
 bongocat-platform.workspace = true
+bongocat-plugin-sdk.workspace = true
+bongocat-plugin-service.workspace = true
+dirs.workspace = true
 gpui-kit.workspace = true
+image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

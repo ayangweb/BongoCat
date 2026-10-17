@@ -1,0 +1,202 @@
+name: Plugin Release
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "plugins/**"
+      - "crates/bongocat-packaging/**"
+      - "crates/bongocat-plugin-manager/**"
+      - "crates/bongocat-plugin-sdk/**"
+      - "crates/bongocat-update/src/runtime/mod.rs"
+      - "justfile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/plugin-release.yml"
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+
+# Updates add-on assets on the existing product release; never create a second
+# Release that could become GitHub's latest and hide latest.json from the app.
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate plugin release tooling
+    if: github.repository == 'ayangweb/BongoCat' && (github.ref == 'refs/heads/master' || (github.event.workflow_run.head_branch == 'master' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p bongocat-packaging --all-targets --all-features -- -D warnings
+      - run: cargo test --locked -p bongocat-packaging
+      - run: python3 -m unittest tools.tests.test_release_plugin_history
+      - run: python3 tools/release-plugin-changelog.py --root . --output /tmp/plugin-release-notes.md
+
+  windows-x64:
+    name: Build Windows x64 plugins
+    needs: validate
+    if: needs.validate.result == 'success'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: rustup target add x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@just
+      - run: just release-plugins x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins-windows-x86_64
+          path: target/release-plugins/windows-x86_64/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: Build macOS ${{ matrix.label }} plugins
+    needs: validate
+    if: needs.validate.result == 'success'
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Apple Silicon
+            runs_on: xcode-27
+            triple: aarch64-apple-darwin
+            platform: macos-aarch64
+          - label: Intel
+            runs_on: macos-26-intel
+            triple: x86_64-apple-darwin
+            platform: macos-x86_64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      - run: rustup target add ${{ matrix.triple }}
+      - uses: taiki-e/install-action@just
+      - run: just release-plugins ${{ matrix.triple }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins-${{ matrix.platform }}
+          path: target/release-plugins/${{ matrix.platform }}/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Update the current product release
+    needs:
+      - windows-x64
+      - macos
+    if: github.repository == 'ayangweb/BongoCat' && (github.ref == 'refs/heads/master' || (github.event.workflow_run.head_branch == 'master' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - name: Resolve the current public product release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Fetch signed plugin catalog history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          python3 tools/release-plugin-history.py
+          --repository "$GITHUB_REPOSITORY"
+          --tag "${{ steps.release.outputs.tag }}"
+          --output previous-plugins
+          --allow-existing-tag
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plugins-*
+          path: plugin-inputs
+      - name: Require production signing credentials
+        env:
+          SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::SIGNING_PRIVATE_KEY is required to publish the signed plugin catalog" >&2
+            exit 1
+          fi
+      - name: Build and verify immutable plugin assets and signed catalog
+        env:
+          SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          just release-plugin-catalog plugin-assets/plugins.json previous-plugins \
+            macos-aarch64 plugin-inputs/plugins-macos-aarch64 \
+            macos-x86_64 plugin-inputs/plugins-macos-x86_64 \
+            windows-x86_64 plugin-inputs/plugins-windows-x86_64
+          test -s plugin-assets/plugins.json
+      - name: Upload plugin assets to the existing product release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release="${{ steps.release.outputs.tag }}"
+          assets=$(gh release view "$release" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets')
+          # Versioned ZIPs are checked immutable by the packager; plugins.json is
+          # intentionally replaced last so an interrupted upload leaves the old
+          # signed catalog usable.
+          while IFS= read -r -d '' asset; do
+            name=${asset##*/}
+            local_digest="sha256:$(shasum -a 256 "$asset" | cut -d ' ' -f 1)"
+            remote_digest=$(jq -r --arg name "$name" '.[] | select(.name == $name) | .digest // empty' <<<"$assets")
+            if [ -n "$remote_digest" ]; then
+              if [ "$remote_digest" != "$local_digest" ]; then
+                echo "::error::refusing to replace immutable release asset $name" >&2
+                exit 1
+              fi
+              continue
+            fi
+            gh release upload "$release" "$asset" --repo "$GITHUB_REPOSITORY"
+          done < <(find plugin-assets -maxdepth 1 -type f ! -name plugins.json -print0)
+          gh release upload "$release" plugin-assets/plugins.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Publish the shared bilingual plugin release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release="${{ steps.release.outputs.tag }}"
+          gh release view "$release" --repo "$GITHUB_REPOSITORY" --json body --jq .body > product-release-body.md
+          python3 tools/release-plugin-changelog.py \
+            --root . \
+            --merge-into product-release-body.md \
+            --output merged-release-body.md
+          gh release edit "$release" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes-file merged-release-body.md

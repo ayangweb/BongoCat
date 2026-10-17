@@ -27,6 +27,11 @@
     },
     "about": {
       "title": "Sobre"
+    },
+    "plugins": {
+      "title": "Central de plugins",
+      "subtitle": "Amplie a janela do modelo com plugins.",
+      "empty": "Nenhum plugin disponível."
     }
   },
   "system_menu": {
@@ -540,5 +545,25 @@
         "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
       }
     }
+  },
+  "plugins": {
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "failed": "Falha ao carregar",
+    "loading": "Carregando plugins…",
+    "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
+    "retry": "Tentar novamente",
+    "install": "Instalar",
+    "update": "Atualizar",
+    "refresh": "Atualizar lista",
+    "available_version": "Versão disponível %{version}",
+    "uninstall": "Desinstalar",
+    "reset_data": "Redefinir dados",
+    "settings": {
+      "open": "Configurações",
+      "title": "Configurações de %{name}",
+      "empty": "Este plugin não tem configurações."
+    },
+    "version": "Versão %{version}"
   }
 }

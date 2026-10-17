@@ -31,10 +31,10 @@ async-io.workspace = true
 block2 = "=0.6.2"
 dispatch2 = "=0.3.1"
 objc2 = "=0.6.5"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSAlert", "NSAppearance", "NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSGraphics", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSWorkspace", "NSView", "NSWindow", "block2", "objc2-core-foundation"] }
-objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSAlert", "NSAppearance", "NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSWorkspace", "NSView", "NSWindow", "block2", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFDictionary", "CFMachPort", "CFNotificationCenter", "CFRunLoop", "CFString", "CFURL"] }
 libc.workspace = true
-objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage", "CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSArray", "NSData", "NSGeometry", "NSNotification", "NSObject", "NSString", "NSURL", "NSUserDefaults", "block2"] }
 permission-flow.workspace = true
 
@@ -54,6 +54,7 @@ windows = { version = "=0.62.2", features = [
     "UI_ViewManagement",
     "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Ime",
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
 ] }
