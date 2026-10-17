@@ -1250,7 +1250,7 @@ mod tests {
             endpoint,
         } = plugin_page(cx, vec![sample_card()], 720.);
         let responder =
-            std::thread::spawn(move || respond_to_integer_commands(endpoint, [30, 31, 180]));
+            std::thread::spawn(move || respond_to_integer_commands(endpoint, &[30, 31, 180, 42]));
         visual.update(|window, cx| window.click("plugin-settings-com.example.card", cx));
         visual.update(|window, cx| window.render_frame(cx));
         visual.run_until_parked();
@@ -1372,8 +1372,17 @@ mod tests {
             "180",
             "an empty draft returns to the latest accepted value"
         );
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Closing immediately after typing must commit too. The close callback
+        // can run before the next frame observes the number field's blur.
+        visual.update(|window, cx| window.focus(&input_focus, cx));
+        visual.update(|window, cx| {
+            input.update(cx, |input, cx| input.select_all(window, cx));
+            window.input("42", cx);
+        });
+        visual.run_until_parked();
         visual.update(|window, cx| window.click("plugin-settings-close", cx));
+        visual.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(200));
         visual.update(|window, cx| window.render_frame(cx));
         visual.run_until_parked();
         view.read_with(visual, |view, _| {
@@ -1382,7 +1391,7 @@ mod tests {
         let report = responder
             .join()
             .expect("the command responder must not panic");
-        assert_eq!(report.observed, [30, 31, 180]);
+        assert_eq!(report.observed, [30, 31, 180, 42]);
         assert!(
             report.unexpected.is_empty(),
             "an empty draft must not issue a configuration command: {:?}",
@@ -1406,7 +1415,7 @@ mod tests {
     /// the fixture started with.
     fn respond_to_integer_commands(
         endpoint: PluginServiceEndpoint,
-        expected: [i64; 3],
+        expected: &[i64],
     ) -> IntegerCommandReport {
         let mut report = IntegerCommandReport {
             observed: Vec::new(),

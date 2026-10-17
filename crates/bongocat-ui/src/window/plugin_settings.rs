@@ -374,6 +374,7 @@ impl SettingsView {
             return;
         };
         if draft.open && !window.has_active_dialog(cx) {
+            self.commit_number_drafts(window, cx);
             self.plugin_settings = None;
             return;
         }
@@ -508,16 +509,43 @@ impl SettingsView {
     }
 
     /// Close the panel and drop its draft.
-    pub(super) fn close_plugin_settings(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn close_plugin_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_number_drafts(window, cx);
         self.plugin_settings = None;
         cx.notify();
+    }
+
+    /// Commit completed edits before the dialog drops its controls.
+    ///
+    /// A close callback can run before the next frame observes the focus
+    /// change, so relying on blur reconciliation here would lose a value typed
+    /// immediately before clicking the dialog's close action.
+    fn commit_number_drafts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(draft) = self.plugin_settings.as_ref() else {
+            return;
+        };
+        let plugin = draft.plugin.clone();
+        let fields = draft
+            .numbers
+            .borrow()
+            .entities
+            .iter()
+            .filter(|(_, state)| state.dirty)
+            .map(|(key, state)| (key.clone(), state.input.clone()))
+            .collect::<Vec<_>>();
+        for (key, input) in fields {
+            if !commit_plugin_number(&plugin, &key, &input, self, window, cx) {
+                restore_plugin_number(&plugin, &key, &input, self, window, cx);
+            }
+            clear_number_draft(self, &key);
+        }
     }
 
     /// Write the number field that was being edited when it lost the keyboard.
     ///
     /// Blur is observed from the frame rather than awaited as an event, which is
-    /// what makes leaving the field by any route -- a click, a Tab, closing the
-    /// panel -- save the value that was typed instead of dropping it. An
+    /// what makes leaving the field by any route -- a click, a Tab, or closing
+    /// the panel -- save the value that was typed instead of dropping it. An
     /// unparsable draft is not a value the protocol can carry, so it is put back
     /// to what the plugin last published rather than written.
     fn commit_left_number(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1092,7 +1120,8 @@ fn build_plugin_settings_dialog(
                 .cancel_text(close_label)
                 .show_cancel(true)
                 .on_cancel(move |_, window, cx| {
-                    let _ = cancel_view.update(cx, |view, cx| view.close_plugin_settings(cx));
+                    let _ =
+                        cancel_view.update(cx, |view, cx| view.close_plugin_settings(window, cx));
                     window.close_dialog(cx);
                     true
                 }),
@@ -1107,8 +1136,8 @@ fn build_plugin_settings_dialog(
                     Button::new("plugin-settings-close")
                         .label(close_label)
                         .on_click(move |_, window, cx| {
-                            let _ =
-                                footer_view.update(cx, |view, cx| view.close_plugin_settings(cx));
+                            let _ = footer_view
+                                .update(cx, |view, cx| view.close_plugin_settings(window, cx));
                             window.close_dialog(cx);
                         }),
                 ),
