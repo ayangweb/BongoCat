@@ -90,6 +90,7 @@ fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
                 keyboard_up: 1,
                 mouse_down: 1,
                 mouse_up: 1,
+                ..InputActivity::default()
             },
         ),
     ] {
@@ -213,6 +214,7 @@ fn preview_and_device_activity_use_the_real_audio_output() {
             keyboard_up: 2,
             mouse_down: 1,
             mouse_up: 1,
+            ..InputActivity::default()
         },
     });
     assert_no_audio_error(&typed);

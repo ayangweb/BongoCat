@@ -709,6 +709,20 @@ mod tests {
         keyboard_up: 2,
         mouse_down: 1,
         mouse_up: 1,
+        space_down: 1,
+        space_up: 1,
+        enter_down: 1,
+        enter_up: 1,
+        backspace_down: 1,
+        backspace_up: 1,
+        tab_down: 1,
+        tab_up: 1,
+        shift_left_down: 1,
+        shift_left_up: 1,
+        shift_right_down: 1,
+        shift_right_up: 1,
+        ctrl_left_down: 1,
+        ctrl_left_up: 1,
     };
 
     /// A plugin is sent the activity contract it asked for, and only that one.

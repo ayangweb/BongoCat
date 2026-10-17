@@ -51,35 +51,46 @@ plugins build successfully. Renaming or removing a source plugin must not leave
 a stale package discoverable in the Development catalog. This cleanup is generic,
 does not recognize historical plugin IDs, and never touches installed data.
 
-### Activity is four counters, not one
+### Activity is four device totals plus special-key counters
 
 `Capability::InputActivityV1` gates `HostMessage::InputActivity`, which carries
-`InputActivity { keyboard_down, keyboard_up, mouse_down, mouse_up }` — four
-monotonic totals counted since the process started. The plugin compares them with
-the values it saw last, which is what a coalesced, best-effort signal has to be
-read as: an idle desktop costs one comparison per poll and no message, and an
-edge that arrived between two polls is not lost.
+four monotonic device totals (`keyboard_down`, `keyboard_up`, `mouse_down`,
+`mouse_up`) plus down/up subsets for a bounded set of physical special keys:
+Space, main/keypad Enter, Backspace, Tab, left/right Shift and left Control. The
+plugin compares them with the values it saw last, which is what a coalesced,
+best-effort signal has to be read as: an idle desktop costs one comparison per
+poll and no message, and an edge that arrived between two polls is not lost.
 
-The counters are anonymous in exactly the way ADR-0091 requires. Nothing about
-which key, button, modifier or pointer position produced an edge crosses the
-boundary; the four numbers are the whole message, and the privacy argument is
-unchanged. `Capability::KeyboardActivityV1` and `HostMessage::KeyboardActivity`
-remain in the protocol: a plugin built against the older message keeps receiving
-it and keeps working. The registry picks the message by capability, never by
-protocol version, and a plugin that declared the newer capability is not sent the
-older message as well — it did not ask for two signals, and the duplicate would
-double every sound it plays.
+The special-key subset follows Thock's `KeyMapper` and soundpack lookup. Thock
+maps Space to `space`, both Return and keypad Enter to `enter`, key code 51
+(Backspace/Delete) to `del`, Tab to `tab`, the two Shift keys to
+`shiftLeft`/`shiftRight`, and left Control to `ctrlLeft`. It does not map right
+Control, and it never selects a `backspace` group. The runtime therefore counts
+the physical usages that can reach those groups and the plugin uses the same
+names. A key group missing from a pack falls back to `default`; if the group
+exists but its selected direction has no recordings, playback is silent rather
+than falling back a second time.
+
+The counters still do not expose letters, symbols, text, pointer position or
+mouse-button identity, so the privacy argument is unchanged.
+`Capability::KeyboardActivityV1` and `HostMessage::KeyboardActivity` remain in
+the protocol: a plugin built against the older message keeps receiving it and
+keeps working. The registry picks the message by capability, never by protocol
+version, and a plugin that declared the newer capability is not sent the older
+message as well — it did not ask for two signals, and the duplicate would double
+every sound it plays.
 
 ### The runtime counts four edges, per device
 
-`InputDiagnostics` gains `keyboard_release`, `mouse_activity` and `mouse_release`
-beside the existing `keyboard_activity`. A captured release is a physical edge
-whatever the pressed set believed about it, so it is counted even when the press
-it belongs to is already gone; a reconciled release and the release a reset
-invents are the runtime's own correction and are counted only by the
-reconciliation counters. A repeat is the platform re-sending a press, not a
-second one, so it moves no counter. `RuntimeClient::input_diagnostics` hands the
-counter block to the plugin owner without copying the model or the pressed set.
+`InputDiagnostics` gains `keyboard_release`, `mouse_activity`, `mouse_release`
+and the special-key subsets beside the existing `keyboard_activity`. A captured
+release is a physical edge whatever the pressed set believed about it, so it is
+counted even when the press it belongs to is already gone; a reconciled release
+and the release a reset invents are the runtime's own correction and are counted
+only by the reconciliation counters. A repeat is the platform re-sending a
+press, not a second one, so it moves no counter.
+`RuntimeClient::input_diagnostics` hands the counter block to the plugin owner
+without copying the model or the pressed set.
 
 ### A plugin may publish a list of choices
 
@@ -150,10 +161,19 @@ so neither surface can ambiguously resolve a control or choice.
 The plugin carries 25 sound sets copied out of Thock's public soundpack registry
 and compiled into its own executable with `include_bytes!`, so nothing it needs
 is fetched at runtime and no audio dependency or key-sounds rule enters the
-host. Of each set it keeps only the groups it can address — the keyboard
-`default` group and the mouse `left`/`right` groups, split into their `down` and
-`up` recordings. Per-key recordings are dropped: the host reports anonymous
-activity and no key identity, so no code path could ever address them.
+host. Of each set it keeps only the groups it can address: the keyboard
+`default`, `space`, `enter`, `del`, `tab`, `shiftLeft`, `shiftRight` and
+`ctrlLeft` groups, plus the mouse `left`/`right` groups, each split into `down`
+and `up` recordings. Letter and symbol groups are dropped because no product
+surface can address them. `backspace` and `ctrlRight` are also omitted because
+Thock's mapper never selects those groups.
+
+When a keyboard batch contains exactly one addressable special key and no
+ordinary keys, the plugin selects that key's group. A batch with several keys,
+or with a special key mixed with an ordinary key, uses `default` and plays once;
+the counters cannot identify the individual keys in that batch, and guessing
+would either play the wrong recording or play several sounds for one coalesced
+edge.
 
 Configuration is a closed vocabulary: `volume`, `cooldown_ms`, `mouse_enabled`,
 `keyboard_pack`, `mouse_pack`, and one `*_pack` key per action. A per-action value

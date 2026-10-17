@@ -21,14 +21,57 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 /// a coalesced signal that was dropped while the host was busy cannot then be
 /// miscounted, and a plugin that started late still sees a consistent picture.
 ///
-/// Nothing about which key, button, modifier or pointer position produced an
-/// edge is here — the four numbers are the whole message.
+/// The only keyboard identities here are a small set of physical special keys
+/// that Thock addresses by their own soundpack groups. Letters, symbols, text
+/// and pointer position still never cross this boundary.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputActivity {
     pub keyboard_down: u64,
     pub keyboard_up: u64,
     pub mouse_down: u64,
     pub mouse_up: u64,
+    /// Space presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub space_down: u64,
+    /// Space releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub space_up: u64,
+    /// Enter presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub enter_down: u64,
+    /// Enter releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub enter_up: u64,
+    /// Backspace presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub backspace_down: u64,
+    /// Backspace releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub backspace_up: u64,
+    /// Tab presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub tab_down: u64,
+    /// Tab releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub tab_up: u64,
+    /// Left Shift presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub shift_left_down: u64,
+    /// Left Shift releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub shift_left_up: u64,
+    /// Right Shift presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub shift_right_down: u64,
+    /// Right Shift releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub shift_right_up: u64,
+    /// Left Control presses, a subset of `keyboard_down`.
+    #[serde(default)]
+    pub ctrl_left_down: u64,
+    /// Left Control releases, a subset of `keyboard_up`.
+    #[serde(default)]
+    pub ctrl_left_up: u64,
 }
 
 impl InputActivity {
@@ -66,12 +109,14 @@ pub enum Capability {
     PersistentState,
     /// Anonymous, coalesced keyboard-down activity; message contract version 1.
     KeyboardActivityV1,
-    /// Anonymous keyboard/mouse edge counters; message contract version 1.
+    /// Keyboard/mouse edge counters with a small physical special-key subset;
+    /// message contract version 1.
     ///
     /// It supersedes [`Capability::KeyboardActivityV1`] for a plugin that has to
     /// tell a press from a release, or a key from a mouse button: the message it
-    /// gates carries four monotonic counters rather than one, and still carries
-    /// no key identity, text, modifiers or button identity.
+    /// gates carries four device totals plus monotonic counters for the special
+    /// keys whose Thock sound groups this product can address. It carries no
+    /// letters, symbols, text, pointer position or mouse-button identity.
     InputActivityV1,
     /// The plugin may publish bounded [`UiNode::IconText`] display nodes.
     IconTextV1,
@@ -463,13 +508,13 @@ pub enum HostMessage {
     KeyboardActivity {
         elapsed_ms: u64,
     },
-    /// Anonymous device activity, as four monotonic counters.
+    /// Device activity as monotonic totals and special-key counters.
     ///
-    /// The host counts unique captured edges per device and direction; the
-    /// plugin compares them with the ones it saw last. Nothing about which key,
-    /// button, modifier or pointer position produced an edge crosses this
-    /// message, and repeats and reconciliation do not move any counter, so a
-    /// plugin cannot reconstruct what was typed from it.
+    /// The host counts unique captured edges per device and direction, plus a
+    /// bounded subset of physical special keys that have their own Thock sound
+    /// groups. The plugin compares them with the ones it saw last. Letters,
+    /// symbols, text, pointer position and mouse-button identity do not cross
+    /// this message, and repeats and reconciliation do not move any counter.
     ///
     /// Counters rather than events because the boundary is a coalesced,
     /// best-effort signal: the plugin plays a sound for "the keyboard was
@@ -951,6 +996,20 @@ mod tests {
                         keyboard_up: 2,
                         mouse_down: 1,
                         mouse_up: 1,
+                        space_down: 1,
+                        space_up: 1,
+                        enter_down: 1,
+                        enter_up: 1,
+                        backspace_down: 1,
+                        backspace_up: 1,
+                        tab_down: 1,
+                        tab_up: 1,
+                        shift_left_down: 1,
+                        shift_left_up: 1,
+                        shift_right_down: 1,
+                        shift_right_up: 1,
+                        ctrl_left_down: 1,
+                        ctrl_left_up: 1,
                     },
                 },
             },
@@ -972,6 +1031,20 @@ mod tests {
                 keyboard_up: 2,
                 mouse_down: 1,
                 mouse_up: 1,
+                space_down: 1,
+                space_up: 1,
+                enter_down: 1,
+                enter_up: 1,
+                backspace_down: 1,
+                backspace_up: 1,
+                tab_down: 1,
+                tab_up: 1,
+                shift_left_down: 1,
+                shift_left_up: 1,
+                shift_right_down: 1,
+                shift_right_up: 1,
+                ctrl_left_down: 1,
+                ctrl_left_up: 1,
             }
         );
         assert!(activity.advanced_since(InputActivity::default()));

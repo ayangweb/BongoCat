@@ -9,12 +9,13 @@ sounds this plugin can actually address, writes them under `resources/packs/`,
 and rewrites the two files that describe them — `resources/index.json` for
 provenance and `src/packs.rs` for the build.
 
-Only the part of a pack this plugin can play is kept. A pack's per-key sounds
-(space, enter, one file per letter) are deliberately dropped: the host hands a
-plugin anonymous device activity and no key identity (ADR-0091), so the keyboard
-plays from the pack's `default` group and the mouse from its left/right groups.
-Keeping the rest would multiply the size of every set for sounds nothing could
-ever address.
+Only the part of a pack this plugin can play is kept. The keyboard keeps the
+groups Thock selects by physical keys whose identity crosses the plugin activity
+contract: `default`, `space`, `enter`, `del`, `tab`, `shiftLeft`, `shiftRight`
+and `ctrlLeft`. Thock maps Backspace to `del`, so a pack's `backspace` group is
+unreachable in Thock and is not carried. A group a pack does not carry falls
+back to `default` exactly as Thock does. Letter and symbol groups are
+deliberately dropped because no product surface can address them.
 
 A pack whose license does not permit redistribution is refused rather than
 reviewed case by case: Thock's own `Mamba Elite` pack is licensed for the Thock
@@ -43,7 +44,19 @@ REGISTRY_MANIFEST = (
 )
 
 #: Where a pack's playable sounds live, per category.
-GROUPS = {"keyboard": ("default",), "mouse": ("left", "right")}
+GROUPS = {
+    "keyboard": (
+        "default",
+        "space",
+        "enter",
+        "del",
+        "tab",
+        "shiftLeft",
+        "shiftRight",
+        "ctrlLeft",
+    ),
+    "mouse": ("left", "right"),
+}
 
 #: The licenses an asset may be redistributed under. Anything else is refused.
 DISTRIBUTABLE = {"mit", "cc0", "pixabay content license"}
@@ -82,16 +95,29 @@ class Staged:
     folder: Path
     down: list[str]
     up: list[str]
+    groups: dict[str, tuple[list[str], list[str]]]
 
 
-def playable_names(category: str, config: dict) -> tuple[list[str], list[str]]:
-    down: list[str] = []
-    up: list[str] = []
+def playable_names(
+    category: str, config: dict
+) -> tuple[list[str], list[str], dict[str, tuple[list[str], list[str]]]]:
+    groups: dict[str, tuple[list[str], list[str]]] = {}
     for group in GROUPS[category]:
         sounds = config["sounds"].get(group, {})
-        down += sounds.get("down", [])
-        up += sounds.get("up", [])
-    return sorted(set(down)), sorted(set(up))
+        group_down = sounds.get("down", [])
+        group_up = sounds.get("up", [])
+        if group_down or group_up:
+            groups[group] = (group_down, group_up)
+    # `down`/`up` are the device's default group, not the union of every group:
+    # the panel warns from `supports_key_up`, and a pack whose only release
+    # recordings belong to special keys still has no default release sound.
+    if category == "keyboard":
+        down = sorted(set(groups.get("default", ([], []))[0]))
+        up = sorted(set(groups.get("default", ([], []))[1]))
+    else:
+        down = sorted({name for files, _ in groups.values() for name in files})
+        up = sorted({name for _, files in groups.values() for name in files})
+    return down, up, groups
 
 
 def rust_sound_list(category: str, pack_id: str, names: list[str]) -> str:
@@ -130,7 +156,7 @@ def main() -> None:
                 with zipfile.ZipFile(download) as source:
                     source.extractall(folder)
                 config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
-                down, up = playable_names(category, config)
+                down, up, groups = playable_names(category, config)
                 if not down:
                     skipped.append(f"{metadata['name']}: no playable sounds")
                     continue
@@ -144,7 +170,16 @@ def main() -> None:
                 )
                 taken_ids.add(pack_id)
                 staged.append(
-                    Staged(pack_id, category, metadata["name"], entry, folder, down, up)
+                    Staged(
+                        pack_id,
+                        category,
+                        metadata["name"],
+                        entry,
+                        folder,
+                        down,
+                        up,
+                        groups,
+                    )
                 )
 
         if PACKS_DIRECTORY.exists():
@@ -156,8 +191,10 @@ def main() -> None:
             "registry_updated": manifest["lastUpdated"],
             "policy": (
                 "Only soundpacks whose license permits redistribution are carried, "
-                "and each keeps only the groups this plugin can address: the "
-                "keyboard `default` group and the mouse left/right groups."
+                "and each keeps the keyboard groups Thock selects by key "
+                "(default, space, enter, del, tab, shiftLeft, shiftRight and "
+                "ctrlLeft) plus the mouse left/right groups. A missing keyboard "
+                "group falls back to `default` at playback."
             ),
             "packs": [],
         }
@@ -180,6 +217,15 @@ def main() -> None:
             "    pub supports_key_up: bool,",
             "    pub down: &'static [&'static [u8]],",
             "    pub up: &'static [&'static [u8]],",
+            "    /// The per-key groups Thock resolves before falling back to `default`.",
+            "    pub key_groups: &'static [KeyGroupAsset],",
+            "}",
+            "",
+            "/// One named group from a soundpack's config.",
+            "pub struct KeyGroupAsset {",
+            "    pub name: &'static str,",
+            "    pub down: &'static [&'static [u8]],",
+            "    pub up: &'static [&'static [u8]],",
             "}",
             "",
             "pub static PACKS: &[PackAsset] = &[",
@@ -189,12 +235,21 @@ def main() -> None:
             destination = PACKS_DIRECTORY / pack.category / pack.id
             destination.mkdir(parents=True, exist_ok=True)
             files = {}
-            for name in [*pack.down, *pack.up]:
+            names = sorted(
+                {
+                    name
+                    for down, up in pack.groups.values()
+                    for name in (*down, *up)
+                },
+                key=lambda name: int(name.removesuffix(".wav")),
+            )
+            for name in names:
                 data = (pack.folder / name).read_bytes()
                 (destination / name).write_bytes(data)
                 audio_bytes += len(data)
                 files[name] = hashlib.sha256(data).hexdigest()
             metadata = pack.entry["metadata"]
+            groups = pack.groups
             index["packs"].append(
                 {
                     "id": pack.id,
@@ -206,6 +261,13 @@ def main() -> None:
                     "license": pack.entry["license"],
                     "source": pack.entry["download"]["url"],
                     "files": files,
+                    "groups": {
+                        name: {
+                            "down": down,
+                            "up": up,
+                        }
+                        for name, (down, up) in groups.items()
+                    },
                 }
             )
             rust += [
@@ -217,6 +279,7 @@ def main() -> None:
                 f"        supports_key_up: {str(bool(pack.up)).lower()},",
                 f"        down:{rust_sound_list(pack.category, pack.id, pack.down)},",
                 f"        up:{rust_sound_list(pack.category, pack.id, pack.up)},",
+                f"        key_groups:{rust_key_groups(pack.category, pack.id, groups)},",
                 "    },",
             ]
         rust += ["];", ""]
@@ -230,6 +293,25 @@ def main() -> None:
             print(f"refused: {line}")
     finally:
         shutil.rmtree(work)
+
+
+def rust_key_groups(
+    category: str,
+    pack_id: str,
+    groups: dict[str, tuple[list[str], list[str]]],
+) -> str:
+    if not groups:
+        return " &[]"
+    entries = []
+    for name, (down, up) in groups.items():
+        entries.append(
+            "        KeyGroupAsset {\n"
+            f'            name: "{name}",\n'
+            f"            down:{rust_sound_list(category, pack_id, down)},\n"
+            f"            up:{rust_sound_list(category, pack_id, up)},\n"
+            "        }"
+        )
+    return " &[\n" + ",\n".join(entries) + ",\n    ]"
 
 
 if __name__ == "__main__":

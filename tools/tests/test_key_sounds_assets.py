@@ -39,6 +39,20 @@ RESERVED_ID = "auto"
 #: a set that cannot be redistributed cannot be embedded in a distributed build.
 DISTRIBUTABLE = {"mit", "cc0", "pixabay content license"}
 
+#: The exact Thock groups the plugin can address. Keeping this closed prevents an
+#: unreachable `backspace`/`ctrlRight` group from creeping back into the assets.
+KEYBOARD_GROUPS = {
+    "default",
+    "space",
+    "enter",
+    "del",
+    "tab",
+    "shiftLeft",
+    "shiftRight",
+    "ctrlLeft",
+}
+MOUSE_GROUPS = {"left", "right"}
+
 
 def read(path):
     return path.read_text(encoding="utf-8")
@@ -124,11 +138,11 @@ class KeySoundsAssetTests(unittest.TestCase):
         blocks = self.source.split("    PackAsset {")[1:]
         self.assertEqual(len(blocks), len(self.packs))
         for pack, block in zip(self.packs, blocks):
-            up = re.search(r"(?s)        up:(.*?)\n    },", block)
-            self.assertIsNotNone(up, f"{pack['id']} has no up list")
+            if pack["category"] != "keyboard":
+                continue
             declares = re.search(r"supports_key_up: (true|false),", block)
             self.assertIsNotNone(declares, f"{pack['id']} declares no supports_key_up")
-            has_release = "include_bytes!" in up.group(1)
+            has_release = bool(pack["groups"]["default"]["up"])
             self.assertEqual(
                 declares.group(1) == "true",
                 has_release,
@@ -157,7 +171,7 @@ class KeySoundsAssetTests(unittest.TestCase):
         )
 
     def test_each_set_keeps_only_what_a_plugin_can_address(self):
-        """No per-key recordings: the host never reports which key moved."""
+        """Only groups the plugin can address are embedded."""
         for pack in self.packs:
             names = sorted(pack["files"], key=lambda name: int(name.removesuffix(".wav")))
             self.assertTrue(names, f"{pack['id']} carries no sound")
@@ -167,6 +181,29 @@ class KeySoundsAssetTests(unittest.TestCase):
                 all(pack["files"][name] for name in names),
                 f"{pack['id']} records an empty digest",
             )
+            declared = {
+                name
+                for group in pack["groups"].values()
+                for direction in ("down", "up")
+                for name in group[direction]
+            }
+            self.assertEqual(
+                set(names),
+                declared,
+                f"{pack['id']} embeds a file no group names, or the reverse",
+            )
+        for pack in self.packs:
+            expected = (
+                KEYBOARD_GROUPS
+                if pack["category"] == "keyboard"
+                else MOUSE_GROUPS
+            )
+            with self.subTest(pack=pack["id"]):
+                self.assertLessEqual(
+                    set(pack["groups"]),
+                    expected,
+                    f"{pack['id']} carries a group Thock cannot address",
+                )
         categories = {pack["category"] for pack in self.packs}
         self.assertEqual(
             categories,

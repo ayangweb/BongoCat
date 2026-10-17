@@ -491,6 +491,34 @@ pub struct InputDiagnostics {
     /// after the runtime had already forgotten the press is still a release the
     /// user performed.
     pub keyboard_release: u64,
+    /// Captured space presses, a subset of [`Self::keyboard_activity`].
+    pub space_activity: u64,
+    /// Captured space releases, a subset of [`Self::keyboard_release`].
+    pub space_release: u64,
+    /// Captured Enter presses, a subset of [`Self::keyboard_activity`].
+    pub enter_activity: u64,
+    /// Captured Enter releases, a subset of [`Self::keyboard_release`].
+    pub enter_release: u64,
+    /// Captured Backspace presses, a subset of [`Self::keyboard_activity`].
+    pub backspace_activity: u64,
+    /// Captured Backspace releases, a subset of [`Self::keyboard_release`].
+    pub backspace_release: u64,
+    /// Captured Tab presses, a subset of [`Self::keyboard_activity`].
+    pub tab_activity: u64,
+    /// Captured Tab releases, a subset of [`Self::keyboard_release`].
+    pub tab_release: u64,
+    /// Captured left-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_left_activity: u64,
+    /// Captured left-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_left_release: u64,
+    /// Captured right-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_right_activity: u64,
+    /// Captured right-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_right_release: u64,
+    /// Captured left-Control presses, a subset of [`Self::keyboard_activity`].
+    pub ctrl_left_activity: u64,
+    /// Captured left-Control releases, a subset of [`Self::keyboard_release`].
+    pub ctrl_left_release: u64,
     /// Unique captured mouse button downs, without identities or coordinates.
     pub mouse_activity: u64,
     /// Unique captured mouse button releases, without identities or coordinates.

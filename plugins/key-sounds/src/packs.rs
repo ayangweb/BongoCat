@@ -16,6 +16,15 @@ pub struct PackAsset {
     pub supports_key_up: bool,
     pub down: &'static [&'static [u8]],
     pub up: &'static [&'static [u8]],
+    /// The per-key groups Thock resolves before falling back to `default`.
+    pub key_groups: &'static [KeyGroupAsset],
+}
+
+/// One named group from a soundpack's config.
+pub struct KeyGroupAsset {
+    pub name: &'static str,
+    pub down: &'static [&'static [u8]],
+    pub up: &'static [&'static [u8]],
 }
 
 pub static PACKS: &[PackAsset] = &[
@@ -57,6 +66,65 @@ pub static PACKS: &[PackAsset] = &[
                 "/resources/packs/keyboard/skcm-blue/102.wav"
             )),
         ],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/5.wav"
+                    )),
+                ],
+                up: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/101.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/skcm-blue/102.wav"
+                    )),
+                ],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/skcm-blue/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/skcm-blue/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/skcm-blue/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/skcm-blue/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "black-abs",
@@ -87,6 +155,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-abs/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-abs/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-abs/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-abs/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-abs/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-abs/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "black-pbt",
@@ -117,6 +269,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-pbt/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-pbt/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-pbt/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-pbt/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/black-pbt/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/black-pbt/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "blue-abs",
@@ -147,6 +383,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-abs/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-abs/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-abs/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-abs/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-abs/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-abs/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "blue-pbt",
@@ -177,6 +497,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-pbt/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-pbt/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-pbt/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-pbt/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/blue-pbt/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/blue-pbt/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "brown-abs",
@@ -207,6 +611,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-abs/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-abs/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-abs/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-abs/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-abs/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-abs/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "brown-pbt",
@@ -237,6 +725,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-pbt/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-pbt/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-pbt/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-pbt/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/brown-pbt/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/brown-pbt/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "red-abs",
@@ -267,6 +839,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-abs/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-abs/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-abs/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-abs/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-abs/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-abs/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "red-pbt",
@@ -297,6 +953,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-pbt/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-pbt/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-pbt/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-pbt/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/red-pbt/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/red-pbt/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "holy-panda",
@@ -330,6 +1070,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/holy-panda/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/holy-panda/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/holy-panda/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/holy-panda/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/holy-panda/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/holy-panda/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/holy-panda/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/holy-panda/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/holy-panda/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/holy-panda/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/holy-panda/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "alpaca",
@@ -363,6 +1156,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/alpaca/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/alpaca/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/alpaca/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/alpaca/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/alpaca/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/alpaca/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/alpaca/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/alpaca/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/alpaca/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/alpaca/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/alpaca/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "crystal-purple",
@@ -393,6 +1239,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/crystal-purple/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/crystal-purple/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/crystal-purple/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/crystal-purple/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/crystal-purple/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/crystal-purple/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "oreo",
@@ -423,6 +1353,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/oreo/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/oreo/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/oreo/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/oreo/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/oreo/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/oreo/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "ink-black",
@@ -456,6 +1470,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/ink-black/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-black/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-black/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-black/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-black/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-black/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-black/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-black/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-black/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-black/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-black/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "ink-red",
@@ -489,6 +1556,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/ink-red/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-red/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-red/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-red/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-red/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/ink-red/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-red/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-red/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-red/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-red/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/ink-red/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "turquoise-tealios",
@@ -522,6 +1642,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/turquoise-tealios/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/turquoise-tealios/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/turquoise-tealios/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/turquoise-tealios/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/turquoise-tealios/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/turquoise-tealios/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/turquoise-tealios/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/turquoise-tealios/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/turquoise-tealios/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/turquoise-tealios/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/turquoise-tealios/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "box-navy",
@@ -555,6 +1728,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/box-navy/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/box-navy/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/box-navy/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/box-navy/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/box-navy/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/box-navy/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/box-navy/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/box-navy/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/box-navy/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/box-navy/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/box-navy/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "cream",
@@ -588,6 +1814,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/cream/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/cream/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/cream/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/cream/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/cream/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/cream/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/cream/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/cream/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/cream/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/cream/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/cream/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "purple-hybrid-pbt",
@@ -618,6 +1897,90 @@ pub static PACKS: &[PackAsset] = &[
             )),
         ],
         up: &[],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/purple-hybrid-pbt/20.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/purple-hybrid-pbt/21.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/purple-hybrid-pbt/22.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/purple-hybrid-pbt/23.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/purple-hybrid-pbt/24.wav"
+                    )),
+                ],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/57.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/28.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "del",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/14.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "tab",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/15.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/42.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "shiftRight",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/54.wav"
+                ))],
+                up: &[],
+            },
+            KeyGroupAsset {
+                name: "ctrlLeft",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/purple-hybrid-pbt/29.wav"
+                ))],
+                up: &[],
+            },
+        ],
     },
     PackAsset {
         id: "unknown",
@@ -651,6 +2014,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/unknown/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "unknown-unknown",
@@ -718,6 +2134,93 @@ pub static PACKS: &[PackAsset] = &[
                 "/resources/packs/keyboard/unknown-unknown/107.wav"
             )),
         ],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/5.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/6.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/7.wav"
+                    )),
+                ],
+                up: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/101.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/102.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/103.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/104.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/105.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/106.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/unknown-unknown/107.wav"
+                    )),
+                ],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown-unknown/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown-unknown/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown-unknown/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/unknown-unknown/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "buckling-spring",
@@ -751,6 +2254,59 @@ pub static PACKS: &[PackAsset] = &[
             env!("CARGO_MANIFEST_DIR"),
             "/resources/packs/keyboard/buckling-spring/101.wav"
         ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/351.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "quack",
@@ -763,6 +2319,14 @@ pub static PACKS: &[PackAsset] = &[
             "/resources/packs/keyboard/quack/1.wav"
         ))],
         up: &[],
+        key_groups: &[KeyGroupAsset {
+            name: "default",
+            down: &[include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/quack/1.wav"
+            ))],
+            up: &[],
+        }],
     },
     PackAsset {
         id: "orochi-v2",
@@ -790,6 +2354,30 @@ pub static PACKS: &[PackAsset] = &[
                 "/resources/packs/mouse/orochi-v2/4.wav"
             )),
         ],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "left",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/orochi-v2/1.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/orochi-v2/2.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "right",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/orochi-v2/3.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/orochi-v2/4.wav"
+                ))],
+            },
+        ],
     },
     PackAsset {
         id: "pixabay-unknown-unknown",
@@ -816,6 +2404,30 @@ pub static PACKS: &[PackAsset] = &[
                 env!("CARGO_MANIFEST_DIR"),
                 "/resources/packs/mouse/pixabay-unknown-unknown/4.wav"
             )),
+        ],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "left",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/pixabay-unknown-unknown/1.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/pixabay-unknown-unknown/2.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "right",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/pixabay-unknown-unknown/3.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/mouse/pixabay-unknown-unknown/4.wav"
+                ))],
+            },
         ],
     },
 ];

@@ -345,10 +345,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &plugin_storage_root,
             16,
             dev_plugins::source(),
-            // The two devices and the two directions are read as four counters
-            // and nothing else: no key, button, modifier or pointer position is
-            // ever measured here, so a plugin cannot learn what was typed from
-            // the activity it is given (ADR-0091).
+            // Device totals plus the bounded special-key subset let the plugin
+            // use Thock's per-key groups without receiving letters, text or
+            // pointer position (ADR-0091).
             Some(Box::new(move || {
                 let diagnostics = activity_runtime.input_diagnostics();
                 bongocat_plugin_service::InputActivity {
@@ -356,6 +355,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     keyboard_up: diagnostics.keyboard_release,
                     mouse_down: diagnostics.mouse_activity,
                     mouse_up: diagnostics.mouse_release,
+                    space_down: diagnostics.space_activity,
+                    space_up: diagnostics.space_release,
+                    enter_down: diagnostics.enter_activity,
+                    enter_up: diagnostics.enter_release,
+                    backspace_down: diagnostics.backspace_activity,
+                    backspace_up: diagnostics.backspace_release,
+                    tab_down: diagnostics.tab_activity,
+                    tab_up: diagnostics.tab_release,
+                    shift_left_down: diagnostics.shift_left_activity,
+                    shift_left_up: diagnostics.shift_left_release,
+                    shift_right_down: diagnostics.shift_right_activity,
+                    shift_right_up: diagnostics.shift_right_release,
+                    ctrl_left_down: diagnostics.ctrl_left_activity,
+                    ctrl_left_up: diagnostics.ctrl_left_release,
                 }
             })),
         ) {

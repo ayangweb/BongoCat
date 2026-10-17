@@ -16,13 +16,18 @@ committed here so the plugin never has to be online to play a sound.
 keyboard, 3 mouse); this plugin carries 25 of them, and of each set it keeps
 only the groups it can address:
 
-- the keyboard `default` group, split into its `down` and `up` recordings;
+- the keyboard `default`, `space`, `enter`, `del`, `tab`, `shiftLeft`,
+  `shiftRight` and `ctrlLeft` groups, each split into its `down` and `up`
+  recordings;
 - the mouse `left` and `right` groups, likewise split.
 
-A pack's per-key recordings (space, enter, one file per letter) are deliberately
-dropped. The host hands a plugin anonymous device activity and no key identity
-(ADR-0091), so no code path could ever address them; keeping them would multiply
-the size of every set for sounds nothing can play.
+These are the physical keys whose identity crosses the bounded plugin activity
+contract (ADR-0093). Thock maps Backspace to `del`, so its unreachable
+`backspace` group is not carried; the right Control key is likewise absent from
+Thock's `KeyMapper`. Letter and symbol groups are deliberately dropped because
+no product surface can address them. When a pack does not carry one of these
+groups, playback falls back to `default`; when the group exists but has no
+recording for a direction, that direction is silent, matching Thock.
 
 ## Licenses
 

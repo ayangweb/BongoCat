@@ -3,9 +3,10 @@
 //! The plugin plays a press sound and a release sound for the keyboard and for
 //! the mouse, out of sound sets embedded in this executable, so nothing it needs
 //! is fetched at runtime and no audio dependency or key-sounds rule enters the
-//! host. What it is told is anonymous: four counters, one per device and
-//! direction (ADR-0091). Everything else — which set is in use, how loud, how
-//! often, and what a set with no release sound does — is decided here.
+//! host. What it is told is device totals plus the physical special keys that
+//! Thock addresses by name (ADR-0091/ADR-0093). Everything else — which set is
+//! in use, how loud, how often, and what a set with no release sound does — is
+//! decided here.
 #![forbid(unsafe_code)]
 
 mod packs;
@@ -58,6 +59,110 @@ enum Action {
     KeyboardUp,
     MouseDown,
     MouseUp,
+}
+
+/// The key group a keyboard edge plays from.
+///
+/// These names are the subset of Thock's `KeyMapper` whose physical keys cross
+/// the plugin activity contract. Thock maps Backspace to `del`, not
+/// `backspace`, and keeps the two Shift keys and left Control separate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeyGroup {
+    Default,
+    Space,
+    Enter,
+    Del,
+    Tab,
+    ShiftLeft,
+    ShiftRight,
+    CtrlLeft,
+}
+
+impl KeyGroup {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Space => "space",
+            Self::Enter => "enter",
+            Self::Del => "del",
+            Self::Tab => "tab",
+            Self::ShiftLeft => "shiftLeft",
+            Self::ShiftRight => "shiftRight",
+            Self::CtrlLeft => "ctrlLeft",
+        }
+    }
+
+    /// The group a single-key batch selects, if the batch is exactly one of the
+    /// special-key subsets.
+    fn for_edge(activity: InputActivity, before: InputActivity, release: bool) -> Self {
+        let total = if release {
+            activity.keyboard_up.saturating_sub(before.keyboard_up)
+        } else {
+            activity.keyboard_down.saturating_sub(before.keyboard_down)
+        };
+        let special = [
+            (
+                Self::Space,
+                activity.space_down,
+                before.space_down,
+                activity.space_up,
+                before.space_up,
+            ),
+            (
+                Self::Enter,
+                activity.enter_down,
+                before.enter_down,
+                activity.enter_up,
+                before.enter_up,
+            ),
+            (
+                Self::Del,
+                activity.backspace_down,
+                before.backspace_down,
+                activity.backspace_up,
+                before.backspace_up,
+            ),
+            (
+                Self::Tab,
+                activity.tab_down,
+                before.tab_down,
+                activity.tab_up,
+                before.tab_up,
+            ),
+            (
+                Self::ShiftLeft,
+                activity.shift_left_down,
+                before.shift_left_down,
+                activity.shift_left_up,
+                before.shift_left_up,
+            ),
+            (
+                Self::ShiftRight,
+                activity.shift_right_down,
+                before.shift_right_down,
+                activity.shift_right_up,
+                before.shift_right_up,
+            ),
+            (
+                Self::CtrlLeft,
+                activity.ctrl_left_down,
+                before.ctrl_left_down,
+                activity.ctrl_left_up,
+                before.ctrl_left_up,
+            ),
+        ];
+        special
+            .into_iter()
+            .find_map(|(group, down, before_down, up, before_up)| {
+                let delta = if release {
+                    up.saturating_sub(before_up)
+                } else {
+                    down.saturating_sub(before_down)
+                };
+                (delta == total && delta > 0).then_some(group)
+            })
+            .unwrap_or(Self::Default)
+    }
 }
 
 impl Action {
@@ -240,6 +345,14 @@ impl AudioError {
 struct DecodedPack {
     down: Vec<SamplesBuffer>,
     up: Vec<SamplesBuffer>,
+    /// Per-key groups keyed by the name Thock uses in a soundpack config.
+    key_groups: BTreeMap<&'static str, DecodedKeyGroup>,
+}
+
+#[derive(Default)]
+struct DecodedKeyGroup {
+    down: Vec<SamplesBuffer>,
+    up: Vec<SamplesBuffer>,
 }
 
 impl DecodedPack {
@@ -253,6 +366,24 @@ impl DecodedPack {
             &self.up
         } else {
             &self.down
+        }
+    }
+
+    /// The recordings one keyboard edge plays, resolved exactly as Thock does:
+    /// the named group when the pack carries it, otherwise `default`. A group
+    /// that exists but has no recording for this direction is silent; it does
+    /// not fall back a second time.
+    ///
+    /// Mouse edges and the legacy keyboard message have no key group and keep
+    /// the device-level lists.
+    fn keyboard_sounds(&self, action: Action, group: KeyGroup) -> &[SamplesBuffer] {
+        let Some(group) = self.key_groups.get(group.name()) else {
+            return self.sounds(action);
+        };
+        if action.is_release() {
+            &group.up
+        } else {
+            &group.down
         }
     }
 }
@@ -302,6 +433,20 @@ fn decode_pack(pack: &'static PackAsset) -> Result<DecodedPack, AudioError> {
                 decoded.down.push(sound);
             }
         }
+    }
+    for group in pack.key_groups {
+        let mut sounds = DecodedKeyGroup::default();
+        for (release, files) in [(false, group.down), (true, group.up)] {
+            for bytes in files {
+                let sound = decode_sound(bytes)?;
+                if release {
+                    sounds.up.push(sound);
+                } else {
+                    sounds.down.push(sound);
+                }
+            }
+        }
+        decoded.key_groups.insert(group.name, sounds);
     }
     Ok(decoded)
 }
@@ -670,12 +815,23 @@ impl KeySounds {
     }
 
     /// Play one sound from a resolved pack.
-    fn play_from_pack(&mut self, action: Action, pack: &'static PackAsset) {
+    fn play_from_pack(
+        &mut self,
+        action: Action,
+        key_group: Option<KeyGroup>,
+        pack: &'static PackAsset,
+    ) {
         // The cache is asked for the set, and one sound is taken out of it: the
         // borrow ends before playback starts, so only the sound being played is
         // copied out of the cache.
         let chosen = match self.library.load(pack) {
-            Ok(decoded) => self.pick.pick(decoded.sounds(action)).cloned(),
+            Ok(decoded) => {
+                let sounds = match key_group {
+                    Some(group) => decoded.keyboard_sounds(action, group),
+                    None => decoded.sounds(action),
+                };
+                self.pick.pick(sounds).cloned()
+            }
             Err(error) => {
                 self.error = Some(error);
                 return;
@@ -688,8 +844,12 @@ impl KeySounds {
         self.error = self.playback.play(sound, self.volume).err();
     }
 
+    fn play_keyboard(&mut self, action: Action, key_group: KeyGroup) {
+        self.play_from_pack(action, Some(key_group), self.selection.pack(action));
+    }
+
     fn play(&mut self, action: Action) {
-        self.play_from_pack(action, self.selection.pack(action));
+        self.play_from_pack(action, None, self.selection.pack(action));
     }
 
     /// Resolve a published option, not the currently pinned action. "Follow"
@@ -724,7 +884,9 @@ impl KeySounds {
         self.error = None;
         if !self.paused && self.volume > 0 {
             self.playback.previewing = true;
-            self.play_from_pack(action, pack);
+            let key_group = matches!(action, Action::KeyboardDown | Action::KeyboardUp)
+                .then_some(KeyGroup::Default);
+            self.play_from_pack(action, key_group, pack);
             let mut keep = self.selection.ids();
             keep.push(pack.id);
             self.library.retain(&keep);
@@ -753,7 +915,15 @@ impl KeySounds {
                 Action::MouseUp => (activity.mouse_up, before.mouse_up),
             };
             if current > previous && self.admit(action, elapsed_ms) {
-                self.play(action);
+                let group = match action {
+                    Action::KeyboardDown => KeyGroup::for_edge(activity, before, false),
+                    Action::KeyboardUp => KeyGroup::for_edge(activity, before, true),
+                    Action::MouseDown | Action::MouseUp => {
+                        self.play(action);
+                        continue;
+                    }
+                };
+                self.play_keyboard(action, group);
             }
         }
     }
@@ -1042,7 +1212,14 @@ mod tests {
             let decoded = decode_pack(pack).unwrap_or_else(|_| panic!("{} decodes", pack.id));
             assert_eq!(decoded.down.len(), pack.down.len());
             assert_eq!(decoded.up.len(), pack.up.len());
-            for sound in decoded.down.iter().chain(&decoded.up) {
+            assert_eq!(decoded.key_groups.len(), pack.key_groups.len());
+            for sound in decoded
+                .down
+                .iter()
+                .chain(&decoded.up)
+                .chain(decoded.key_groups.values().flat_map(|group| &group.down))
+                .chain(decoded.key_groups.values().flat_map(|group| &group.up))
+            {
                 assert!(
                     sound.clone().count() > 0,
                     "{} carries an empty sound",
@@ -1056,6 +1233,282 @@ mod tests {
                 "{category:?} has no set to fall back to"
             );
         }
+    }
+
+    /// Thock resolves a named key group first and falls back to `default` only
+    /// when the pack has no such group. A group that exists but has no recording
+    /// for this direction is silent instead of falling back again.
+    #[test]
+    fn keyboard_edges_use_thocks_key_group_fallback() {
+        let with_space = PACKS
+            .iter()
+            .find(|pack| pack.key_groups.iter().any(|group| group.name == "space"))
+            .expect("the registry carries a space group");
+        let decoded = decode_pack(with_space).unwrap();
+        let space = decoded.key_groups.get("space").unwrap();
+        assert_eq!(
+            decoded
+                .keyboard_sounds(Action::KeyboardDown, KeyGroup::Space)
+                .len(),
+            space.down.len()
+        );
+        assert_eq!(
+            decoded
+                .keyboard_sounds(Action::KeyboardUp, KeyGroup::Space)
+                .len(),
+            space.up.len()
+        );
+        assert_eq!(
+            decoded
+                .keyboard_sounds(Action::KeyboardDown, KeyGroup::Default)
+                .len(),
+            decoded.down.len()
+        );
+
+        let no_space_up = PACKS
+            .iter()
+            .find(|pack| {
+                pack.category == PackCategory::Keyboard
+                    && pack
+                        .key_groups
+                        .iter()
+                        .any(|group| group.name == "space" && group.up.is_empty())
+            })
+            .expect("the registry carries a space group without release recordings");
+        let decoded = decode_pack(no_space_up).unwrap();
+        assert!(
+            decoded
+                .keyboard_sounds(Action::KeyboardUp, KeyGroup::Space)
+                .is_empty(),
+            "an existing group with no release recording must stay silent"
+        );
+
+        let no_space = PACKS
+            .iter()
+            .find(|pack| {
+                pack.category == PackCategory::Keyboard
+                    && pack.key_groups.iter().all(|group| group.name != "space")
+            })
+            .expect("the registry carries a keyboard set without a space group");
+        let decoded = decode_pack(no_space).unwrap();
+        assert_eq!(
+            decoded
+                .keyboard_sounds(Action::KeyboardDown, KeyGroup::Space)
+                .len(),
+            decoded.down.len()
+        );
+    }
+
+    /// A special-key group is selected only when its counter accounts for the
+    /// whole keyboard batch; a mixed batch still plays the default sound once,
+    /// rather than guessing which of several keys it was.
+    #[test]
+    fn special_key_edges_select_their_groups_without_double_playing() {
+        let before = InputActivity::default();
+        for (group, activity) in [
+            (
+                KeyGroup::Space,
+                InputActivity {
+                    keyboard_down: 1,
+                    space_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Enter,
+                InputActivity {
+                    keyboard_down: 1,
+                    enter_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Del,
+                InputActivity {
+                    keyboard_down: 1,
+                    backspace_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Tab,
+                InputActivity {
+                    keyboard_down: 1,
+                    tab_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::ShiftLeft,
+                InputActivity {
+                    keyboard_down: 1,
+                    shift_left_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::ShiftRight,
+                InputActivity {
+                    keyboard_down: 1,
+                    shift_right_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::CtrlLeft,
+                InputActivity {
+                    keyboard_down: 1,
+                    ctrl_left_down: 1,
+                    ..InputActivity::default()
+                },
+            ),
+        ] {
+            assert_eq!(KeyGroup::for_edge(activity, before, false), group);
+        }
+        assert_eq!(
+            KeyGroup::for_edge(
+                InputActivity {
+                    keyboard_down: 2,
+                    enter_down: 2,
+                    ..InputActivity::default()
+                },
+                before,
+                false,
+            ),
+            KeyGroup::Enter,
+            "main Enter and keypad Enter share the same Thock group"
+        );
+        for (group, activity) in [
+            (
+                KeyGroup::Space,
+                InputActivity {
+                    keyboard_up: 1,
+                    space_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Enter,
+                InputActivity {
+                    keyboard_up: 1,
+                    enter_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Del,
+                InputActivity {
+                    keyboard_up: 1,
+                    backspace_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::Tab,
+                InputActivity {
+                    keyboard_up: 1,
+                    tab_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::ShiftLeft,
+                InputActivity {
+                    keyboard_up: 1,
+                    shift_left_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::ShiftRight,
+                InputActivity {
+                    keyboard_up: 1,
+                    shift_right_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+            (
+                KeyGroup::CtrlLeft,
+                InputActivity {
+                    keyboard_up: 1,
+                    ctrl_left_up: 1,
+                    ..InputActivity::default()
+                },
+            ),
+        ] {
+            assert_eq!(KeyGroup::for_edge(activity, before, true), group);
+        }
+        assert_eq!(
+            KeyGroup::for_edge(
+                InputActivity {
+                    keyboard_up: 2,
+                    enter_up: 2,
+                    ..InputActivity::default()
+                },
+                before,
+                true,
+            ),
+            KeyGroup::Enter,
+            "main Enter and keypad Enter share the same Thock group"
+        );
+
+        assert_eq!(
+            KeyGroup::for_edge(
+                InputActivity {
+                    keyboard_down: 2,
+                    space_down: 1,
+                    enter_down: 1,
+                    ..InputActivity::default()
+                },
+                before,
+                false,
+            ),
+            KeyGroup::Default,
+            "two special keys in one batch are not guessed"
+        );
+        assert_eq!(
+            KeyGroup::for_edge(
+                InputActivity {
+                    keyboard_down: 2,
+                    space_down: 1,
+                    ..InputActivity::default()
+                },
+                before,
+                false,
+            ),
+            KeyGroup::Default,
+            "a special key mixed with an ordinary key is not guessed"
+        );
+
+        let mut plugin = KeySounds {
+            activity: Some(InputActivity::default()),
+            ..Default::default()
+        };
+        plugin.play_edges(
+            1,
+            InputActivity {
+                keyboard_down: 1,
+                space_down: 1,
+                ..InputActivity::default()
+            },
+        );
+        assert_eq!(plugin.activity.unwrap().keyboard_down, 1);
+        assert_eq!(plugin.playback.last_played.len(), 1);
+
+        plugin.playback.last_played.clear();
+        plugin.play_edges(
+            100,
+            InputActivity {
+                keyboard_down: 3,
+                space_down: 2,
+                ..InputActivity::default()
+            },
+        );
+        assert_eq!(
+            plugin.playback.last_played.len(),
+            1,
+            "a mixed batch is still one keyboard edge batch"
+        );
     }
 
     /// The configuration vocabulary is closed, and a value outside a control's
@@ -1326,6 +1779,7 @@ mod tests {
                     keyboard_up: 1,
                     mouse_down: 1,
                     mouse_up: 1,
+                    ..InputActivity::default()
                 },
             })
             .unwrap();
@@ -1350,6 +1804,7 @@ mod tests {
                     keyboard_up: 1,
                     mouse_down: 1,
                     mouse_up: 1,
+                    ..InputActivity::default()
                 },
             })
             .unwrap();
@@ -1383,6 +1838,7 @@ mod tests {
             keyboard_up: 1,
             mouse_down: 1,
             mouse_up: 1,
+            ..InputActivity::default()
         };
         let mut plugin = KeySounds::default();
         plugin
@@ -1773,6 +2229,7 @@ mod tests {
             keyboard_up: 1,
             mouse_down: 1,
             mouse_up: 1,
+            ..InputActivity::default()
         };
         plugin.play_edges(100, activity);
         assert_eq!(plugin.activity, Some(activity));

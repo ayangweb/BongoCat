@@ -18,8 +18,10 @@ An upgrade preserves plugin config/state, replaces registry metadata and restart
 an enabled process. A refused package must retain the previous selected version.
 
 > Amended by ADR-0093: the single keyboard-down counter below is superseded by
-> four per-device counters (`input_activity_v1`), the temporary MP3 evaluation
-> asset is removed, and the plugin now embeds its own sound sets. The privacy
+> four per-device counters plus a bounded physical special-key subset
+> (`input_activity_v1`), the temporary MP3 evaluation asset is removed, and the
+> plugin now embeds its own sound sets. Letters, symbols, text, pointer position
+> and mouse-button identity still never cross the boundary; the privacy
 > argument, the coalescing rule and the independent-process boundary are
 > unchanged.
 
