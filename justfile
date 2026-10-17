@@ -26,6 +26,18 @@ dev-plugins:
 plugin-catalog output *inputs:
     cargo run --locked -p bongocat-packaging -- --plugin-catalog {{output}} {{inputs}}
 
+# Build release plugin ZIPs without bundling them into the application.
+release-plugins target:
+    cargo run --locked -p bongocat-packaging -- --prepare-release-plugins {{target}}
+
+# Validate and render the shared bilingual plugin release notes.
+validate-plugin-changelogs:
+    python3 tools/release-plugin-changelog.py
+
+# Require the complete matrix, immutable previous versions and the application's key.
+release-plugin-catalog output previous *inputs:
+    cargo run --locked -p bongocat-packaging -- --release-plugin-catalog {{output}} {{previous}} {{inputs}}
+
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":
     cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"

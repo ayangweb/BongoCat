@@ -416,6 +416,12 @@ impl ReleaseTarget {
 enum Invocation {
     /// Build standalone local plugins into the Development plugin directory.
     PrepareDevPlugins,
+    PrepareReleasePlugins(ReleaseTarget),
+    ReleasePluginCatalog {
+        output: PathBuf,
+        previous: PathBuf,
+        inputs: Vec<(ReleaseTarget, PathBuf)>,
+    },
     PluginCatalog {
         output: PathBuf,
         inputs: Vec<(ReleaseTarget, PathBuf)>,
@@ -449,6 +455,12 @@ usage: cargo run -p bongocat-packaging -- [options]
 Builds the Production product and packages the host platform release artifacts.
 
 options:
+  --prepare-release-plugins <triple>
+                           build validated plugins for a release target into
+                           target/release-plugins/<platform>
+  --release-plugin-catalog <file> <previous-directory> <platform> <directory> ...
+                           validate all release targets and previous signed
+                           versions, sign and verify with the application's key
   --prepare-dev-plugins    build local plugins into ZIP packages under
                            target/plugins; installing them is the Development
                            product's own lifecycle. Takes no other option and
@@ -487,6 +499,42 @@ environment:
                            and the passphrase used to unlock it when signing";
 
     fn parse(arguments: Vec<String>) -> Result<Self> {
+        if arguments
+            .first()
+            .is_some_and(|arg| arg == "--prepare-release-plugins")
+        {
+            if arguments.len() != 2 {
+                return failure("--prepare-release-plugins requires exactly one target triple");
+            }
+            return Ok(Self::PrepareReleasePlugins(ReleaseTarget::parse(
+                &arguments[1],
+            )?));
+        }
+        if arguments
+            .first()
+            .is_some_and(|arg| arg == "--release-plugin-catalog")
+        {
+            if arguments.len() < 5 || arguments.len().is_multiple_of(2) {
+                return failure(
+                    "--release-plugin-catalog <output> <previous-directory> <platform> <directory> ...",
+                );
+            }
+            let parsed = Self::parse(
+                [
+                    vec!["--plugin-catalog".into(), arguments[1].clone()],
+                    arguments[3..].to_vec(),
+                ]
+                .concat(),
+            )?;
+            let Self::PluginCatalog { output, inputs } = parsed else {
+                unreachable!();
+            };
+            return Ok(Self::ReleasePluginCatalog {
+                output,
+                previous: PathBuf::from(&arguments[2]),
+                inputs,
+            });
+        }
         if arguments
             .iter()
             .any(|argument| argument == "--plugin-catalog")
@@ -689,6 +737,22 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
     match invocation {
         Invocation::PrepareDevPlugins => dev_plugins::prepare(&workspace_root()?)
             .map(|artifacts| ("Development plugins prepared successfully.", artifacts)),
+        Invocation::PrepareReleasePlugins(target) => {
+            dev_plugins::prepare_release(&workspace_root()?, target)
+                .map(|artifacts| ("Release plugins prepared successfully.", artifacts))
+        }
+        Invocation::ReleasePluginCatalog {
+            output,
+            previous,
+            inputs,
+        } => plugin_catalog::publish_release(
+            &workspace_root()?,
+            &output,
+            &inputs,
+            &previous,
+            &signing_material(),
+        )
+        .map(|artifacts| ("Release plugin catalog verified successfully.", artifacts)),
         Invocation::PluginCatalog { output, inputs } => {
             plugin_catalog::publish(&output, &inputs, &signing_material())
                 .map(|artifacts| ("Signed plugin catalog prepared successfully.", artifacts))

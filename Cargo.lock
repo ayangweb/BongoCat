@@ -951,6 +951,8 @@ version = "2.3.1"
 dependencies = [
  "bongocat-config",
  "bongocat-plugin-manager",
+ "bongocat-plugin-sdk",
+ "bongocat-update",
  "cargo-packager",
  "cargo-packager-updater",
  "flate2",

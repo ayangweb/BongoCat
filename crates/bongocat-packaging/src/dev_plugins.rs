@@ -25,43 +25,156 @@ pub(crate) const PLUGIN_OUTPUT_DIRECTORY: &str = "target/plugins";
 /// Returns the ZIP paths written, in workspace order.
 pub(super) fn prepare(workspace: &Path) -> Result<Vec<PathBuf>> {
     let output = workspace.join(PLUGIN_OUTPUT_DIRECTORY);
-    fs::create_dir_all(&output)?;
-    let mut packages = Vec::new();
+    prepare_into(workspace, &output, None)
+}
+
+pub(super) fn prepare_release(workspace: &Path, target: ReleaseTarget) -> Result<Vec<PathBuf>> {
+    // The input-source plugin links host system APIs. Do not label a host build
+    // as another platform, or silently cross-link a host-only SDK dependency.
+    if target != ReleaseTarget::host()? {
+        return failure("release plugins must be built on a runner of the target architecture");
+    }
+    let output = workspace
+        .join("target/release-plugins")
+        .join(target.manifest_platform());
+    prepare_into(workspace, &output, Some(target))
+}
+
+/// Resolve versions and binary names with Cargo, including inherited fields.
+/// Every checked-in plugin directory must be a real workspace package.
+pub(super) fn release_manifests(
+    workspace: &Path,
+) -> Result<Vec<(PathBuf, PluginManifest, Vec<u8>)>> {
+    use cargo_packager_updater::semver::{Version, VersionReq};
+    let report = Command::new("cargo")
+        .current_dir(workspace)
+        .args(["metadata", "--locked", "--no-deps", "--format-version", "1"])
+        .output()?;
+    if !report.status.success() {
+        return failure("Cargo could not resolve plugin workspace metadata");
+    }
+    let metadata: serde_json::Value = serde_json::from_slice(&report.stdout)?;
+    let packages = metadata["packages"]
+        .as_array()
+        .ok_or("missing Cargo packages")?;
+    let app = Version::parse(env!("CARGO_PKG_VERSION"))?;
+    let mut sources = Vec::new();
+    let mut ids = std::collections::BTreeSet::new();
     for entry in fs::read_dir(workspace.join("plugins"))? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
         }
         let source = entry.path();
-        let manifest = source.join(MANIFEST_FILE);
-        if !manifest.is_file() {
-            continue;
+        let cargo_path = source.join("Cargo.toml").canonicalize()?;
+        let package = packages
+            .iter()
+            .find(|package| {
+                package["manifest_path"].as_str().is_some_and(|path| {
+                    Path::new(path)
+                        .canonicalize()
+                        .is_ok_and(|path| path == cargo_path)
+                })
+            })
+            .ok_or("plugin directory is not a workspace package")?;
+        let bytes = fs::read(source.join(MANIFEST_FILE))?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        if value
+            .as_object()
+            .is_none_or(|map| map.keys().any(|key| key != "metadata" && key != "sha256"))
+        {
+            return failure("unknown plugin manifest fields");
         }
-        let bytes = fs::read(&manifest)?;
         let manifest: PluginManifest = serde_json::from_slice(&bytes)?;
+        let info = &manifest.metadata;
+        Version::parse(&info.version)?;
+        if !ids.insert(info.id.clone())
+            || package["version"].as_str() != Some(info.version.as_str())
+            || !VersionReq::parse(&info.app_versions)?.matches(&app)
+            || info.name.trim().is_empty()
+            || info.description.trim().is_empty()
+            || info.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
+            || !bongocat_plugin_manager::install::valid_basename(&info.id)
+            || !bongocat_plugin_manager::install::valid_basename(&info.entry)
+            || !package["targets"].as_array().is_some_and(|targets| {
+                targets.iter().any(|target| {
+                    target["name"].as_str() == Some(&info.entry)
+                        && target["kind"]
+                            .as_array()
+                            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+                })
+            })
+        {
+            return failure(format!(
+                "invalid release metadata or Cargo version/entry mismatch: {}",
+                info.id
+            ));
+        }
+        sources.push((source, manifest, bytes));
+    }
+    if sources.is_empty() {
+        return failure("no release plugins found");
+    }
+    sources.sort_by(|a, b| a.1.metadata.id.cmp(&b.1.metadata.id));
+    Ok(sources)
+}
+
+fn prepare_into(
+    workspace: &Path,
+    output: &Path,
+    target: Option<ReleaseTarget>,
+) -> Result<Vec<PathBuf>> {
+    fs::create_dir_all(output)?;
+    let mut packages = Vec::new();
+    let sources = if target.is_some() {
+        release_manifests(workspace)?
+    } else {
+        let mut sources = Vec::new();
+        for entry in fs::read_dir(workspace.join("plugins"))? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() && entry.path().join(MANIFEST_FILE).is_file() {
+                let bytes = fs::read(entry.path().join(MANIFEST_FILE))?;
+                sources.push((entry.path(), serde_json::from_slice(&bytes)?, bytes));
+            }
+        }
+        sources
+    };
+    for (source, manifest, bytes) in sources {
         for component in [&manifest.metadata.id, &manifest.metadata.entry] {
             if !bongocat_plugin_manager::install::valid_basename(component) {
                 return failure("local plugin id and entry must be safe basenames");
             }
         }
-        let output = Command::new("cargo")
+        let mut command = Command::new("cargo");
+        command
             .current_dir(workspace)
             .args(["build", "--locked", "--release", "--manifest-path"])
             .arg(source.join("Cargo.toml"))
-            .args(["--bin", &manifest.metadata.entry, "--message-format=json"])
-            .stderr(Stdio::inherit())
-            .output()?;
-        if !output.status.success() {
+            .args(["--bin", &manifest.metadata.entry, "--message-format=json"]);
+        if let Some(target) = target {
+            command.args(["--target", target.triple()]);
+        }
+        let report = command.stderr(Stdio::inherit()).output()?;
+        if !report.status.success() {
             return failure(format!(
                 "failed to build local plugin {}",
                 manifest.metadata.id
             ));
         }
-        let executable = executable_from_messages(&output.stdout, &manifest.metadata.entry)
+        let executable = executable_from_messages(&report.stdout, &manifest.metadata.entry)
             .ok_or("Cargo did not report the plugin executable")?;
-        packages.push(package_plugin(workspace, &manifest, &bytes, &executable)?);
+        let package = package_into(output, &manifest, &bytes, &executable)?;
+        if target.is_some() {
+            let store = tempfile::tempdir()?;
+            bongocat_plugin_manager::install::install_package(
+                store.path(),
+                None,
+                &fs::read(&package)?,
+            )?;
+        }
+        packages.push(package);
     }
-    prune_packages(&output, &packages)?;
+    prune_packages(output, &packages)?;
     Ok(packages)
 }
 
@@ -82,6 +195,7 @@ fn prune_packages(output: &Path, current: &[PathBuf]) -> Result<()> {
 }
 
 /// Write one plugin's ZIP, containing its manifest and its executable.
+#[cfg(test)]
 pub(super) fn package_plugin(
     workspace: &Path,
     manifest: &PluginManifest,
@@ -89,7 +203,16 @@ pub(super) fn package_plugin(
     executable: &Path,
 ) -> Result<PathBuf> {
     let output = workspace.join(PLUGIN_OUTPUT_DIRECTORY);
-    fs::create_dir_all(&output)?;
+    package_into(&output, manifest, manifest_bytes, executable)
+}
+
+fn package_into(
+    output: &Path,
+    manifest: &PluginManifest,
+    manifest_bytes: &[u8],
+    executable: &Path,
+) -> Result<PathBuf> {
+    fs::create_dir_all(output)?;
     let name = format!("{}-{}.zip", manifest.metadata.id, manifest.metadata.version);
     let mut binary = Vec::new();
     fs::File::open(executable)?.read_to_end(&mut binary)?;
@@ -110,7 +233,7 @@ pub(super) fn package_plugin(
     archive.write_all(&binary)?;
     let bytes = archive.finish()?.into_inner();
 
-    let staged = tempfile::NamedTempFile::new_in(&output)?;
+    let staged = tempfile::NamedTempFile::new_in(output)?;
     staged.as_file().write_all(&bytes)?;
     staged.as_file().sync_all()?;
     let destination = output.join(&name);
