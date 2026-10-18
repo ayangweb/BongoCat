@@ -126,6 +126,35 @@ and `tools/validate-locales.py` pass.
 macOS `just dev-smoke` also passes bounded startup, settings window destruction
 and reopening with a fresh entity, runtime continuity and normal shutdown.
 
+## Update affordances
+
+The page header carries only the two catalog actions: a borderless text
+`Refresh` control and a primary `Update all` control. The subtitle sentence and
+its container are removed rather than kept beside the actions. An installed card
+whose catalog offers a newer version carries a compact outlined `Tag` beside its
+installed version; the update itself remains the existing refresh-icon button.
+
+`Update all` reuses the same per-plugin `InstallAvailable` command, not a second
+installation path. Updates run serially because the service owns one catalog
+download job at a time. A failed plugin does not stop the remaining updates and
+is reported by name in a notification, so the same control can retry the cards
+that still offer an update. The batch is reserved on the GPUI thread, so a
+second click cannot queue another batch, and all card controls stay disabled
+until the last update finishes. `InstallAvailable` acknowledges job submission
+rather than byte delivery, so the window waits for the service's catalog job to
+finish before retiring the card's loading state or starting the next package.
+
+The footer now wraps as one unit: the switch and the command group may move onto
+separate lines, while the command group keeps whole icon buttons on each line
+instead of clipping them at the card edge. Uninstall uses the component's danger
+outline variant, which gives the trash glyph and border the theme's red semantic
+color and the component's hover/active states without a solid red fill.
+
+Plugin cards do not offer a separate reset-data action. Uninstall removes only
+the executable package and retains the plugin's data, so a later reinstall
+continues from the same configuration and state. The lower-level manager reset
+operation remains internal and is not exposed through the Plugin Center.
+
 ## Remaining Work
 
 Manual macOS visual acceptance for the grid, settings modal and localized

@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "Centre de plugins",
-      "subtitle": "Étendez la fenêtre du modèle avec des plugins.",
       "empty": "Aucun plugin disponible."
     }
   },
@@ -556,9 +555,13 @@
     "install": "Installer",
     "update": "Mettre à jour",
     "refresh": "Actualiser",
+    "update_all": "Tout mettre à jour",
+    "update_available": "Mise à jour disponible",
+    "refreshing": "Actualisation…",
+    "update_all_success": "Tous les plugins sont à jour.",
+    "update_all_failed": "Échec de la mise à jour : %{names}. Réessayez de tout mettre à jour.",
     "available_version": "Version disponible %{version}",
     "uninstall": "Désinstaller",
-    "reset_data": "Réinitialiser les données",
     "settings": {
       "open": "Paramètres",
       "title": "Paramètres de %{name}",

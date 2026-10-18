@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "插件中心",
-      "subtitle": "使用插件扩展模型窗口。",
       "empty": "暂无可用插件。"
     }
   },
@@ -556,9 +555,13 @@
     "install": "安装",
     "update": "更新",
     "refresh": "刷新",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "refreshing": "正在刷新…",
+    "update_all_success": "所有插件均已更新。",
+    "update_all_failed": "以下插件更新失败：%{names}。请重试更新全部。",
     "available_version": "可用版本 %{version}",
     "uninstall": "卸载",
-    "reset_data": "重置数据",
     "settings": {
       "open": "设置",
       "title": "%{name} 设置",

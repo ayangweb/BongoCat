@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "مركز الإضافات",
-      "subtitle": "وسّع نافذة النموذج باستخدام الإضافات.",
       "empty": "لا توجد إضافات متاحة."
     }
   },
@@ -556,9 +555,13 @@
     "install": "تثبيت",
     "update": "تحديث",
     "refresh": "تحديث القائمة",
+    "update_all": "تحديث الكل",
+    "update_available": "يتوفر تحديث",
+    "refreshing": "جارٍ التحديث…",
+    "update_all_success": "جميع الإضافات محدّثة.",
+    "update_all_failed": "تعذر تحديث: %{names}. حاول تحديث الكل مرة أخرى.",
     "available_version": "الإصدار المتاح %{version}",
     "uninstall": "إلغاء التثبيت",
-    "reset_data": "إعادة تعيين البيانات",
     "settings": {
       "open": "الإعدادات",
       "title": "إعدادات %{name}",

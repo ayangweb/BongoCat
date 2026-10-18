@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "外掛中心",
-      "subtitle": "使用外掛擴充模型視窗。",
       "empty": "暫無可用外掛程式。"
     }
   },
@@ -556,9 +555,13 @@
     "install": "安裝",
     "update": "更新",
     "refresh": "重新整理",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "refreshing": "正在重新整理…",
+    "update_all_success": "所有外掛程式均已更新。",
+    "update_all_failed": "以下外掛程式更新失敗：%{names}。請重試更新全部。",
     "available_version": "可用版本 %{version}",
     "uninstall": "卸載",
-    "reset_data": "重設資料",
     "settings": {
       "open": "設定",
       "title": "%{name} 設定",

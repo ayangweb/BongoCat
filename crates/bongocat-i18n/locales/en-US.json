@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "Plugin Center",
-      "subtitle": "Extend the model window with plugins.",
       "empty": "No plugins available."
     }
   },
@@ -556,9 +555,13 @@
     "install": "Install",
     "update": "Update",
     "refresh": "Refresh",
+    "update_all": "Update all",
+    "update_available": "Update available",
+    "refreshing": "Refreshing…",
+    "update_all_success": "All plugins are up to date.",
+    "update_all_failed": "Could not update: %{names}. Try Update all again.",
     "available_version": "Available version %{version}",
     "uninstall": "Uninstall",
-    "reset_data": "Reset data",
     "settings": {
       "open": "Settings",
       "title": "%{name} settings",

@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "플러그인 센터",
-      "subtitle": "플러그인으로 모델 창을 확장하세요.",
       "empty": "사용 가능한 플러그인이 없습니다."
     }
   },
@@ -556,9 +555,13 @@
     "install": "설치",
     "update": "업데이트",
     "refresh": "새로 고침",
+    "update_all": "모두 업데이트",
+    "update_available": "업데이트 가능",
+    "refreshing": "새로 고치는 중…",
+    "update_all_success": "모든 플러그인이 최신 상태입니다.",
+    "update_all_failed": "업데이트 실패: %{names}. 모두 업데이트를 다시 시도하세요.",
     "available_version": "사용 가능한 버전 %{version}",
     "uninstall": "제거",
-    "reset_data": "데이터 초기화",
     "settings": {
       "open": "설정",
       "title": "%{name} 설정",

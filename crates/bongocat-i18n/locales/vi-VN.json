@@ -30,7 +30,6 @@
     },
     "plugins": {
       "title": "Trung tâm tiện ích",
-      "subtitle": "Mở rộng cửa sổ mô hình bằng tiện ích.",
       "empty": "Không có plugin khả dụng."
     }
   },
@@ -556,9 +555,13 @@
     "install": "Cài đặt",
     "update": "Cập nhật",
     "refresh": "Làm mới",
+    "update_all": "Cập nhật tất cả",
+    "update_available": "Có bản cập nhật",
+    "refreshing": "Đang làm mới…",
+    "update_all_success": "Tất cả plugin đã được cập nhật.",
+    "update_all_failed": "Không thể cập nhật: %{names}. Hãy thử cập nhật tất cả lần nữa.",
     "available_version": "Phiên bản có sẵn %{version}",
     "uninstall": "Gỡ cài đặt",
-    "reset_data": "Đặt lại dữ liệu",
     "settings": {
       "open": "Cài đặt",
       "title": "Cài đặt %{name}",

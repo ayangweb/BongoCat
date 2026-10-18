@@ -73,16 +73,19 @@ impl SettingsView {
     pub fn show_plugins_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let locale = self.display_language().catalog_locale();
         for key in [
-            "navigation.plugins.subtitle",
             "navigation.plugins.empty",
             "plugins.loading",
             "plugins.refresh",
+            "plugins.refreshing",
+            "plugins.update_all",
+            "plugins.update_available",
+            "plugins.update_all_success",
+            "plugins.update_all_failed",
             "plugins.retry",
             "plugins.discovery_failed",
             "plugins.install",
             "plugins.update",
             "plugins.uninstall",
-            "plugins.reset_data",
             "plugins.enable",
             "plugins.disable",
             "plugins.failed",

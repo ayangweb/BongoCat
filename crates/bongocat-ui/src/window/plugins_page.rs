@@ -12,6 +12,7 @@
 //! cached state, draws it, and forwards typed commands.
 use super::*;
 use bongocat_plugin_sdk::{ActionIcon, ConfigValue, UiNode};
+use gpui_kit::component::{Sizable as _, tag::Tag};
 use gpui_kit::{AnyElement, assets::IconName, base::TestSupportExt as _};
 use plugins_host::{PluginCardView, PluginHubState, PluginInFlight, PluginPackageOperation};
 
@@ -24,37 +25,82 @@ use plugins_host::{PluginCardView, PluginHubState, PluginInFlight, PluginPackage
 pub(super) const PLUGIN_CARD_MIN_WIDTH: f32 = 300.0;
 pub(super) fn content(
     view: &mut SettingsView,
-    window: &Window,
+    window: &mut Window,
     language: SettingsLanguage,
     cx: &mut Context<SettingsView>,
 ) -> AnyElement {
     let state: PluginHubState = view.plugin_host.snapshot();
     let locale = language.catalog_locale();
+    if let Some(failed) = view.plugin_host.take_update_report() {
+        let message = if failed.is_empty() {
+            bongocat_i18n::text(locale, "plugins.update_all_success").to_owned()
+        } else {
+            let names = failed
+                .iter()
+                .map(|id| {
+                    state
+                        .cards
+                        .iter()
+                        .find(|card| &card.id == id)
+                        .map_or(id.as_str(), |card| card.copy(locale).0)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            bongocat_i18n::format_text(locale, "plugins.update_all_failed", &[("names", names)])
+        };
+        window.push_notification(
+            Notification::new()
+                .id::<PluginUpdateAllNotification>()
+                .message(message)
+                .with_type(if failed.is_empty() {
+                    NotificationType::Success
+                } else {
+                    NotificationType::Error
+                }),
+            cx,
+        );
+    }
     let handle = cx.entity();
     let refresh_view = handle.clone();
+    let update_view = handle.clone();
     let mut column = div().flex().flex_col().gap_4().w_full().child(
         div()
             .flex()
+            .flex_wrap()
             .items_center()
+            .justify_end()
             .gap_3()
             .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(bongocat_i18n::text(locale, "navigation.plugins.subtitle")),
-            )
-            .child(
                 Button::new("plugin-refresh")
-                    .icon(IconName::RefreshCw)
-                    .tooltip(bongocat_i18n::text(locale, "plugins.refresh"))
-                    .loading(state.loading && state.cards.is_empty())
-                    .disabled(state.loading)
+                    .text()
+                    .label(bongocat_i18n::text(
+                        locale,
+                        if state.loading || state.refreshing() {
+                            "plugins.refreshing"
+                        } else {
+                            "plugins.refresh"
+                        },
+                    ))
+                    .disabled(
+                        state.loading
+                            || state.refreshing()
+                            || state.updating_all()
+                            || state.package_busy(),
+                    )
                     .on_click(move |_, _, cx| {
                         refresh_view.update(cx, |view, cx| {
-                            view.update_plugin_host(|host| host.rescan(), cx)
+                            view.refresh_plugin_catalog(cx);
                         });
+                    }),
+            )
+            .child(
+                Button::new("plugin-update-all")
+                    .primary()
+                    .label(bongocat_i18n::text(locale, "plugins.update_all"))
+                    .loading(state.updating_all())
+                    .disabled(!state.can_update_all())
+                    .on_click(move |_, _, cx| {
+                        update_view.update(cx, |view, cx| view.update_all_plugins(cx));
                     }),
             ),
     );
@@ -76,10 +122,10 @@ pub(super) fn content(
                     Button::new("plugin-retry")
                         .icon(IconName::RefreshCw)
                         .tooltip(bongocat_i18n::text(locale, "plugins.retry"))
-                        .disabled(state.loading)
+                        .disabled(state.loading || state.refreshing() || state.package_busy())
                         .on_click(move |_, _, cx| {
                             retry_view.update(cx, |view, cx| {
-                                view.update_plugin_host(move |host| host.rescan(), cx);
+                                view.refresh_plugin_catalog(cx);
                             });
                         }),
                 ),
@@ -118,6 +164,8 @@ pub(super) fn content(
         .into_any_element()
 }
 
+struct PluginUpdateAllNotification;
+
 /// The glyph the host draws for one plugin-declared action.
 ///
 /// The protocol's icon set is closed and the plugin owns it, so this is a
@@ -143,7 +191,10 @@ fn card_view(
 ) -> impl IntoElement {
     // The center is busy only while it has nothing to show: what a plugin is
     // still publishing is the plugin's own state, not the catalog's.
-    let busy = state.loading && state.cards.is_empty();
+    let busy = (state.loading && state.cards.is_empty())
+        || state.pending_package(&card.id, PluginPackageOperation::Install)
+        || state.refreshing()
+        || state.updating_all();
     let installed = card.version.is_some();
     let enabled = card.enabled;
     let (name, description) = card.copy(locale);
@@ -159,18 +210,37 @@ fn card_view(
         .flex()
         .flex_col()
         .gap_1()
-        .child(div().font_semibold().child(name));
+        .child(div().min_w_0().font_semibold().child(name));
     if let Some(version) = card.version.clone() {
-        heading = heading.child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(bongocat_i18n::format_text(
-                    locale,
-                    "plugins.version",
-                    &[("version", version)],
-                )),
-        );
+        heading =
+            heading.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(bongocat_i18n::format_text(
+                        locale,
+                        "plugins.version",
+                        &[("version", version)],
+                    ))
+                    .when(installed && card.update_available, |row| {
+                        row.child(
+                            div()
+                                .id(SharedString::from(format!(
+                                    "plugin-update-badge-{}",
+                                    card.id
+                                )))
+                                .test_support()
+                                .text_xs()
+                                .child(Tag::info().outline().small().child(bongocat_i18n::text(
+                                    locale,
+                                    "plugins.update_available",
+                                ))),
+                        )
+                    }),
+            );
     }
     if let Some(version) = card
         .available_version
@@ -255,6 +325,7 @@ fn card_view(
         .test_support()
         .min_w_0()
         .flex_1()
+        .flex_basis(gpui_kit::Length::Auto)
         .flex()
         .flex_wrap()
         .items_center()
@@ -299,7 +370,7 @@ fn card_view(
                     },
                 ))
                 .loading(pending)
-                .disabled(busy || pending)
+                .disabled(busy || pending || state.loading || state.updating_all())
                 .on_click(move |_, _, cx| {
                     let id = id.clone();
                     install_view.update(cx, |view, cx| view.install_plugin_available(&id, cx));
@@ -313,7 +384,10 @@ fn card_view(
         .pt_3()
         .border_t_1()
         .border_color(cx.theme().border)
+        .min_w_0()
+        .w_full()
         .flex()
+        .flex_wrap()
         .items_center()
         .justify_between()
         .gap_3();
@@ -344,37 +418,22 @@ fn card_view(
                     });
                 }),
         );
-        let reset_pending = state.pending_package(&card.id, PluginPackageOperation::Reset);
         let uninstall_pending = state.pending_package(&card.id, PluginPackageOperation::Uninstall);
-        let reset_view = view.clone();
-        let reset_id = card.id.clone();
         let uninstall_view = view.clone();
         let uninstall_id = card.id.clone();
-        actions = actions
-            .child(
-                // Reset drops what a plugin stored, which is a clean slate rather
-                // than a replay of the same session: an eraser, not a restart.
-                Button::new(SharedString::from(format!("plugin-reset-{}", card.id)))
-                    .icon(IconName::Eraser)
-                    .tooltip(bongocat_i18n::text(locale, "plugins.reset_data"))
-                    .loading(reset_pending)
-                    .disabled(busy || reset_pending)
-                    .on_click(move |_, _, cx| {
-                        let id = reset_id.clone();
-                        reset_view.update(cx, |view, cx| view.reset_plugin_data(&id, cx));
-                    }),
-            )
-            .child(
-                Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
-                    .icon(IconName::Trash)
-                    .tooltip(bongocat_i18n::text(locale, "plugins.uninstall"))
-                    .loading(uninstall_pending)
-                    .disabled(busy || uninstall_pending)
-                    .on_click(move |_, _, cx| {
-                        let id = uninstall_id.clone();
-                        uninstall_view.update(cx, |view, cx| view.uninstall_plugin(&id, cx));
-                    }),
-            );
+        actions = actions.child(
+            Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
+                .danger()
+                .outline()
+                .icon(IconName::Trash)
+                .tooltip(bongocat_i18n::text(locale, "plugins.uninstall"))
+                .loading(uninstall_pending)
+                .disabled(busy || uninstall_pending)
+                .on_click(move |_, _, cx| {
+                    let id = uninstall_id.clone();
+                    uninstall_view.update(cx, |view, cx| view.uninstall_plugin(&id, cx));
+                }),
+        );
     }
     body.child(footer.child(actions))
 }
@@ -459,19 +518,41 @@ impl SettingsView {
 
     /// Install or update one entry the catalog offers.
     pub(super) fn install_plugin_available(&mut self, id: &str, cx: &mut Context<Self>) {
+        let state = self.plugin_host.snapshot();
+        if state.loading
+            || state.updating_all()
+            || state.pending_package(id, PluginPackageOperation::Install)
+        {
+            return;
+        }
         self.plugin_host
             .begin(PluginInFlight::package(id, PluginPackageOperation::Install));
         let id = id.to_owned();
-        self.update_plugin_host(move |host| host.install_available(&id), cx);
+        self.update_plugin_host(
+            move |host| {
+                host.install_available(&id);
+            },
+            cx,
+        );
         cx.notify();
     }
 
-    /// Drop one plugin's stored data, keeping its package.
-    pub(super) fn reset_plugin_data(&mut self, id: &str, cx: &mut Context<Self>) {
-        self.plugin_host
-            .begin(PluginInFlight::package(id, PluginPackageOperation::Reset));
-        let id = id.to_owned();
-        self.update_plugin_host(move |host| host.reset(&id), cx);
+    pub(super) fn refresh_plugin_catalog(&mut self, cx: &mut Context<Self>) {
+        let state = self.plugin_host.snapshot();
+        if state.loading || state.refreshing() || state.package_busy() || state.updating_all() {
+            return;
+        }
+        self.plugin_host.begin(PluginInFlight::Refresh);
+        self.update_plugin_host(|host| host.rescan(), cx);
+        cx.notify();
+    }
+
+    pub(super) fn update_all_plugins(&mut self, cx: &mut Context<Self>) {
+        let targets = self.plugin_host.begin_update_all();
+        if targets.is_empty() {
+            return;
+        }
+        self.update_plugin_host(move |host| host.update_all(targets), cx);
         cx.notify();
     }
 

@@ -23,7 +23,6 @@ pub(crate) enum PluginPackageOperation {
     /// Turning a plugin on or off. The switch is not a button, so it shows the
     /// in-flight state by staying inert rather than by spinning.
     Enable,
-    Reset,
     Uninstall,
 }
 
@@ -38,6 +37,8 @@ pub(crate) enum PluginPackageOperation {
 /// other as finished.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum PluginInFlight {
+    Refresh,
+    UpdateAll,
     Package {
         plugin: String,
         operation: PluginPackageOperation,
@@ -124,6 +125,31 @@ impl PluginHubState {
     pub(crate) fn pending_key(&self, plugin: &str, key: &str) -> bool {
         self.in_flight
             .contains_key(&PluginInFlight::configure(plugin, key))
+    }
+
+    pub(crate) fn updating_all(&self) -> bool {
+        self.in_flight.contains_key(&PluginInFlight::UpdateAll)
+    }
+
+    pub(crate) fn refreshing(&self) -> bool {
+        self.in_flight.contains_key(&PluginInFlight::Refresh)
+    }
+
+    pub(crate) fn package_busy(&self) -> bool {
+        self.in_flight
+            .keys()
+            .any(|command| matches!(command, PluginInFlight::Package { .. }))
+    }
+
+    pub(crate) fn can_update_all(&self) -> bool {
+        !self.loading
+            && !self.updating_all()
+            && !self.refreshing()
+            && !self.package_busy()
+            && self
+                .cards
+                .iter()
+                .any(|card| card.version.is_some() && card.update_available)
     }
 }
 
@@ -250,6 +276,7 @@ pub(crate) struct PluginHost {
     published: Arc<Mutex<PluginHubState>>,
     requests: Arc<Mutex<()>>,
     previews: Arc<Mutex<PreviewMailbox>>,
+    update_report: Arc<Mutex<Option<Vec<String>>>>,
 }
 
 impl Default for PluginHost {
@@ -259,6 +286,7 @@ impl Default for PluginHost {
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
             previews: Arc::default(),
+            update_report: Arc::default(),
         }
     }
 }
@@ -271,6 +299,7 @@ impl PluginHost {
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
             previews: Arc::default(),
+            update_report: Arc::default(),
         }
     }
 
@@ -320,6 +349,52 @@ impl PluginHost {
             .or_insert(1);
     }
 
+    /// Reserve the whole batch on the UI thread, before any background work.
+    pub(crate) fn begin_update_all(&self) -> Vec<String> {
+        let mut state = self
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !state.can_update_all() {
+            return Vec::new();
+        }
+        let targets = state
+            .cards
+            .iter()
+            .filter(|card| card.version.is_some() && card.update_available)
+            .map(|card| card.id.clone())
+            .collect::<Vec<_>>();
+        state.in_flight.insert(PluginInFlight::UpdateAll, 1);
+        targets
+    }
+
+    pub(crate) fn update_all(&self, targets: Vec<String>) {
+        let mut failed = Vec::new();
+        for id in targets {
+            // The batch marks each package as it starts, so the card being
+            // replaced shows its own progress while the batch control also spins.
+            self.begin(PluginInFlight::package(
+                &id,
+                PluginPackageOperation::Install,
+            ));
+            if !self.install_available(&id) {
+                failed.push(id);
+            }
+        }
+        *self
+            .update_report
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(failed);
+        self.finish(&PluginInFlight::UpdateAll);
+    }
+
+    pub(crate) fn take_update_report(&self) -> Option<Vec<String>> {
+        self.update_report
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
     fn finish(&self, command: &PluginInFlight) {
         let mut published = self
             .published
@@ -367,25 +442,41 @@ impl PluginHost {
 
     /// Scan the package store again, for the page's retry affordance.
     pub(crate) fn rescan(&self) {
-        let _request = self
-            .requests
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Ok(client) = self.client() else {
-            self.report_error("the plugin service is unavailable".to_owned());
-            return;
-        };
-        match client.refresh_blocking() {
-            Ok(snapshot) => self.publish(snapshot.into()),
-            Err(error) => self.report_command_error(error),
-        }
+        self.apply_command(PluginInFlight::Refresh, |client| client.refresh_blocking());
     }
 
-    pub(crate) fn install_available(&self, id: &str) {
+    pub(crate) fn install_available(&self, id: &str) -> bool {
         self.apply_command(
             PluginInFlight::package(id, PluginPackageOperation::Install),
-            |client| client.install_available_blocking(id),
-        );
+            |client| {
+                let mut snapshot = client.install_available_blocking(id)?;
+                let expected = snapshot
+                    .cards
+                    .iter()
+                    .find(|card| card.id == id)
+                    .and_then(|card| card.available_version.clone());
+                // InstallAvailable acknowledges job submission, not installation.
+                // Wait off the UI thread before retiring loading or starting the next ZIP.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+                while snapshot.loading {
+                    self.publish(snapshot.into());
+                    if std::time::Instant::now() >= deadline {
+                        return Err(PluginCommandError::Operation);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    snapshot = client.read_center_blocking()?;
+                }
+                let installed = expected.is_some()
+                    && snapshot.cards.iter().any(|card| {
+                        card.id == id && card.version == expected && !card.update_available
+                    });
+                if !installed {
+                    self.publish(snapshot.into());
+                    return Err(PluginCommandError::Operation);
+                }
+                Ok(snapshot)
+            },
+        )
     }
 
     pub(crate) fn set_enabled(&self, id: &str, enabled: bool) {
@@ -399,13 +490,6 @@ impl PluginHost {
         self.apply_command(
             PluginInFlight::package(id, PluginPackageOperation::Uninstall),
             |client| client.uninstall_blocking(id),
-        );
-    }
-
-    pub(crate) fn reset(&self, id: &str) {
-        self.apply_command(
-            PluginInFlight::package(id, PluginPackageOperation::Reset),
-            |client| client.reset_data_blocking(id),
         );
     }
 
@@ -495,7 +579,7 @@ impl PluginHost {
         &self,
         command_key: PluginInFlight,
         command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
-    ) {
+    ) -> bool {
         // Polling and command replies publish in request order. A slow poll
         // must not overwrite the newer state a configuration command returned.
         let _request = self
@@ -507,13 +591,19 @@ impl PluginHost {
         let Ok(client) = self.client() else {
             self.finish(&command_key);
             self.report_error("the plugin service is unavailable".to_owned());
-            return;
+            return false;
         };
         let result = command(&client);
         self.finish(&command_key);
         match result {
-            Ok(snapshot) => self.publish(snapshot.into()),
-            Err(error) => self.report_command_error(error),
+            Ok(snapshot) => {
+                self.publish(snapshot.into());
+                true
+            }
+            Err(error) => {
+                self.report_command_error(error);
+                false
+            }
         }
     }
 
@@ -646,6 +736,103 @@ mod tests {
         assert_eq!(card.copy("fr-FR").0, "A plugin with a longer title");
     }
 
+    #[test]
+    fn bulk_updates_wait_for_completion_continue_after_failure_and_can_retry() {
+        let (client, endpoint) = PluginServiceClient::bounded(8);
+        let host = PluginHost::new(client);
+        let mut cards = (0..3)
+            .map(|index| {
+                let mut card = sample_card();
+                card.id = format!("plugin-{index}");
+                card
+            })
+            .collect::<Vec<_>>();
+        let mut available = sample_card();
+        available.id = "not-installed".into();
+        available.version = None;
+        let mut current = sample_card();
+        current.id = "already-current".into();
+        current.update_available = false;
+        cards.extend([available, current]);
+        host.publish(PluginHubState {
+            cards: cards.clone(),
+            ..Default::default()
+        });
+        let targets = host.begin_update_all();
+        assert_eq!(targets, ["plugin-0", "plugin-1", "plugin-2"]);
+        assert!(
+            host.begin_update_all().is_empty(),
+            "a batch cannot be queued twice"
+        );
+        assert!(host.snapshot().updating_all());
+
+        let responder = std::thread::spawn(move || {
+            let mut observed = Vec::new();
+            let mut active = None;
+            let mut reads = 0;
+            loop {
+                let command = loop {
+                    if let Ok(Some(command)) = endpoint.try_recv() {
+                        break command;
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                };
+                match command {
+                    PluginCommand::InstallAvailable { id, reply } => {
+                        assert!(active.is_none(), "updates must not overlap catalog jobs");
+                        observed.push(id.clone());
+                        active = Some(id);
+                        reads = 0;
+                        let mut snapshot = plugin_center_snapshots(cards.clone());
+                        snapshot.loading = true;
+                        reply.respond(Ok(snapshot)).unwrap();
+                    }
+                    PluginCommand::ReadCenter { reply } => {
+                        reads += 1;
+                        if reads >= 2 {
+                            let id = active.take().unwrap();
+                            if id != "plugin-1" {
+                                let card = cards.iter_mut().find(|card| card.id == id).unwrap();
+                                card.version = card.available_version.clone();
+                                card.update_available = false;
+                            }
+                        }
+                        let mut snapshot = plugin_center_snapshots(cards.clone());
+                        snapshot.loading = active.is_some();
+                        reply.respond(snapshot).unwrap();
+                        if observed.len() == 3 && active.is_none() {
+                            return observed;
+                        }
+                    }
+                    _ => panic!("bulk updates only reuse install and read commands"),
+                }
+            }
+        });
+        host.update_all(targets);
+        assert_eq!(
+            responder.join().unwrap(),
+            ["plugin-0", "plugin-1", "plugin-2"]
+        );
+        let state = host.snapshot();
+        assert!(state.in_flight.is_empty());
+        assert_eq!(host.take_update_report(), Some(vec!["plugin-1".to_owned()]));
+        assert_eq!(host.take_update_report(), None);
+        assert_eq!(host.begin_update_all(), ["plugin-1"]);
+    }
+
+    #[test]
+    fn bulk_updates_release_all_controls_when_the_service_is_unavailable() {
+        let host = PluginHost::default();
+        host.publish(PluginHubState {
+            cards: vec![sample_card()],
+            ..Default::default()
+        });
+        let targets = host.begin_update_all();
+        host.update_all(targets);
+        assert!(host.snapshot().in_flight.is_empty());
+        assert_eq!(host.take_update_report(), Some(vec![sample_card().id]));
+    }
+
     /// What a window is still waiting for is the window's own bookkeeping: a state
     /// the service publishes while a command runs must not clear the control that
     /// is waiting for it.
@@ -655,7 +842,7 @@ mod tests {
         host.publish(PluginHubState::loading());
         host.begin(PluginInFlight::package(
             PLUGIN_ID,
-            PluginPackageOperation::Reset,
+            PluginPackageOperation::Uninstall,
         ));
         host.begin(PluginInFlight::action(PLUGIN_ID, "toggle"));
         host.begin(PluginInFlight::configure(PLUGIN_ID, "minutes"));
@@ -667,7 +854,7 @@ mod tests {
         });
         let state = host.snapshot();
         assert!(!state.loading);
-        assert!(state.pending_package(PLUGIN_ID, PluginPackageOperation::Reset));
+        assert!(state.pending_package(PLUGIN_ID, PluginPackageOperation::Uninstall));
         assert!(state.pending_action(PLUGIN_ID, "toggle"));
         assert!(state.pending_key(PLUGIN_ID, "minutes"));
         // Another plugin's controls are not held by this one's commands.
@@ -694,8 +881,6 @@ mod tests {
         host.uninstall(PLUGIN_ID);
         assert!(host.snapshot().cards.is_empty());
         assert!(data.join("state.json").is_file());
-        host.reset(PLUGIN_ID);
-        assert!(!data.exists());
         service.shutdown().unwrap();
     }
 
@@ -1042,6 +1227,52 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn update_actions_stay_inside_cards_and_wrap_as_a_whole_footer(cx: &mut TestAppContext) {
+        for width in [360., 480., 800., 1_200., 1_600.] {
+            // Pomodoro publishes three model-window controls on top of the
+            // lifecycle commands, which is the widest footer the center draws.
+            let mut card = sample_card();
+            card.actions.push(UiNode::Button {
+                id: "third".into(),
+                label: "Reset the timer".into(),
+                icon: Some(bongocat_plugin_sdk::ActionIcon::Restart),
+                loading: false,
+            });
+            let (_, visual) = card_page(cx, vec![card], width);
+            visual.update(|window, _| {
+                let card = window.find("plugin-card-com.example.card").bounds();
+                let toggle = window.find("plugin-toggle-com.example.card").bounds();
+                for id in ["first", "second", "third", "install", "uninstall"] {
+                    let id = if matches!(id, "first" | "second" | "third") {
+                        format!("plugin-action-com.example.card-{id}")
+                    } else {
+                        format!("plugin-{id}-com.example.card")
+                    };
+                    let button = window.find(SharedString::from(id)).bounds();
+                    assert!(
+                        button.left() >= card.left() && button.right() <= card.right(),
+                        "at {width}px each action must fit inside its card: {button:?} in {card:?}"
+                    );
+                    assert!(button.bottom() <= card.bottom());
+                    assert!(
+                        button.right() <= toggle.left()
+                            || button.left() >= toggle.right()
+                            || button.top() >= toggle.bottom()
+                            || button.bottom() <= toggle.top(),
+                        "actions must not overlap the switch"
+                    );
+                }
+                assert!(
+                    window
+                        .try_find("plugin-update-badge-com.example.card")
+                        .is_some()
+                );
+                assert!(window.try_find("plugin-update-all").is_some());
+            });
+        }
+    }
+
+    #[gpui_kit::test]
     fn every_action_button_carries_the_glyph_its_plugin_declared(cx: &mut TestAppContext) {
         use bongocat_plugin_sdk::ActionIcon;
         use gpui_kit::assets::IconName;
@@ -1084,7 +1315,7 @@ mod tests {
         let (_, visual) = card_page(cx, vec![card], 480.);
         visual.update(|window, _| {
             assert!(window.try_find("plugin-toggle-com.example.card").is_some());
-            assert!(window.try_find("plugin-reset-com.example.card").is_some());
+            assert!(window.try_find("plugin-reset-com.example.card").is_none());
             assert!(
                 window
                     .try_find("plugin-uninstall-com.example.card")
@@ -1496,21 +1727,28 @@ mod tests {
     fn plugin_center_snapshot(
         card: PluginCardView,
     ) -> bongocat_plugin_service::PluginCenterSnapshot {
+        plugin_center_snapshots(vec![card])
+    }
+
+    fn plugin_center_snapshots(cards: Vec<PluginCardView>) -> PluginCenterSnapshot {
         bongocat_plugin_service::PluginCenterSnapshot {
-            cards: vec![bongocat_plugin_service::PluginCard {
-                id: card.id,
-                name: card.name,
-                description: card.description,
-                localizations: card.localizations,
-                icon: card.icon,
-                enabled: card.enabled,
-                failed: card.failed,
-                version: card.version,
-                available_version: card.available_version,
-                update_available: card.update_available,
-                actions: card.actions,
-                settings: card.settings,
-            }],
+            cards: cards
+                .into_iter()
+                .map(|card| bongocat_plugin_service::PluginCard {
+                    id: card.id,
+                    name: card.name,
+                    description: card.description,
+                    localizations: card.localizations,
+                    icon: card.icon,
+                    enabled: card.enabled,
+                    failed: card.failed,
+                    version: card.version,
+                    available_version: card.available_version,
+                    update_available: card.update_available,
+                    actions: card.actions,
+                    settings: card.settings,
+                })
+                .collect(),
             error: None,
             loading: false,
         }
@@ -1525,7 +1763,7 @@ mod tests {
         view.update(visual, |view, _| {
             view.plugin_host.begin(PluginInFlight::package(
                 "com.example.card",
-                PluginPackageOperation::Reset,
+                PluginPackageOperation::Uninstall,
             ));
             view.plugin_host
                 .begin(PluginInFlight::action("com.example.card", "first"));
@@ -1535,7 +1773,7 @@ mod tests {
         visual.update(|window, cx| window.render_frame(cx));
         view.read_with(visual, |view, _| {
             let state = view.plugin_host.snapshot();
-            assert!(state.pending_package("com.example.card", PluginPackageOperation::Reset));
+            assert!(state.pending_package("com.example.card", PluginPackageOperation::Uninstall));
             assert!(state.pending_action("com.example.card", "first"));
             assert!(state.pending_key("com.example.card", "duration"));
         });
@@ -1548,7 +1786,7 @@ mod tests {
         view.read_with(visual, |view, _| {
             let state = view.plugin_host.snapshot();
             assert!(!state.pending_action("com.example.card", "first"));
-            assert!(state.pending_package("com.example.card", PluginPackageOperation::Reset));
+            assert!(state.pending_package("com.example.card", PluginPackageOperation::Uninstall));
         });
     }
 }
