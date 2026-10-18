@@ -138,6 +138,8 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - 类型从 `gpui_kit` 根导出，平台、组件、资源分别用 `gpui_kit::platform`、`gpui_kit::component`、`gpui_kit::assets`；仅业务特殊行为或无等价 primitive 时保留薄封装。
 - 创建组件前调用 `gpui_kit::init(cx)`；窗口根视图用 `gpui_kit::component::Root`；系统外观变化用 `Theme::sync_system_appearance(Some(window), cx)`。
 - 短暂反馈用 `gpui_kit::component::notification::Notification`，右下角固定为 `Theme::global_mut(cx).notification.placement = Anchor::BottomRight`；`Root` 已挂载 dialog、sheet 与 notification layer，业务根视图不得重复渲染。通知须含可操作上下文（如快捷键冲突写出实际 chord），不用页面内临时错误文本代替。
+- **所有错误提示一律复用现有全局通知组件**：通过 `Window::push_notification` 发布 `NotificationType::Error`；加载、安装、卸载、更新、配置、预览和后台运行失败均不例外。严禁页面内错误条、错误占位文本、自定义错误提示组件或另建 toast/banner；插件自身也不得用普通 `UiNode::Text` 冒充错误提示，须经 typed 错误上报交由宿主通知。正常 loading、empty、暂停状态与控件原有输入约束不属于错误提示。
+- 错误文案必须本地化并写明来源、操作和相关对象；插件错误须明确“插件”和插件名称，禁止只写“加载失败”或直接显示内部错误、路径与协议诊断。轮询同一故障只通知一次，恢复后再次失败可重新通知；显式重试使用稳定通知 ID 替换旧消息，批量操作合并失败项，禁止重复刷屏或静默吞错。
 - 语义色通过 `ActiveTheme::theme()` 读取；不重复硬编码颜色、字号、间距、圆角或控件高度，无明确产品需求时用组件默认值与 `Theme`。
 - 常用组件：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、`Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)` + `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、`Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog`、`Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`，分别订阅 `InputEvent` 与 `NumberInputEvent`；范围、步长和最终校验来自业务 schema，组件事件不得绕过 typed command。组件已在自身输入边界限制的条件不要再新增错误码或本地化文案。

@@ -1006,7 +1006,7 @@ impl KeySounds {
             options: self.pack_options(action, copy),
             preview: true,
         };
-        let mut nodes = vec![
+        let nodes = vec![
             UiNode::Integer {
                 key: "volume".into(),
                 label: copy.volume.into(),
@@ -1041,11 +1041,6 @@ impl KeySounds {
             action_select("mouse_down_pack", copy.mouse_down_pack, Action::MouseDown),
             action_select("mouse_up_pack", copy.mouse_up_pack, Action::MouseUp),
         ];
-        if let Some(error) = &self.error {
-            nodes.push(UiNode::Text {
-                text: error.copy(copy).to_owned(),
-            });
-        }
         let mut config = Configuration::from([
             ("volume".into(), ConfigValue::Integer(self.volume)),
             ("cooldown_ms".into(), ConfigValue::Integer(self.cooldown_ms)),
@@ -1072,6 +1067,18 @@ impl KeySounds {
             );
         }
         PluginOutput {
+            errors: self
+                .error
+                .map(|error| bongocat_plugin_sdk::PluginError {
+                    id: match error {
+                        AudioError::Decode => "audio_decode",
+                        AudioError::Output => "audio_output",
+                    }
+                    .into(),
+                    message: error.copy(copy).into(),
+                })
+                .into_iter()
+                .collect(),
             settings: PluginView {
                 nodes,
                 ..Default::default()
@@ -2488,13 +2495,9 @@ mod tests {
     /// The one failure message the settings panel publishes, if it published one.
     fn error_text(output: &PluginOutput) -> &str {
         output
-            .settings
-            .nodes
-            .iter()
-            .find_map(|node| match node {
-                UiNode::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
+            .errors
+            .first()
+            .map(|error| error.message.as_str())
             .expect("the panel publishes the failure it is reporting")
     }
 }

@@ -40,6 +40,21 @@ pub struct PluginCard {
     pub actions: Vec<UiNode>,
     /// The controls the plugin publishes for the center.
     pub settings: Vec<UiNode>,
+    pub errors: Vec<bongocat_plugin_sdk::PluginError>,
+    pub interaction_failure: Option<PluginInteractionFailure>,
+}
+
+/// A model-window operation has no request reply for a settings window to consume.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginInteractionFailure {
+    Action {
+        action: String,
+        code: PluginCommandError,
+    },
+    Configure {
+        key: String,
+        code: PluginCommandError,
+    },
 }
 
 /// Everything the plugin center renders in one read.

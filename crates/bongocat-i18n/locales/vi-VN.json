@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "Bật",
     "disable": "Tắt",
-    "failed": "Tải thất bại",
     "loading": "Đang tải tiện ích…",
     "discovery_failed": "Không thể tải danh sách tiện ích. Vui lòng thử lại.",
-    "retry": "Thử lại",
     "install": "Cài đặt",
     "update": "Cập nhật",
     "refresh": "Làm mới",
@@ -559,7 +557,6 @@
     "update_available": "Có bản cập nhật",
     "refreshing": "Đang làm mới…",
     "update_all_success": "Tất cả plugin đã được cập nhật.",
-    "update_all_failed": "Không thể cập nhật: %{names}. Hãy thử cập nhật tất cả lần nữa.",
     "available_version": "Phiên bản có sẵn %{version}",
     "uninstall": "Gỡ cài đặt",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "Cài đặt %{name}",
       "empty": "Tiện ích này không có cài đặt nào."
     },
-    "version": "Phiên bản %{version}"
+    "version": "Phiên bản %{version}",
+    "errors": {
+      "install_failed": "Cài đặt plugin thất bại: %{name}",
+      "update_failed": "Cập nhật plugin thất bại: %{name}",
+      "enable_failed": "Không thể bật plugin: %{name}",
+      "disable_failed": "Không thể tắt plugin: %{name}",
+      "uninstall_failed": "Gỡ cài đặt plugin thất bại: %{name}",
+      "action_failed": "Thao tác plugin thất bại: %{name}",
+      "configure_failed": "Không thể lưu cài đặt plugin: %{name}",
+      "update_all_failed": "Không thể cập nhật các plugin: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "Dịch vụ plugin không khả dụng",
+      "not_installed": "Không tìm thấy plugin",
+      "not_running": "Plugin chưa chạy",
+      "load_failed": "Tải plugin thất bại: %{name}",
+      "runtime_failed": "Plugin đã dừng bất ngờ: %{name}",
+      "reported": "Lỗi plugin: %{name} — %{reason}",
+      "preview_failed": "Xem trước plugin thất bại: %{name}"
+    }
   }
 }

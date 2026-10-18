@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "Activer",
     "disable": "Désactiver",
-    "failed": "Échec du chargement",
     "loading": "Chargement des plugins…",
     "discovery_failed": "Impossible de charger la liste des plugins. Réessayez.",
-    "retry": "Réessayer",
     "install": "Installer",
     "update": "Mettre à jour",
     "refresh": "Actualiser",
@@ -559,7 +557,6 @@
     "update_available": "Mise à jour disponible",
     "refreshing": "Actualisation…",
     "update_all_success": "Tous les plugins sont à jour.",
-    "update_all_failed": "Échec de la mise à jour : %{names}. Réessayez de tout mettre à jour.",
     "available_version": "Version disponible %{version}",
     "uninstall": "Désinstaller",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "Paramètres de %{name}",
       "empty": "Ce plugin n’a aucun paramètre."
     },
-    "version": "Version %{version}"
+    "version": "Version %{version}",
+    "errors": {
+      "install_failed": "Échec de l’installation du plugin : %{name}",
+      "update_failed": "Échec de la mise à jour du plugin : %{name}",
+      "enable_failed": "Impossible d’activer le plugin : %{name}",
+      "disable_failed": "Impossible de désactiver le plugin : %{name}",
+      "uninstall_failed": "Échec de la désinstallation du plugin : %{name}",
+      "action_failed": "Échec de l’action du plugin : %{name}",
+      "configure_failed": "Impossible d’enregistrer les paramètres du plugin : %{name}",
+      "update_all_failed": "Impossible de mettre à jour ces plugins : %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "Le service de plugins est indisponible",
+      "not_installed": "Le plugin est introuvable",
+      "not_running": "Le plugin n’est pas en cours d’exécution",
+      "load_failed": "Échec du chargement du plugin : %{name}",
+      "runtime_failed": "Le plugin s’est arrêté de manière inattendue : %{name}",
+      "reported": "Erreur du plugin : %{name} — %{reason}",
+      "preview_failed": "Échec de l’aperçu du plugin : %{name}"
+    }
   }
 }

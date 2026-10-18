@@ -105,8 +105,9 @@ mod window_mode;
 use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
 use localization::{
-    build_info_detail, model_invalid_summary, settings_error, shortcut_behavior_name,
-    shortcut_command_name, shortcut_conflict_message,
+    build_info_detail, model_invalid_summary, plugin_failure_message,
+    plugin_failure_notification_id, settings_error, shortcut_behavior_name, shortcut_command_name,
+    shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;
@@ -127,6 +128,12 @@ const MODEL_EDIT_CANCEL_TAB_INDEX: isize = 73;
 struct SettingsServiceErrorNotification;
 
 struct ShortcutConflictNotification;
+
+/// One plugin failure, keyed by the command and target that produced it.
+///
+/// The key is stable so polling the same failed state cannot stack duplicates,
+/// while a retry of the same command still replaces the earlier message.
+struct PluginFailureNotification;
 
 /// Marks the notification pushed when the model catalog cannot be read.
 ///

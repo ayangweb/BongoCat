@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "启用",
     "disable": "停用",
-    "failed": "加载失败",
     "loading": "正在加载插件…",
     "discovery_failed": "无法加载插件列表，请重试。",
-    "retry": "重试",
     "install": "安装",
     "update": "更新",
     "refresh": "刷新",
@@ -559,7 +557,6 @@
     "update_available": "可更新",
     "refreshing": "正在刷新…",
     "update_all_success": "所有插件均已更新。",
-    "update_all_failed": "以下插件更新失败：%{names}。请重试更新全部。",
     "available_version": "可用版本 %{version}",
     "uninstall": "卸载",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "%{name} 设置",
       "empty": "该插件没有可配置项。"
     },
-    "version": "版本 %{version}"
+    "version": "版本 %{version}",
+    "errors": {
+      "install_failed": "插件安装失败：%{name}",
+      "update_failed": "插件更新失败：%{name}",
+      "enable_failed": "插件启用失败：%{name}",
+      "disable_failed": "插件停用失败：%{name}",
+      "uninstall_failed": "插件卸载失败：%{name}",
+      "action_failed": "插件操作失败：%{name}",
+      "configure_failed": "插件设置保存失败：%{name}",
+      "update_all_failed": "以下插件更新失败：%{names}",
+      "with_reason": "%{message}（%{reason}）",
+      "service_unavailable": "插件服务不可用",
+      "not_installed": "找不到该插件",
+      "not_running": "插件未运行",
+      "load_failed": "插件加载失败：%{name}",
+      "runtime_failed": "插件运行异常：%{name}",
+      "reported": "插件错误：%{name}（%{reason}）",
+      "preview_failed": "插件预览失败：%{name}"
+    }
   }
 }

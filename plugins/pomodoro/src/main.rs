@@ -149,6 +149,7 @@ impl Pomodoro {
             },
             config: [("minutes".into(), ConfigValue::Integer(self.minutes))].into(),
             state: serde_json::to_vec(self).map_err(|_| "Cannot save pomodoro")?,
+            errors: Vec::new(),
         })
     }
     /// The full session this timer will count down from.

@@ -184,9 +184,9 @@ struct Worker {
     endpoint: PluginServiceEndpoint,
     hud: OverlaySinks,
     compositor: Option<HudCompositor>,
-    /// The last refusal reported to a window, kept so the center's retry row can
-    /// say what happened rather than only that something did.
+    /// Store/catalog failures. Command refusals travel in their typed reply.
     error: Option<String>,
+    interaction_failures: std::collections::BTreeMap<String, crate::PluginInteractionFailure>,
     /// The layer last published, kept only to decide whether a new one is needed.
     ///
     /// A panel that is not changing is the common case — a countdown changes once
@@ -247,9 +247,8 @@ fn run(
     if let Err(failure) = manager.discover_plugins() {
         error = Some(failure.to_string());
     }
-    if let Err(failure) = manager.resume_enabled() {
-        error = Some(failure.to_string());
-    }
+    // Resume failures are represented by each affected card's Failed state.
+    let _ = manager.resume_enabled();
     let last_input_activity = input_activity
         .as_ref()
         .map_or(InputActivity::default(), |read| read());
@@ -265,6 +264,7 @@ fn run(
         hud,
         compositor: load_platform_font().ok().map(HudCompositor::new),
         error,
+        interaction_failures: Default::default(),
         last_signature: None,
         started: Instant::now(),
         last_tick: Duration::ZERO,
@@ -479,7 +479,7 @@ impl Worker {
                         bongocat_plugin_manager::is_newer(available, installed)
                     });
                 PluginCard {
-                    id: metadata.id,
+                    id: metadata.id.clone(),
                     name: metadata.name,
                     description: metadata.description,
                     localizations: metadata.localizations,
@@ -491,6 +491,8 @@ impl Worker {
                     update_available,
                     actions: nodes(output, |output| &output.model.nodes),
                     settings: nodes(output, |output| &output.settings.nodes),
+                    errors: nodes(output, |output| &output.errors),
+                    interaction_failure: self.interaction_failures.get(&metadata.id).cloned(),
                 }
             })
             .collect();
@@ -517,6 +519,8 @@ impl Worker {
                 update_available,
                 actions: Vec::new(),
                 settings: Vec::new(),
+                errors: Vec::new(),
+                interaction_failure: self.interaction_failures.get(&offer.metadata.id).cloned(),
             });
         }
         PluginCenterSnapshot {
@@ -584,6 +588,9 @@ impl Worker {
                     self.dispatch_input_activity();
                 }
                 let result = self.set_enabled(&id, enabled);
+                if result.is_ok() {
+                    self.interaction_failures.remove(&id);
+                }
                 if result.is_ok() && enabled {
                     self.initialize_plugin_input_activity(&id);
                 }
@@ -648,6 +655,9 @@ impl Worker {
                     .uninstall(&id)
                     .map(|_| ())
                     .map_err(|error| operation(&error));
+                if result.is_ok() {
+                    self.interaction_failures.remove(&id);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::ResetData { id, reply } => {
@@ -669,6 +679,9 @@ impl Worker {
                     .manager
                     .action_plugin(&plugin, &action)
                     .map_err(|error| operation(&error));
+                if result.is_ok() {
+                    self.interaction_failures.remove(&plugin);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::Preview {
@@ -681,6 +694,9 @@ impl Worker {
                     .manager
                     .preview_plugin(&plugin, &key, &value)
                     .map_err(|error| operation(&error));
+                if result.is_ok() {
+                    self.interaction_failures.remove(&plugin);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::Configure {
@@ -690,6 +706,9 @@ impl Worker {
                 reply,
             } => {
                 let result = self.configure(&plugin, key, value);
+                if result.is_ok() {
+                    self.interaction_failures.remove(&plugin);
+                }
                 self.respond(reply, result);
             }
             PluginCommand::SetLocale { locale, reply } => {
@@ -710,9 +729,6 @@ impl Worker {
         reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
         result: Result<(), PluginCommandError>,
     ) {
-        if let Err(error) = &result {
-            self.error = Some(error.code().to_owned());
-        }
         let center = result.map(|()| self.center());
         let _ = reply.respond(center);
     }
@@ -769,26 +785,55 @@ impl Worker {
                     let Some(output) = self.manager.plugin_output(&interaction.plugin) else {
                         continue;
                     };
-                    let result = match output.model.nodes.iter().find(|node| match node {
-                        UiNode::Button {
-                            id, loading: false, ..
-                        } => id == &interaction.id,
-                        UiNode::Toggle { key, .. } => key == &interaction.id,
-                        _ => false,
-                    }) {
-                        Some(UiNode::Button { .. }) => self
-                            .manager
-                            .action_plugin(&interaction.plugin, &interaction.id)
-                            .map_err(|error| operation(&error)),
-                        Some(UiNode::Toggle { key, value, .. }) => self.configure(
-                            &interaction.plugin,
-                            key.clone(),
-                            ConfigValue::Boolean(!value),
-                        ),
-                        _ => continue,
-                    };
+                    let (result, failure) =
+                        match output.model.nodes.iter().find(|node| match node {
+                            UiNode::Button {
+                                id, loading: false, ..
+                            } => id == &interaction.id,
+                            UiNode::Toggle { key, .. } => key == &interaction.id,
+                            _ => false,
+                        }) {
+                            Some(UiNode::Button { .. }) => (
+                                self.manager
+                                    .action_plugin(&interaction.plugin, &interaction.id)
+                                    .map_err(|error| operation(&error)),
+                                crate::PluginInteractionFailure::Action {
+                                    action: interaction.id.clone(),
+                                    code: PluginCommandError::Operation,
+                                },
+                            ),
+                            Some(UiNode::Toggle { key, value, .. }) => {
+                                let key = key.clone();
+                                (
+                                    self.configure(
+                                        &interaction.plugin,
+                                        key.clone(),
+                                        ConfigValue::Boolean(!value),
+                                    ),
+                                    crate::PluginInteractionFailure::Configure {
+                                        key,
+                                        code: PluginCommandError::Operation,
+                                    },
+                                )
+                            }
+                            _ => continue,
+                        };
                     if let Err(error) = result {
-                        self.error = Some(error.code().into());
+                        let failure = match failure {
+                            crate::PluginInteractionFailure::Action { action, .. } => {
+                                crate::PluginInteractionFailure::Action {
+                                    action,
+                                    code: error,
+                                }
+                            }
+                            crate::PluginInteractionFailure::Configure { key, .. } => {
+                                crate::PluginInteractionFailure::Configure { key, code: error }
+                            }
+                        };
+                        self.interaction_failures
+                            .insert(interaction.plugin, failure);
+                    } else {
+                        self.interaction_failures.remove(&interaction.plugin);
                     }
                 }
                 Err(TryRecvError::Empty) => return,
@@ -898,6 +943,7 @@ mod tests {
             },
             compositor: None,
             error: None,
+            interaction_failures: Default::default(),
             last_signature: None,
             started: Instant::now(),
             last_tick: Duration::ZERO,

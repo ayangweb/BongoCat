@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "تفعيل",
     "disable": "تعطيل",
-    "failed": "فشل التحميل",
     "loading": "جارٍ تحميل الإضافات…",
     "discovery_failed": "تعذّر تحميل قائمة الإضافات. حاول مجددًا.",
-    "retry": "إعادة المحاولة",
     "install": "تثبيت",
     "update": "تحديث",
     "refresh": "تحديث القائمة",
@@ -559,7 +557,6 @@
     "update_available": "يتوفر تحديث",
     "refreshing": "جارٍ التحديث…",
     "update_all_success": "جميع الإضافات محدّثة.",
-    "update_all_failed": "تعذر تحديث: %{names}. حاول تحديث الكل مرة أخرى.",
     "available_version": "الإصدار المتاح %{version}",
     "uninstall": "إلغاء التثبيت",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "إعدادات %{name}",
       "empty": "لا توفّر هذه الإضافة أي إعدادات."
     },
-    "version": "الإصدار %{version}"
+    "version": "الإصدار %{version}",
+    "errors": {
+      "install_failed": "فشل تثبيت الإضافة: %{name}",
+      "update_failed": "فشل تحديث الإضافة: %{name}",
+      "enable_failed": "تعذّر تفعيل الإضافة: %{name}",
+      "disable_failed": "تعذّر تعطيل الإضافة: %{name}",
+      "uninstall_failed": "فشلت إزالة الإضافة: %{name}",
+      "action_failed": "فشل إجراء الإضافة: %{name}",
+      "configure_failed": "تعذّر حفظ إعدادات الإضافة: %{name}",
+      "update_all_failed": "تعذّر تحديث الإضافات التالية: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "خدمة الإضافات غير متاحة",
+      "not_installed": "لم يتم العثور على الإضافة",
+      "not_running": "الإضافة ليست قيد التشغيل",
+      "load_failed": "فشل تحميل الإضافة: %{name}",
+      "runtime_failed": "توقفت الإضافة بشكل غير متوقع: %{name}",
+      "reported": "خطأ في الإضافة: %{name} — %{reason}",
+      "preview_failed": "فشلت معاينة الإضافة: %{name}"
+    }
   }
 }

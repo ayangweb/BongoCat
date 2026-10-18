@@ -89,7 +89,6 @@ impl PluginInFlight {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PluginHubState {
     pub(crate) cards: Vec<PluginCardView>,
-    pub(crate) error: Option<String>,
     /// True until the first discovery has finished.
     pub(crate) loading: bool,
     /// Commands this window has sent whose reply has not arrived yet.
@@ -161,11 +160,63 @@ impl From<PluginCenterSnapshot> for PluginHubState {
                 .into_iter()
                 .map(PluginCardView::from)
                 .collect(),
-            error: snapshot.error,
             loading: snapshot.loading,
             ..Default::default()
         }
     }
+}
+
+/// One failed plugin command, as the window reports it.
+///
+/// The service speaks in stable error codes rather than sentences, so the
+/// window is where a code becomes localized copy. The operation travels with
+/// the error because "the plugin operation failed" is not actionable: an
+/// install, an update and an uninstall each need to name what failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PluginFailure {
+    Refresh,
+    Load {
+        plugin: String,
+        running: bool,
+    },
+    Reported {
+        plugin: String,
+        id: String,
+        message: String,
+    },
+    Preview {
+        plugin: String,
+        key: String,
+    },
+    Install {
+        plugin: String,
+        update: bool,
+    },
+    Enable {
+        plugin: String,
+        enabled: bool,
+    },
+    Uninstall {
+        plugin: String,
+    },
+    Action {
+        plugin: String,
+        action: String,
+    },
+    Configure {
+        plugin: String,
+        key: String,
+    },
+    UpdateAll {
+        failed: Vec<String>,
+    },
+}
+
+/// A failure and the stable code the service returned for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PluginFailureReport {
+    pub(crate) failure: PluginFailure,
+    pub(crate) code: PluginCommandError,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,6 +234,8 @@ pub(crate) struct PluginCardView {
     pub(crate) update_available: bool,
     pub(crate) actions: Vec<bongocat_plugin_sdk::UiNode>,
     pub(crate) settings: Vec<bongocat_plugin_sdk::UiNode>,
+    pub(crate) errors: Vec<bongocat_plugin_sdk::PluginError>,
+    pub(crate) interaction_failure: Option<bongocat_plugin_service::PluginInteractionFailure>,
 }
 
 impl PluginCardView {
@@ -215,6 +268,8 @@ impl From<PluginCard> for PluginCardView {
             update_available: card.update_available,
             actions: card.actions,
             settings: card.settings,
+            errors: card.errors,
+            interaction_failure: card.interaction_failure,
         }
     }
 }
@@ -276,7 +331,9 @@ pub(crate) struct PluginHost {
     published: Arc<Mutex<PluginHubState>>,
     requests: Arc<Mutex<()>>,
     previews: Arc<Mutex<PreviewMailbox>>,
-    update_report: Arc<Mutex<Option<Vec<String>>>>,
+    failures: Arc<Mutex<Vec<PluginFailureReport>>>,
+    discovery_failure_reported: Arc<Mutex<Option<String>>>,
+    update_succeeded: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for PluginHost {
@@ -286,7 +343,9 @@ impl Default for PluginHost {
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
             previews: Arc::default(),
-            update_report: Arc::default(),
+            failures: Arc::default(),
+            discovery_failure_reported: Arc::default(),
+            update_succeeded: Arc::default(),
         }
     }
 }
@@ -299,7 +358,9 @@ impl PluginHost {
             published: Arc::new(Mutex::new(PluginHubState::loading())),
             requests: Arc::default(),
             previews: Arc::default(),
-            update_report: Arc::default(),
+            failures: Arc::default(),
+            discovery_failure_reported: Arc::default(),
+            update_succeeded: Arc::default(),
         }
     }
 
@@ -331,6 +392,107 @@ impl PluginHost {
         // not the command, so it must not clear the control that is waiting.
         let in_flight = published.in_flight.clone();
         *published = PluginHubState { in_flight, ..state };
+    }
+
+    /// Publish what the service answered and queue a notification for the
+    /// center-level failure it carries, if any.
+    ///
+    /// The service keeps the last refusal in its snapshot so a window that
+    /// opens after the failure can still explain it. The window remembers the
+    /// text it already reported, so polling the same refusal does not repeat
+    /// the notification on every frame; a different refusal is new and is
+    /// reported once.
+    fn publish_snapshot(&self, snapshot: PluginCenterSnapshot) {
+        self.publish_reply(snapshot, None);
+    }
+
+    fn publish_reply(&self, snapshot: PluginCenterSnapshot, command: Option<&PluginFailure>) {
+        let previous = self.snapshot();
+        for card in &snapshot.cards {
+            let old = previous.cards.iter().find(|old| old.id == card.id);
+            let command_target = match command {
+                Some(
+                    PluginFailure::Install { plugin, .. }
+                    | PluginFailure::Enable { plugin, .. }
+                    | PluginFailure::Uninstall { plugin }
+                    | PluginFailure::Action { plugin, .. }
+                    | PluginFailure::Configure { plugin, .. }
+                    | PluginFailure::Preview { plugin, .. },
+                ) => Some(plugin.as_str()),
+                _ => None,
+            };
+            if card.failed
+                && !old.is_some_and(|old| old.failed)
+                && command_target != Some(card.id.as_str())
+            {
+                self.record_failure(
+                    PluginFailure::Load {
+                        plugin: card.id.clone(),
+                        running: old.is_some_and(|old| old.enabled),
+                    },
+                    PluginCommandError::Operation,
+                );
+            }
+            for error in &card.errors {
+                if !old.is_some_and(|old| old.errors.iter().any(|old| old.id == error.id)) {
+                    self.record_failure(
+                        PluginFailure::Reported {
+                            plugin: card.id.clone(),
+                            id: error.id.clone(),
+                            message: error.message.clone(),
+                        },
+                        PluginCommandError::Operation,
+                    );
+                }
+            }
+            if card.interaction_failure != old.and_then(|old| old.interaction_failure.clone())
+                && let Some(failure) = &card.interaction_failure
+            {
+                let (failure, code) = match failure {
+                    bongocat_plugin_service::PluginInteractionFailure::Action { action, code } => (
+                        PluginFailure::Action {
+                            plugin: card.id.clone(),
+                            action: action.clone(),
+                        },
+                        code,
+                    ),
+                    bongocat_plugin_service::PluginInteractionFailure::Configure { key, code } => (
+                        PluginFailure::Configure {
+                            plugin: card.id.clone(),
+                            key: key.clone(),
+                        },
+                        code,
+                    ),
+                };
+                self.record_failure(failure, code.clone());
+            }
+        }
+        let error = snapshot.error.clone();
+        self.publish(snapshot.into());
+        if matches!(command, Some(PluginFailure::Install { .. })) {
+            *self
+                .discovery_failure_reported
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = error;
+        } else {
+            self.report_discovery_failure(error, PluginCommandError::Operation);
+        }
+    }
+
+    fn report_discovery_failure(&self, error: Option<String>, code: PluginCommandError) {
+        let mut reported = self
+            .discovery_failure_reported
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if error.is_none() {
+            *reported = None;
+            return;
+        }
+        if *reported == error {
+            return;
+        }
+        *reported = error;
+        self.record_failure(PluginFailure::Refresh, code);
     }
 
     /// Record that this window is about to send one command.
@@ -381,18 +543,51 @@ impl PluginHost {
                 failed.push(id);
             }
         }
-        *self
-            .update_report
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(failed);
+        if !failed.is_empty() {
+            self.record_failure(
+                PluginFailure::UpdateAll { failed },
+                PluginCommandError::Operation,
+            );
+        } else {
+            self.update_succeeded
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
         self.finish(&PluginInFlight::UpdateAll);
     }
 
-    pub(crate) fn take_update_report(&self) -> Option<Vec<String>> {
-        self.update_report
+    pub(crate) fn take_failure(&self) -> Option<PluginFailureReport> {
+        let mut failures = self
+            .failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (!failures.is_empty()).then(|| failures.remove(0))
+    }
+
+    fn record_failure(&self, failure: PluginFailure, code: PluginCommandError) {
+        if matches!(failure, PluginFailure::Install { .. }) && self.snapshot().updating_all() {
+            return;
+        }
+        let mut failures = self
+            .failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let report = PluginFailureReport { failure, code };
+        if !failures.contains(&report) {
+            failures.push(report);
+        }
+    }
+
+    pub(crate) fn has_failures(&self) -> bool {
+        !self
+            .failures
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+            .is_empty()
+    }
+
+    pub(crate) fn take_update_success(&self) -> bool {
+        self.update_succeeded
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
     }
 
     fn finish(&self, command: &PluginInFlight) {
@@ -413,17 +608,6 @@ impl PluginHost {
         }
     }
 
-    /// Report an error that did not come from the service, such as a failed file
-    /// read or a dialog backend failure.
-    pub(crate) fn report_error(&self, message: String) {
-        let mut state = self
-            .published
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.error = Some(message);
-        state.loading = false;
-    }
-
     /// Read the center's current state and publish it for the next frame.
     pub(crate) fn refresh(&self) {
         let _request = self
@@ -431,23 +615,52 @@ impl PluginHost {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Ok(client) = self.client() else {
-            self.report_error("the plugin service is unavailable".to_owned());
+            self.published
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .loading = false;
+            self.report_discovery_failure(
+                Some(PluginCommandError::ServiceUnavailable.code().into()),
+                PluginCommandError::ServiceUnavailable,
+            );
             return;
         };
         match client.read_center_blocking() {
-            Ok(snapshot) => self.publish(snapshot.into()),
-            Err(error) => self.report_command_error(error),
+            Ok(snapshot) => self.publish_snapshot(snapshot),
+            Err(error) => {
+                self.published
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .loading = false;
+                self.report_discovery_failure(Some(error.code().into()), error);
+            }
         }
     }
 
     /// Scan the package store again, for the page's retry affordance.
     pub(crate) fn rescan(&self) {
-        self.apply_command(PluginInFlight::Refresh, |client| client.refresh_blocking());
+        *self
+            .discovery_failure_reported
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        self.apply_command(PluginInFlight::Refresh, PluginFailure::Refresh, |client| {
+            client.refresh_blocking()
+        });
     }
 
     pub(crate) fn install_available(&self, id: &str) -> bool {
+        let update = self
+            .snapshot()
+            .cards
+            .iter()
+            .find(|card| card.id == id)
+            .is_some_and(|card| card.version.is_some());
         self.apply_command(
             PluginInFlight::package(id, PluginPackageOperation::Install),
+            PluginFailure::Install {
+                plugin: id.to_owned(),
+                update,
+            },
             |client| {
                 let mut snapshot = client.install_available_blocking(id)?;
                 let expected = snapshot
@@ -471,7 +684,13 @@ impl PluginHost {
                         card.id == id && card.version == expected && !card.update_available
                     });
                 if !installed {
-                    self.publish(snapshot.into());
+                    self.publish_reply(
+                        snapshot,
+                        Some(&PluginFailure::Install {
+                            plugin: id.to_owned(),
+                            update,
+                        }),
+                    );
                     return Err(PluginCommandError::Operation);
                 }
                 Ok(snapshot)
@@ -482,6 +701,10 @@ impl PluginHost {
     pub(crate) fn set_enabled(&self, id: &str, enabled: bool) {
         self.apply_command(
             PluginInFlight::package(id, PluginPackageOperation::Enable),
+            PluginFailure::Enable {
+                plugin: id.to_owned(),
+                enabled,
+            },
             |client| client.set_enabled_blocking(id, enabled),
         );
     }
@@ -489,14 +712,22 @@ impl PluginHost {
     pub(crate) fn uninstall(&self, id: &str) {
         self.apply_command(
             PluginInFlight::package(id, PluginPackageOperation::Uninstall),
+            PluginFailure::Uninstall {
+                plugin: id.to_owned(),
+            },
             |client| client.uninstall_blocking(id),
         );
     }
 
     pub(crate) fn action(&self, plugin: &str, action: &str) {
-        self.apply_command(PluginInFlight::action(plugin, action), |client| {
-            client.action_blocking(plugin, action)
-        });
+        self.apply_command(
+            PluginInFlight::action(plugin, action),
+            PluginFailure::Action {
+                plugin: plugin.to_owned(),
+                action: action.to_owned(),
+            },
+            |client| client.action_blocking(plugin, action),
+        );
     }
 
     pub(crate) fn queue_preview(
@@ -554,12 +785,15 @@ impl PluginHost {
             if preview.lifetime.upgrade().is_none() {
                 continue;
             }
-            let Ok(client) = self.client() else {
-                continue;
+            let failure = PluginFailure::Preview {
+                plugin: preview.plugin.clone(),
+                key: preview.key.clone(),
             };
-            match client.preview_blocking(&preview.plugin, &preview.key, &preview.value) {
-                Ok(snapshot) => self.publish(snapshot.into()),
-                Err(error) => self.report_command_error(error),
+            match self.client().and_then(|client| {
+                client.preview_blocking(&preview.plugin, &preview.key, &preview.value)
+            }) {
+                Ok(snapshot) => self.publish_reply(snapshot, Some(&failure)),
+                Err(error) => self.record_failure(failure, error),
             }
         }
     }
@@ -570,14 +804,20 @@ impl PluginHost {
         key: &str,
         value: bongocat_plugin_sdk::ConfigValue,
     ) {
-        self.apply_command(PluginInFlight::configure(plugin, key), |client| {
-            client.configure_blocking(plugin, key, value)
-        });
+        self.apply_command(
+            PluginInFlight::configure(plugin, key),
+            PluginFailure::Configure {
+                plugin: plugin.to_owned(),
+                key: key.to_owned(),
+            },
+            |client| client.configure_blocking(plugin, key, value),
+        );
     }
 
     fn apply_command(
         &self,
         command_key: PluginInFlight,
+        failure: PluginFailure,
         command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
     ) -> bool {
         // Polling and command replies publish in request order. A slow poll
@@ -590,25 +830,35 @@ impl PluginHost {
         // retires that mark.
         let Ok(client) = self.client() else {
             self.finish(&command_key);
-            self.report_error("the plugin service is unavailable".to_owned());
+            if matches!(failure, PluginFailure::Refresh) {
+                self.report_discovery_failure(
+                    Some(PluginCommandError::ServiceUnavailable.code().into()),
+                    PluginCommandError::ServiceUnavailable,
+                );
+            } else {
+                self.record_failure(failure, PluginCommandError::ServiceUnavailable);
+            }
             return false;
         };
         let result = command(&client);
         self.finish(&command_key);
         match result {
             Ok(snapshot) => {
-                self.publish(snapshot.into());
+                self.publish_reply(snapshot, Some(&failure));
                 true
             }
             Err(error) => {
-                self.report_command_error(error);
+                if matches!(failure, PluginFailure::Refresh) {
+                    // A failed explicit rescan is also visible to the polling
+                    // path. Keep the same failure armed there so the next poll
+                    // does not immediately emit a duplicate notification.
+                    self.report_discovery_failure(Some(error.code().into()), error);
+                } else {
+                    self.record_failure(failure, error);
+                }
                 false
             }
         }
-    }
-
-    fn report_command_error(&self, error: PluginCommandError) {
-        self.report_error(error.to_string());
     }
 }
 
@@ -708,7 +958,7 @@ mod tests {
         host.refresh();
         let state = host.snapshot();
         assert!(!state.loading);
-        assert!(state.error.is_none());
+        assert!(host.take_failure().is_none());
         assert_eq!(state.cards.len(), 1);
         assert_eq!(state.cards[0].id, PLUGIN_ID);
         assert_eq!(state.cards[0].version.as_deref(), Some("1.0.0"));
@@ -721,7 +971,76 @@ mod tests {
         let host = PluginHost::default();
         assert!(!host.is_available());
         host.refresh();
-        assert!(host.snapshot().error.is_some());
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::Refresh,
+                code: PluginCommandError::ServiceUnavailable
+            })
+        );
+        assert!(!host.snapshot().loading);
+    }
+
+    #[test]
+    fn an_explicit_refresh_failure_is_not_repeated_by_polling() {
+        let host = PluginHost::default();
+        host.begin(PluginInFlight::Refresh);
+        host.rescan();
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::Refresh,
+                code: PluginCommandError::ServiceUnavailable,
+            })
+        );
+        host.refresh();
+        assert!(host.take_failure().is_none());
+    }
+
+    #[test]
+    fn a_plugin_command_failure_keeps_operation_context_and_stable_code() {
+        let (client, endpoint) = PluginServiceClient::bounded(2);
+        let host = PluginHost::new(client);
+        host.begin(PluginInFlight::action("com.example.card", "start"));
+        let responder = std::thread::spawn(move || {
+            let reply = loop {
+                match endpoint.try_recv().unwrap() {
+                    Some(PluginCommand::Action { reply, .. }) => break reply,
+                    Some(_) => panic!("the action command must reach the plugin service"),
+                    None => std::thread::sleep(Duration::from_millis(1)),
+                }
+            };
+            reply.respond(Err(PluginCommandError::NotRunning)).unwrap();
+        });
+        host.action("com.example.card", "start");
+        responder.join().unwrap();
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::Action {
+                    plugin: "com.example.card".into(),
+                    action: "start".into(),
+                },
+                code: PluginCommandError::NotRunning,
+            })
+        );
+        assert!(host.snapshot().in_flight.is_empty());
+    }
+
+    #[gpui_kit::test]
+    fn plugin_failures_are_painted_as_global_notifications(cx: &mut TestAppContext) {
+        let (view, visual) = crate::window::tests::settings_view(cx);
+        view.update(visual, |view, _| {
+            let host = PluginHost::default();
+            host.refresh();
+            view.set_plugin_host(host);
+        });
+        visual.update(|window, cx| window.render_frame(cx));
+        visual.run_until_parked();
+        assert!(
+            visual.update(|window, _| window.try_find("notification").is_some()),
+            "plugin failures must use the global notification layer"
+        );
     }
 
     /// Plugin cards support only Chinese and English, even when the manifest
@@ -815,8 +1134,16 @@ mod tests {
         );
         let state = host.snapshot();
         assert!(state.in_flight.is_empty());
-        assert_eq!(host.take_update_report(), Some(vec!["plugin-1".to_owned()]));
-        assert_eq!(host.take_update_report(), None);
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::UpdateAll {
+                    failed: vec!["plugin-1".into()]
+                },
+                code: PluginCommandError::Operation
+            })
+        );
+        assert_eq!(host.take_failure(), None);
         assert_eq!(host.begin_update_all(), ["plugin-1"]);
     }
 
@@ -830,7 +1157,16 @@ mod tests {
         let targets = host.begin_update_all();
         host.update_all(targets);
         assert!(host.snapshot().in_flight.is_empty());
-        assert_eq!(host.take_update_report(), Some(vec![sample_card().id]));
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::UpdateAll {
+                    failed: vec![sample_card().id]
+                },
+                code: PluginCommandError::Operation
+            })
+        );
+        assert_eq!(host.take_failure(), None);
     }
 
     /// What a window is still waiting for is the window's own bookkeeping: a state
@@ -848,7 +1184,6 @@ mod tests {
         host.begin(PluginInFlight::configure(PLUGIN_ID, "minutes"));
         host.publish(PluginHubState {
             cards: Vec::new(),
-            error: None,
             loading: false,
             ..Default::default()
         });
@@ -1039,6 +1374,8 @@ mod tests {
             icon: PluginIcon::Emoji("🐱".into()),
             enabled: true,
             failed: false,
+            errors: Vec::new(),
+            interaction_failure: None,
             version: Some("1.0.0".into()),
             available_version: Some("1.1.0".into()),
             update_available: true,
@@ -1148,7 +1485,6 @@ mod tests {
                 view.set_plugin_host(PluginHost::new(plugin_client));
                 view.plugin_host.publish(PluginHubState {
                     cards,
-                    error: None,
                     loading: false,
                     ..Default::default()
                 });
@@ -1747,6 +2083,8 @@ mod tests {
                     update_available: card.update_available,
                     actions: card.actions,
                     settings: card.settings,
+                    errors: card.errors,
+                    interaction_failure: card.interaction_failure,
                 })
                 .collect(),
             error: None,

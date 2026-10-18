@@ -54,7 +54,7 @@ impl SettingsView {
                     .spawn(async move {
                         let before = poll.snapshot();
                         poll.refresh();
-                        poll.snapshot() != before
+                        poll.snapshot() != before || poll.has_failures()
                     })
                     .await;
                 if changed && this.update(cx, |_, cx| cx.notify()).is_err() {

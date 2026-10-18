@@ -73,6 +73,12 @@ pub fn open_settings_window(
                     view.set_navigation_memory(navigation_memory.clone());
                     if let Some(plugin_service) = plugin_service.clone() {
                         view.set_plugin_host(plugins_host::PluginHost::new(plugin_service));
+                    } else {
+                        // A failed service startup is non-fatal to the product,
+                        // but the plugin page must not remain in its initial
+                        // loading state without explaining the unavailable
+                        // service through the global notification layer.
+                        view.plugin_host.refresh();
                     }
                     view.refresh(cx);
                     view

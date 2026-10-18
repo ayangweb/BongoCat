@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "Enable",
     "disable": "Disable",
-    "failed": "Load failed",
     "loading": "Loading plugins…",
     "discovery_failed": "Could not load the plugin list. Try again.",
-    "retry": "Retry",
     "install": "Install",
     "update": "Update",
     "refresh": "Refresh",
@@ -559,7 +557,6 @@
     "update_available": "Update available",
     "refreshing": "Refreshing…",
     "update_all_success": "All plugins are up to date.",
-    "update_all_failed": "Could not update: %{names}. Try Update all again.",
     "available_version": "Available version %{version}",
     "uninstall": "Uninstall",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "%{name} settings",
       "empty": "This plugin has no settings."
     },
-    "version": "Version %{version}"
+    "version": "Version %{version}",
+    "errors": {
+      "install_failed": "Plugin installation failed: %{name}",
+      "update_failed": "Plugin update failed: %{name}",
+      "enable_failed": "Could not enable plugin: %{name}",
+      "disable_failed": "Could not disable plugin: %{name}",
+      "uninstall_failed": "Plugin uninstallation failed: %{name}",
+      "action_failed": "Plugin action failed: %{name}",
+      "configure_failed": "Could not save plugin settings: %{name}",
+      "update_all_failed": "Could not update these plugins: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "The plugin service is unavailable",
+      "not_installed": "The plugin was not found",
+      "not_running": "The plugin is not running",
+      "load_failed": "Plugin loading failed: %{name}",
+      "runtime_failed": "Plugin stopped unexpectedly: %{name}",
+      "reported": "Plugin error: %{name} — %{reason}",
+      "preview_failed": "Plugin preview failed: %{name}"
+    }
   }
 }

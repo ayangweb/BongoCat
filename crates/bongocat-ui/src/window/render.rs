@@ -184,6 +184,30 @@ impl Render for SettingsView {
         self.sync_model_selection_dialog(window, cx);
         self.sync_mver_mode_dialog(window, cx);
         self.sync_plugin_settings_dialog(window, cx);
+        let plugin_cards = self.plugin_host.snapshot().cards;
+        while let Some(report) = self.plugin_host.take_failure() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>(plugin_failure_notification_id(
+                        &report.failure,
+                    ))
+                    .message(plugin_failure_message(language, &report, &plugin_cards))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
+        if self.plugin_host.take_update_success() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>("plugin-update-all")
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "plugins.update_all_success",
+                    ))
+                    .with_type(NotificationType::Success),
+                cx,
+            );
+        }
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()

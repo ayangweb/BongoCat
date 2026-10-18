@@ -548,10 +548,8 @@
   "plugins": {
     "enable": "Ativar",
     "disable": "Desativar",
-    "failed": "Falha ao carregar",
     "loading": "Carregando plugins…",
     "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
-    "retry": "Tentar novamente",
     "install": "Instalar",
     "update": "Atualizar",
     "refresh": "Atualizar lista",
@@ -559,7 +557,6 @@
     "update_available": "Atualização disponível",
     "refreshing": "Atualizando lista…",
     "update_all_success": "Todos os plugins estão atualizados.",
-    "update_all_failed": "Não foi possível atualizar: %{names}. Tente atualizar todos novamente.",
     "available_version": "Versão disponível %{version}",
     "uninstall": "Desinstalar",
     "settings": {
@@ -567,6 +564,24 @@
       "title": "Configurações de %{name}",
       "empty": "Este plugin não tem configurações."
     },
-    "version": "Versão %{version}"
+    "version": "Versão %{version}",
+    "errors": {
+      "install_failed": "Falha ao instalar o plugin: %{name}",
+      "update_failed": "Falha ao atualizar o plugin: %{name}",
+      "enable_failed": "Não foi possível ativar o plugin: %{name}",
+      "disable_failed": "Não foi possível desativar o plugin: %{name}",
+      "uninstall_failed": "Falha ao desinstalar o plugin: %{name}",
+      "action_failed": "Falha na ação do plugin: %{name}",
+      "configure_failed": "Não foi possível salvar as configurações do plugin: %{name}",
+      "update_all_failed": "Não foi possível atualizar estes plugins: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "O serviço de plugins está indisponível",
+      "not_installed": "O plugin não foi encontrado",
+      "not_running": "O plugin não está em execução",
+      "load_failed": "Falha ao carregar o plugin: %{name}",
+      "runtime_failed": "O plugin parou inesperadamente: %{name}",
+      "reported": "Erro do plugin: %{name} — %{reason}",
+      "preview_failed": "Falha na prévia do plugin: %{name}"
+    }
   }
 }

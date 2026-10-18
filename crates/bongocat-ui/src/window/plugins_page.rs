@@ -31,35 +31,6 @@ pub(super) fn content(
 ) -> AnyElement {
     let state: PluginHubState = view.plugin_host.snapshot();
     let locale = language.catalog_locale();
-    if let Some(failed) = view.plugin_host.take_update_report() {
-        let message = if failed.is_empty() {
-            bongocat_i18n::text(locale, "plugins.update_all_success").to_owned()
-        } else {
-            let names = failed
-                .iter()
-                .map(|id| {
-                    state
-                        .cards
-                        .iter()
-                        .find(|card| &card.id == id)
-                        .map_or(id.as_str(), |card| card.copy(locale).0)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            bongocat_i18n::format_text(locale, "plugins.update_all_failed", &[("names", names)])
-        };
-        window.push_notification(
-            Notification::new()
-                .id::<PluginUpdateAllNotification>()
-                .message(message)
-                .with_type(if failed.is_empty() {
-                    NotificationType::Success
-                } else {
-                    NotificationType::Error
-                }),
-            cx,
-        );
-    }
     let handle = cx.entity();
     let refresh_view = handle.clone();
     let update_view = handle.clone();
@@ -104,33 +75,6 @@ pub(super) fn content(
                     }),
             ),
     );
-    if state.error.is_some() {
-        let retry_view = handle.clone();
-        column = column.child(
-            div()
-                .flex()
-                .items_center()
-                .gap_3()
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .text_sm()
-                        .child(bongocat_i18n::text(locale, "plugins.discovery_failed")),
-                )
-                .child(
-                    Button::new("plugin-retry")
-                        .icon(IconName::RefreshCw)
-                        .tooltip(bongocat_i18n::text(locale, "plugins.retry"))
-                        .disabled(state.loading || state.refreshing() || state.package_busy())
-                        .on_click(move |_, _, cx| {
-                            retry_view.update(cx, |view, cx| {
-                                view.refresh_plugin_catalog(cx);
-                            });
-                        }),
-                ),
-        );
-    }
     // A refresh with cards already on screen only spins the button that started
     // it: what the user is reading is not replaced by a status line.
     if state.loading && state.cards.is_empty() {
@@ -139,7 +83,7 @@ pub(super) fn content(
                 .text_sm()
                 .child(bongocat_i18n::text(locale, "plugins.loading")),
         );
-    } else if state.cards.is_empty() && state.error.is_none() {
+    } else if state.cards.is_empty() {
         column = column.child(
             div()
                 .p_4()
@@ -163,8 +107,6 @@ pub(super) fn content(
         ))
         .into_any_element()
 }
-
-struct PluginUpdateAllNotification;
 
 /// The glyph the host draws for one plugin-declared action.
 ///
@@ -261,7 +203,7 @@ fn card_view(
     // Every installed, running plugin offers one settings entry, and it is drawn
     // the same way on every card: a gear beside the identity it configures,
     // rather than one more button in the row of package lifecycle commands.
-    let settings_entry = (installed && enabled).then(|| {
+    let settings_entry = (installed && enabled && !card.failed).then(|| {
         let target = view.clone();
         let id = card.id.clone();
         Button::new(SharedString::from(format!("plugin-settings-{}", card.id)))
@@ -273,7 +215,7 @@ fn card_view(
                 target.update(cx, |view, cx| view.open_plugin_settings(&id, window, cx));
             })
     });
-    let mut body = div()
+    let body = div()
         .id(SharedString::from(format!("plugin-card-{}", card.id)))
         .test_support()
         .w_full()
@@ -312,14 +254,6 @@ fn card_view(
                 .text_color(cx.theme().muted_foreground)
                 .child(description),
         );
-    if card.failed {
-        body = body.child(
-            div()
-                .text_sm()
-                .text_color(cx.theme().danger)
-                .child(bongocat_i18n::text(locale, "plugins.failed")),
-        );
-    }
     let mut actions = div()
         .id(SharedString::from(format!("plugin-actions-{}", card.id)))
         .test_support()

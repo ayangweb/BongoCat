@@ -113,10 +113,9 @@ fn unavailable_hides_stale_source_and_recovery_rebaselines() {
     plugin.observe(source("b"));
     plugin.observe(Err(InputSourceError));
     assert!(plugin.output().model.nodes.is_empty());
-    assert!(
-        matches!(&plugin.output().settings.nodes[0], UiNode::Text { text } if text.contains("Retrying"))
-    );
+    assert!(plugin.output().errors[0].message.contains("Retrying"));
     plugin.observe(source("c"));
+    assert!(plugin.output().errors.is_empty());
     assert!(plugin.output().model.nodes.is_empty());
     plugin.observe(source("d"));
     assert!(!plugin.output().model.nodes.is_empty());

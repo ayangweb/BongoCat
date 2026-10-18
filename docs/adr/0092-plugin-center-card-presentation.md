@@ -81,8 +81,10 @@ chrome) stays in `bongocat-i18n` and follows the application's language.
 
 Both plugins declare a glyph for every button they publish. The key-sounds
 preview button reports `loading` from its own playback state instead of
-publishing a text node, and the failure it can report is an error code the
-plugin renders in the language on screen rather than a sentence frozen in English.
+publishing a text node. Runtime failures use the optional typed `errors` field
+on `PluginOutput`; the host adds the plugin and operation context, then sends
+one global error notification instead of rendering an error text node in the
+settings panel.
 
 Installed code, not catalog metadata, publishes action labels and icons. An old
 installed package without these declarations therefore keeps its English labels
@@ -94,8 +96,8 @@ host must not guess icons or translations from legacy action IDs to hide stale
 code, or silently overwrite immutable installed versions.
 
 Each window serializes service requests through publication of their replies,
-so a delayed poll cannot overwrite a newer configuration/action snapshot. Error
-publication changes only error/loading state under the cache lock and never
+so a delayed poll cannot overwrite a newer configuration/action snapshot. Failure
+publication changes only failure/loading state under the cache lock and never
 replaces newer cards or in-flight bookkeeping. Plugin Reset preserves the current
 session language rather than treating it as a plugin-owned preference.
 
@@ -115,7 +117,7 @@ missing and incomplete translations, optional-field decoding of legacy frames,
 the shipped plugins' English fallback for unsupported host languages,
 per-control in-flight bookkeeping, grid column selection, the settings entry
 opening and closing one plugin's panel, action glyph mapping (including the
-neutral fallback), and that a plugin-reported loading state draws on its own
+neutral fallback), typed plugin error validation, global notification rendering, and that a plugin-reported loading state draws on its own
 button. Real-pipe tests check Pomodoro's localized action labels and play, pause
 and restart declarations together across timer transitions. Real-process service
 tests cover whole-plugin English fallback for incomplete metadata. Application

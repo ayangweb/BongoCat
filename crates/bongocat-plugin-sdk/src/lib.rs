@@ -555,13 +555,39 @@ pub struct PluginOutput {
     pub settings: PluginView,
     pub config: Configuration,
     pub state: Vec<u8>,
+    /// Current user-facing failures, not view nodes or persisted session data.
+    /// Stable ids let the host notify once until recovery, even across locale changes.
+    #[serde(default)]
+    pub errors: Vec<PluginError>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginError {
+    pub id: String,
+    /// Localized by the plugin; never raw OS errors, paths or protocol diagnostics.
+    pub message: String,
+}
+
 impl PluginOutput {
     pub fn validate(&self) -> bool {
         self.model.validate()
             && self.settings.validate()
             && self.state.len() <= 64 * 1024
             && self.config.len() <= 64
+            && self.errors.len() <= 8
+            && self.errors.iter().all(|error| {
+                valid_key(&error.id)
+                    && !error.message.trim().is_empty()
+                    && error.message.len() <= 1024
+                    && !error.message.chars().any(char::is_control)
+            })
+            && self
+                .errors
+                .iter()
+                .map(|error| &error.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == self.errors.len()
             && self.config.iter().all(|(k, v)| {
                 valid_key(k)
                     && match v {
@@ -653,6 +679,45 @@ pub fn run(plugin: &mut impl Plugin) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plugin_errors_are_optional_bounded_and_reject_internal_formatting() {
+        let legacy: PluginOutput = serde_json::from_str(r#"{"model":{"anchor":"top_right","nodes":[]},"settings":{"anchor":"top_right","nodes":[]},"config":{},"state":[]}"#).unwrap();
+        assert!(legacy.errors.is_empty());
+        let valid = PluginOutput {
+            errors: vec![PluginError {
+                id: "audio_device".into(),
+                message: "No audio output device is available.".into(),
+            }],
+            ..Default::default()
+        };
+        assert!(valid.validate());
+        assert!(
+            !PluginOutput {
+                errors: vec![PluginError {
+                    id: "audio/device".into(),
+                    message: "failure".into()
+                }],
+                ..Default::default()
+            }
+            .validate()
+        );
+        assert!(
+            !PluginOutput {
+                errors: vec![
+                    PluginError {
+                        id: "audio".into(),
+                        message: "secret /Users/person/file".into()
+                    },
+                    PluginError {
+                        id: "audio".into(),
+                        message: "second".into()
+                    }
+                ],
+                ..Default::default()
+            }
+            .validate()
+        );
+    }
     #[test]
     fn inline_status_icons_are_bounded_and_round_trip_without_paths() {
         assert!(StatusIcon::Rgba([0, 0, 0, 128].repeat(1024)).is_template());

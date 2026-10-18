@@ -145,14 +145,9 @@ impl InputSourceIndicator {
         let visible = !self.paused
             && (!self.switch_only || self.visible_until.is_some_and(|end| self.now_ms < end));
         let mut settings = vec![];
-        if status.is_none() {
+        if status.is_none() && self.paused {
             settings.push(UiNode::Text {
-                text: if self.paused {
-                    copy.paused
-                } else {
-                    copy.unavailable
-                }
-                .into(),
+                text: copy.paused.into(),
             });
         }
         settings.push(UiNode::Select {
@@ -179,6 +174,13 @@ impl InputSourceIndicator {
             });
         }
         PluginOutput {
+            errors: (status.is_none() && !self.paused)
+                .then(|| bongocat_plugin_sdk::PluginError {
+                    id: "input_source_unavailable".into(),
+                    message: copy.unavailable.into(),
+                })
+                .into_iter()
+                .collect(),
             model: PluginView {
                 anchor: Anchor::BottomRight,
                 nodes: if visible {

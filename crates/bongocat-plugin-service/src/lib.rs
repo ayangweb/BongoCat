@@ -25,8 +25,8 @@ mod command;
 mod service;
 
 pub use command::{
-    PluginCard, PluginCenterSnapshot, PluginCommand, PluginCommandError, PluginReply,
-    PluginServiceClient, PluginServiceClosed, PluginServiceEndpoint,
+    PluginCard, PluginCenterSnapshot, PluginCommand, PluginCommandError, PluginInteractionFailure,
+    PluginReply, PluginServiceClient, PluginServiceClosed, PluginServiceEndpoint,
 };
 pub use service::{PluginOverlayHandles, PluginService, PluginServiceStartError, plugin_directory};
 
