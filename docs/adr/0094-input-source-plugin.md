@@ -55,7 +55,11 @@ sources. No hook, injection, COM thread impersonation or blocking SendMessage is
 added. Missing native icons use a clearly rendered language badge on either OS.
 
 The plugin owns always-on versus switch-only policy, a bounded display duration,
-localization, and an injectable monotonic tick timeline. Switch-only starts
+localization, and an injectable monotonic tick timeline. New, reset, or missing-mode
+configurations default to always-on; existing saved display modes are preserved.
+Settings expose the display mode and, for switch-only, duration without a current
+source icon/name preview. Unavailable and paused status messages remain visible.
+The source icon/name is published only to the model window. Switch-only starts
 hidden, records an initial baseline, and shows only a later source change.
 Unavailable snapshots clear stale display and report a localized recoverable
 status in settings; recovery re-baselines rather than fabricating a switch.

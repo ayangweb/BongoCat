@@ -23,6 +23,16 @@ fn real_process_supports_modes_locale_errors_reset_and_clean_shutdown() {
         write_frame(&mut input, &Request { sequence, message }).unwrap();
         let response: Response = read_frame(&mut output).unwrap();
         assert_eq!(response.sequence, sequence);
+        if let Ok(value) = &response.result {
+            assert!(
+                value
+                    .settings
+                    .nodes
+                    .iter()
+                    .all(|node| !matches!(node, UiNode::IconText { .. })),
+                "the source preview belongs only in the model window"
+            );
+        }
         response.result
     };
     send(HostMessage::Handshake {
@@ -30,13 +40,20 @@ fn real_process_supports_modes_locale_errors_reset_and_clean_shutdown() {
         id: "com.bongocat.input-source".into(),
     })
     .unwrap();
-    let config = [("mode".into(), ConfigValue::Text("switch".into()))].into();
     let started = send(HostMessage::Start {
-        config,
+        config: Default::default(),
         state: vec![],
     })
     .unwrap();
     assert!(started.validate());
+    assert_eq!(started.config["mode"], ConfigValue::Text("always".into()));
+    assert!(started.settings.nodes.iter().any(
+        |node| matches!(node, UiNode::Select { key, value, .. } if key == "mode" && value == "always")
+    ));
+    let started = send(HostMessage::Configure {
+        config: [("mode".into(), ConfigValue::Text("switch".into()))].into(),
+    })
+    .unwrap();
     assert!(started.model.nodes.is_empty(), "a baseline is not a switch");
     for (locale, label) in [("zh-CN", "显示方式"), ("fr-FR", "Display mode")] {
         let value = send(HostMessage::Locale {

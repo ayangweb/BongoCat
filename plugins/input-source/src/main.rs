@@ -144,30 +144,31 @@ impl InputSourceIndicator {
         let status = self.status();
         let visible = !self.paused
             && (!self.switch_only || self.visible_until.is_some_and(|end| self.now_ms < end));
-        let mut settings = vec![
-            status.clone().unwrap_or_else(|| UiNode::Text {
+        let mut settings = vec![];
+        if status.is_none() {
+            settings.push(UiNode::Text {
                 text: if self.paused {
                     copy.paused
                 } else {
                     copy.unavailable
                 }
                 .into(),
-            }),
-            UiNode::Select {
-                key: "mode".into(),
-                label: copy.mode.into(),
-                value: mode.into(),
-                options: [("always", copy.always), ("switch", copy.on_switch)]
-                    .into_iter()
-                    .map(|(value, label)| SelectOption {
-                        value: value.into(),
-                        label: label.into(),
-                        group: None,
-                    })
-                    .collect(),
-                preview: false,
-            },
-        ];
+            });
+        }
+        settings.push(UiNode::Select {
+            key: "mode".into(),
+            label: copy.mode.into(),
+            value: mode.into(),
+            options: [("always", copy.always), ("switch", copy.on_switch)]
+                .into_iter()
+                .map(|(value, label)| SelectOption {
+                    value: value.into(),
+                    label: label.into(),
+                    group: None,
+                })
+                .collect(),
+            preview: false,
+        });
         if self.switch_only {
             settings.push(UiNode::Integer {
                 key: "seconds".into(),

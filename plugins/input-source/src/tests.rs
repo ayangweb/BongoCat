@@ -17,6 +17,56 @@ fn switch_config() -> Configuration {
 }
 
 #[test]
+fn settings_omit_source_preview_and_default_to_always_show() {
+    let mut plugin = InputSourceIndicator::default();
+    for icon_rgba in [None, Some(vec![255; 4096])] {
+        plugin.observe(Ok(InputSource {
+            id: "test".into(),
+            name: "Source test".into(),
+            icon_rgba,
+        }));
+        let output = plugin.output();
+        assert_eq!(output.config["mode"], ConfigValue::Text("always".into()));
+        assert!(matches!(
+            output.settings.nodes.as_slice(),
+            [UiNode::Select { key, value, .. }] if key == "mode" && value == "always"
+        ));
+        assert!(matches!(
+            output.model.nodes.as_slice(),
+            [UiNode::IconText { text, .. }] if text == "Source test"
+        ));
+    }
+    plugin.configure(&switch_config()).unwrap();
+    let output = plugin.output();
+    assert!(matches!(
+        output.settings.nodes.as_slice(),
+        [UiNode::Select { value, .. }, UiNode::Integer { key, .. }]
+            if value == "switch" && key == "seconds"
+    ));
+}
+
+#[test]
+fn saved_display_modes_are_preserved_and_missing_mode_defaults_to_always() {
+    let mut plugin = InputSourceIndicator::default();
+    for mode in ["switch", "always"] {
+        let saved: Configuration = serde_json::from_value(serde_json::json!({
+            "mode": { "type": "text", "value": mode },
+            "seconds": { "type": "integer", "value": 4 }
+        }))
+        .unwrap();
+        plugin.configure(&saved).unwrap();
+        assert_eq!(plugin.output().config, saved);
+    }
+    plugin.configure(&switch_config()).unwrap();
+    plugin
+        .configure(&[("seconds".into(), ConfigValue::Integer(4))].into())
+        .unwrap();
+    let output = plugin.output();
+    assert_eq!(output.config["mode"], ConfigValue::Text("always".into()));
+    assert_eq!(output.config["seconds"], ConfigValue::Integer(4));
+}
+
+#[test]
 fn always_on_and_switch_only_initial_baseline() {
     let mut plugin = InputSourceIndicator::default();
     plugin.observe(source("a"));
@@ -109,7 +159,7 @@ fn locale_changes_and_reset_preserve_system_name_and_locale_contract() {
             })
             .unwrap();
         assert!(
-            matches!(&output.settings.nodes[1], UiNode::Select { label: actual, .. } if actual == label)
+            matches!(&output.settings.nodes[0], UiNode::Select { label: actual, .. } if actual == label)
         );
         assert!(
             matches!(&output.model.nodes[0], UiNode::IconText { text, .. } if text == "Source 拼音")
