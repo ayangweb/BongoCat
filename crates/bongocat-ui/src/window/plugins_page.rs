@@ -152,7 +152,7 @@ fn card_view(
         .flex()
         .flex_col()
         .gap_1()
-        .child(div().min_w_0().font_semibold().child(name));
+        .child(div().min_w_0().font_semibold().child(name.clone()));
     if let Some(version) = card.version.clone() {
         heading =
             heading.child(
@@ -356,17 +356,29 @@ fn card_view(
         let uninstall_view = view.clone();
         let uninstall_id = card.id.clone();
         actions = actions.child(
-            Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
-                .danger()
-                .outline()
-                .icon(IconName::Trash)
-                .tooltip(bongocat_i18n::text(locale, "plugins.uninstall"))
-                .loading(uninstall_pending)
-                .disabled(busy || uninstall_pending)
-                .on_click(move |_, _, cx| {
-                    let id = uninstall_id.clone();
-                    uninstall_view.update(cx, |view, cx| view.uninstall_plugin(&id, cx));
-                }),
+            PopConfirm::new(
+                SharedString::from(format!("plugin-uninstall-confirmation-{}", card.id)),
+                bongocat_i18n::format_text(locale, "plugins.uninstall_confirm", &[("name", name)]),
+            )
+            .anchor(Anchor::BottomRight)
+            .arrow(true)
+            .icon(IconName::TriangleAlert, cx.theme().danger)
+            .confirm_label(bongocat_i18n::text(locale, "actions.confirm"))
+            .cancel_label(bongocat_i18n::text(locale, "actions.cancel"))
+            .trigger(
+                Button::new(SharedString::from(format!("plugin-uninstall-{}", card.id)))
+                    .danger()
+                    .outline()
+                    .icon(IconName::Trash)
+                    .tooltip(bongocat_i18n::text(locale, "plugins.uninstall"))
+                    .loading(uninstall_pending)
+                    .disabled(busy || uninstall_pending),
+            )
+            .on_confirm(move |_, cx| {
+                uninstall_view.update(cx, |view, cx| {
+                    view.uninstall_plugin(&uninstall_id, cx);
+                });
+            }),
         );
     }
     body.child(footer.child(actions))

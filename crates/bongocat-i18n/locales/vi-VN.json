@@ -559,6 +559,7 @@
     "update_all_success": "Tất cả plugin đã được cập nhật.",
     "available_version": "Phiên bản có sẵn %{version}",
     "uninstall": "Gỡ cài đặt",
+    "uninstall_confirm": "Bạn có chắc muốn gỡ cài đặt %{name} không?",
     "settings": {
       "open": "Cài đặt",
       "title": "Cài đặt %{name}",

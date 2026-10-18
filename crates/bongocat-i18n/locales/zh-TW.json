@@ -559,6 +559,7 @@
     "update_all_success": "所有外掛程式均已更新。",
     "available_version": "可用版本 %{version}",
     "uninstall": "卸載",
+    "uninstall_confirm": "確定要卸載「%{name}」嗎？",
     "settings": {
       "open": "設定",
       "title": "%{name} 設定",
