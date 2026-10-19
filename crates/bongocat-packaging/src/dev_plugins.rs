@@ -13,12 +13,14 @@
 //! difference between the two environments is where the bytes came from.
 use super::*;
 use bongocat_plugin_manager::{MANIFEST_FILE, PluginManifest};
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::process::Stdio;
 use zip::write::SimpleFileOptions;
 
 /// Where `--prepare-dev-plugins` writes its packages, relative to the workspace.
 pub(crate) const PLUGIN_OUTPUT_DIRECTORY: &str = "target/plugins";
+const DEV_PLUGIN_CATALOG: &str = "catalog.json";
 
 /// Build every local plugin and package it as a ZIP under `target/plugins`.
 ///
@@ -134,12 +136,17 @@ fn prepare_into(
             let entry = entry?;
             if entry.file_type()?.is_dir() && entry.path().join(MANIFEST_FILE).is_file() {
                 let bytes = fs::read(entry.path().join(MANIFEST_FILE))?;
-                sources.push((entry.path(), serde_json::from_slice(&bytes)?, bytes));
+                sources.push((
+                    entry.path(),
+                    serde_json::from_slice::<PluginManifest>(&bytes)?,
+                    bytes,
+                ));
             }
         }
+        sources.sort_by(|a, b| a.1.metadata.id.cmp(&b.1.metadata.id));
         sources
     };
-    for (source, manifest, bytes) in sources {
+    for (source, manifest, bytes) in &sources {
         for component in [&manifest.metadata.id, &manifest.metadata.entry] {
             if !bongocat_plugin_manager::install::valid_basename(component) {
                 return failure("local plugin id and entry must be safe basenames");
@@ -163,7 +170,7 @@ fn prepare_into(
         }
         let executable = executable_from_messages(&report.stdout, &manifest.metadata.entry)
             .ok_or("Cargo did not report the plugin executable")?;
-        let package = package_into(output, &manifest, &bytes, &source, &executable)?;
+        let package = package_into(output, manifest, bytes, source, &executable)?;
         if target.is_some() {
             let store = tempfile::tempdir()?;
             bongocat_plugin_manager::install::install_package(
@@ -175,7 +182,64 @@ fn prepare_into(
         packages.push(package);
     }
     prune_packages(output, &packages)?;
+    if target.is_none() {
+        write_dev_catalog(output, &sources, &packages)?;
+    }
     Ok(packages)
+}
+
+pub(super) fn write_dev_catalog(
+    output: &Path,
+    sources: &[(PathBuf, PluginManifest, Vec<u8>)],
+    packages: &[PathBuf],
+) -> Result<()> {
+    let mut entries = Vec::new();
+    for (source, manifest, _) in sources {
+        let icon = match &manifest.metadata.icon {
+            bongocat_plugin_sdk::PluginIcon::LocalImage(relative) => {
+                let icon = output
+                    .join("icons")
+                    .join(&manifest.metadata.id)
+                    .join("icon.png");
+                fs::create_dir_all(icon.parent().ok_or("plugin icon has no parent")?)?;
+                fs::copy(source.join(relative), &icon)?;
+                icon
+            }
+            bongocat_plugin_sdk::PluginIcon::Emoji(_)
+            | bongocat_plugin_sdk::PluginIcon::RemoteImage(_) => {
+                return failure("every bundled plugin must declare a local PNG icon");
+            }
+        };
+        entries.push((manifest.metadata.clone(), icon));
+    }
+    if entries.len() != packages.len() {
+        return failure("local plugin catalog and package set disagree");
+    }
+    entries.sort_by(|a, b| a.0.id.cmp(&b.0.id));
+    let catalog = bongocat_plugin_manager::Catalog {
+        plugins: entries
+            .into_iter()
+            .map(|(metadata, icon)| bongocat_plugin_manager::CatalogEntry {
+                icon_url: icon.display().to_string(),
+                id: metadata.id,
+                name: metadata.name,
+                description: metadata.description,
+                localizations: metadata.localizations,
+                version: metadata.version,
+                app_versions: metadata.app_versions,
+                protocol_version: metadata.protocol_version,
+                icon: metadata.icon,
+                downloads: BTreeMap::new(),
+                sha256: None,
+                homepage: None,
+            })
+            .collect(),
+    };
+    fs::write(
+        output.join(DEV_PLUGIN_CATALOG),
+        serde_json::to_vec_pretty(&catalog)?,
+    )?;
+    Ok(())
 }
 
 /// Only current source plugins should be discoverable after a successful build.
@@ -409,11 +473,28 @@ mod tests {
             package.file_name().unwrap(),
             "com.bongocat.key-sounds-1.0.0.zip"
         );
+        let packages = workspace.path().join(PLUGIN_OUTPUT_DIRECTORY);
+        let source = workspace_root().unwrap().join("plugins/key-sounds");
+        write_dev_catalog(
+            &packages,
+            &[(source, manifest.clone(), bytes.to_vec())],
+            std::slice::from_ref(&package),
+        )
+        .unwrap();
         let stop = AtomicBool::new(false);
-        let source = PluginSource::Development(workspace.path().join(PLUGIN_OUTPUT_DIRECTORY));
+        let source = PluginSource::Development {
+            catalog: packages.join(DEV_PLUGIN_CATALOG),
+            packages,
+        };
         let available = source.discover("2.3.1", &stop).unwrap();
         assert_eq!(available.len(), 1);
         assert_eq!(available[0].metadata.id, id);
+        // Discovery must provide the card artwork before installation.
+        let icon = &available[0].icon_url;
+        assert!(std::path::Path::new(icon).is_file());
+        assert!(std::path::Path::new(icon).ends_with(std::path::Path::new(
+            "icons/com.bongocat.key-sounds/icon.png"
+        )));
         assert_eq!(available[0].metadata.localized_copy("zh-CN").0, "按键音效");
         assert_eq!(
             available[0].metadata.localized_copy("zh-TW").0,

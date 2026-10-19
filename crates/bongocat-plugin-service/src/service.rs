@@ -460,13 +460,17 @@ impl Worker {
     }
 
     fn center(&self) -> PluginCenterSnapshot {
+        let icon_urls = self
+            .offers
+            .iter()
+            .map(|offer| (offer.metadata.id.clone(), offer.icon_url.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
         let mut cards: Vec<PluginCard> = self
             .manager
             .list_plugins()
             .into_iter()
             .map(|(metadata, state)| {
                 let output = self.manager.plugin_output(&metadata.id);
-                let icon_path = self.manager.plugin_icon_path(&metadata.id);
                 let version = self.manager.installed_version(&metadata.id);
                 let available_version = self
                     .offers
@@ -484,9 +488,7 @@ impl Worker {
                     name: metadata.name,
                     description: metadata.description,
                     localizations: metadata.localizations,
-                    icon: metadata.icon,
-                    icon_fallback: metadata.icon_fallback,
-                    icon_path,
+                    icon_url: icon_urls.get(&metadata.id).cloned(),
                     enabled: state == PluginState::Enabled,
                     failed: state == PluginState::Failed,
                     version,
@@ -514,9 +516,7 @@ impl Worker {
                 name: offer.metadata.name.clone(),
                 description: offer.metadata.description.clone(),
                 localizations: offer.metadata.localizations.clone(),
-                icon: offer.metadata.icon.clone(),
-                icon_fallback: offer.metadata.icon_fallback.clone(),
-                icon_path: None,
+                icon_url: Some(offer.icon_url.clone()),
                 enabled: false,
                 failed: version.is_some(),
                 version,

@@ -8,7 +8,7 @@
 //! the same plugins.
 
 use async_channel::{Receiver, Sender};
-use bongocat_plugin_sdk::{ConfigValue, PluginCopy, PluginIcon, UiNode};
+use bongocat_plugin_sdk::{ConfigValue, PluginCopy, UiNode};
 use std::collections::BTreeMap;
 
 /// One plugin as the center shows it.
@@ -29,11 +29,9 @@ pub struct PluginCard {
     /// without the service having to republish anything: the map is a property
     /// of the plugin, and picking from it is presentation.
     pub localizations: BTreeMap<String, PluginCopy>,
-    pub icon: PluginIcon,
-    /// A glyph shown when `icon` is a local image that cannot be read.
-    pub icon_fallback: Option<PluginIcon>,
-    /// Absolute path to the installed local icon, when one is available.
-    pub icon_path: Option<std::path::PathBuf>,
+    /// Image URL or absolute Development path for the card, independent of
+    /// whether the package is installed.
+    pub icon_url: Option<String>,
     pub enabled: bool,
     pub failed: bool,
     /// The version the selected package names, when one is installed.

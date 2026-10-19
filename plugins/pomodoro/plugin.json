@@ -8,7 +8,6 @@
     "protocol_version": 1,
     "entry": "bongocat-pomodoro",
     "icon": { "type": "local_image", "value": "resources/icon.png" },
-    "icon_fallback": { "type": "emoji", "value": "🍅" },
     "capabilities": [
       "model_ui",
       "configuration",

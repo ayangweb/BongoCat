@@ -104,36 +104,52 @@ session language rather than treating it as a plugin-owned preference.
 ## Plugin identity artwork
 
 Every bundled plugin uses one artwork entry: its manifest names
-`resources/icon.png` as a safe package-relative `local_image`, and the icon is
-also listed as the plugin's `icon_fallback`. The image is a square RGBA PNG
-exported at its native source resolution. Its rounded silhouette reaches every
-edge of the canvas, so no transparent padding is baked around the artwork. No
-second icon directory or plugin-specific asset path is supported. The manager
-resolves that path against the selected installed version and requires the file
-to exist during install; the settings process never reconstructs a package
-location itself. A catalog offer that is not installed still has no local
-path, so its card uses the declared glyph until installation succeeds.
+`resources/icon.png` as a safe package-relative `local_image`. The image is a
+square RGBA PNG exported at its native source resolution. Its rounded silhouette
+reaches every edge of the canvas, so no transparent padding is baked around the
+artwork. No second icon directory or plugin-specific asset path is supported.
+The manager resolves that path against the selected installed version and
+requires the file to exist during install.
+
+Catalog discovery projects a separate `icon_url` for the card. In Development,
+`just dev-plugins` copies each package's artwork to
+`target/plugins/icons/<plugin-id>/icon.png` and writes that absolute path into
+the generated catalog. Release packaging extracts the same PNG from each plugin
+ZIP, publishes it as the immutable `<plugin-id>-<version>.png` asset, and writes
+that asset name into the signed catalog. The runtime resolves it to the catalog
+URL or the configured GitHub proxy, exactly as it resolves package downloads.
+An installed card continues to use the catalog URL, so installing, updating or
+uninstalling a package never changes which artwork the card reads.
+
+There is no font or Emoji fallback. Every bundled plugin must declare a local
+PNG, and every catalog offer must resolve to one. A URL that cannot be loaded
+leaves the fixed square empty; it is not replaced by a glyph, a generic icon or
+the installed package's private file. This keeps Development and Production on
+the same presentation path instead of making Development depend on an installed
+tree.
 
 A card displays a local image in a fixed 48px square frame with
 `ObjectFit::Contain`, which preserves aspect ratio without stretching or
 cropping. The image supplies its own rounded silhouette; the frame adds no
-surface, padding, clipping or second radius around it. Only an emoji fallback
-uses the themed tile. Packaging includes exactly the declared icon alongside
-the manifest and executable, and a repository contract test requires the same
-file name, square canvas, RGBA mode, antialiased corners and opaque edge
-midpoints for every bundled plugin.
+surface, padding, clipping or second radius around it. Packaging includes
+exactly the declared icon alongside the manifest and executable, and a
+repository contract test requires the same file name, square canvas, RGBA mode,
+antialiased corners and opaque edge midpoints for every bundled plugin.
 
 ## Compatibility
 
 Every protocol addition is optional and defaults to the previous behavior: a
 button with no `icon` and no `loading`, a manifest with no `localizations`, a
-plugin without `localized_views_v1`, or a manifest with no `icon_fallback`.
-Local-image manifests that predate the common artwork entry remain readable and
-resolve their own safe relative path; the shipped plugins are normalized to
-`resources/icon.png`. No config, state, session or catalog format changes,
-`schema_version` stays 1, and ADR-0091's lifecycle, storage and catalog
-decisions are unchanged. Widgets already pinned to `gpui-kit` are reused; no new
-dependency is introduced.
+plugin without `localized_views_v1`. The manifest has no icon fallback field;
+unknown fields remain rejected. Every release and Development catalog writes
+`icon_url`, and every bundled manifest names the same `resources/icon.png`.
+There is no compatibility path for a manifest or catalog that omits card
+artwork; both are build inputs and must be corrected at the source. No config,
+state or session format changes, `schema_version` stays 1, and ADR-0091's
+lifecycle, storage and catalog decisions are unchanged. Widgets already pinned
+to `gpui-kit` are reused. The desktop application adds the matching
+`gpui-pre-reqwest-client` transport so GPUI's image element can load release
+PNGs; it is not a second UI dependency.
 
 ## Validation
 

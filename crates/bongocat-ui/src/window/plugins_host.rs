@@ -7,7 +7,7 @@
 //! starts, ticks or stops a plugin, so the page cannot become the reason a plugin
 //! runs or stops running.
 
-use bongocat_plugin_sdk::{PluginCopy, PluginIcon};
+use bongocat_plugin_sdk::PluginCopy;
 use bongocat_plugin_service::{
     PluginCard, PluginCenterSnapshot, PluginCommandError, PluginServiceClient,
 };
@@ -254,9 +254,7 @@ pub(crate) struct PluginCardView {
     pub(crate) description: String,
     /// The plugin's own name and description per locale, and the fallback above.
     pub(crate) localizations: BTreeMap<String, PluginCopy>,
-    pub(crate) icon: PluginIcon,
-    pub(crate) icon_fallback: Option<PluginIcon>,
-    pub(crate) icon_path: Option<std::path::PathBuf>,
+    pub(crate) icon_url: Option<String>,
     pub(crate) enabled: bool,
     pub(crate) failed: bool,
     pub(crate) version: Option<String>,
@@ -298,9 +296,7 @@ impl From<PluginCard> for PluginCardView {
             name: card.name,
             description: card.description,
             localizations: card.localizations,
-            icon: card.icon,
-            icon_fallback: card.icon_fallback,
-            icon_path: card.icon_path,
+            icon_url: card.icon_url,
             enabled: card.enabled,
             failed: card.failed,
             version: card.version,
@@ -932,8 +928,8 @@ mod tests {
     use bongocat_plugin_service::{
         PluginCommand, PluginService, PluginServiceClient, PluginServiceEndpoint, plugin_directory,
     };
-    use gpui_kit::{TestAppContext, VisualTestContext, test::TestWindowExt as _};
-    use std::io::Write as _;
+    use gpui_kit::{TestAppContext, VisualTestContext, http_client, test::TestWindowExt as _};
+    use std::{future::Future, io::Write as _, pin::Pin, sync::Arc};
 
     #[test]
     fn preview_mailbox_coalesces_hover_and_cancels_stale_options() {
@@ -1525,9 +1521,7 @@ mod tests {
                     },
                 ),
             ]),
-            icon: PluginIcon::Emoji("🐱".into()),
-            icon_fallback: None,
-            icon_path: None,
+            icon_url: None,
             enabled: true,
             failed: false,
             errors: Vec::new(),
@@ -1720,21 +1714,98 @@ mod tests {
 
     #[gpui_kit::test]
     fn a_plugin_icon_keeps_a_uniform_square_in_every_card(cx: &mut TestAppContext) {
-        let mut card = sample_card();
-        let mut local = sample_card();
-        local.id = "com.example.local-icon".into();
-        local.icon = PluginIcon::LocalImage("resources/icon.png".into());
-        local.icon_fallback = Some(PluginIcon::Emoji("🍅".into()));
-        card.id = "com.example.emoji-icon".into();
-        let (_, visual) = card_page(cx, vec![card, local], 800.);
+        let mut remote = sample_card();
+        remote.id = "com.example.remote-icon".into();
+        remote.icon_url = Some("https://example.com/pomodoro.png".into());
+        let mut missing = sample_card();
+        missing.id = "com.example.missing-icon".into();
+        let (_, visual) = card_page(cx, vec![remote, missing], 800.);
         visual.update(|window, _| {
-            for id in ["com.example.emoji-icon", "com.example.local-icon"] {
+            for id in ["com.example.remote-icon", "com.example.missing-icon"] {
                 let icon = window
                     .find(SharedString::from(format!("plugin-icon-{id}")))
                     .bounds();
                 assert_eq!(icon.size.width, px(48.));
                 assert_eq!(icon.size.height, px(48.));
             }
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_release_icon_is_fetched_through_the_gpui_http_client(cx: &mut TestAppContext) {
+        struct PngHttpClient;
+
+        impl http_client::HttpClient for PngHttpClient {
+            fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+                None
+            }
+
+            fn proxy(&self) -> Option<&http_client::Url> {
+                None
+            }
+
+            fn send(
+                &self,
+                request: http_client::Request<http_client::AsyncBody>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http_client::Result<
+                                http_client::Response<http_client::AsyncBody>,
+                            >,
+                        > + Send
+                        + 'static,
+                >,
+            > {
+                assert_eq!(
+                    request.uri().to_string(),
+                    "https://example.com/pomodoro.png"
+                );
+                Box::pin(async {
+                    Ok(http_client::Response::builder()
+                        .status(http_client::StatusCode::OK)
+                        .header("content-type", "image/png")
+                        .body(http_client::AsyncBody::from(
+                            include_bytes!("../../../../plugins/pomodoro/resources/icon.png")
+                                .as_slice(),
+                        ))
+                        .unwrap())
+                })
+            }
+        }
+
+        cx.update(|app| app.set_http_client(Arc::new(PngHttpClient)));
+        let mut card = sample_card();
+        card.icon_url = Some("https://example.com/pomodoro.png".into());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let icon = window
+                .find(SharedString::from("plugin-icon-com.example.card"))
+                .bounds();
+            assert_eq!(icon.size.width, px(48.));
+            assert_eq!(icon.size.height, px(48.));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_development_icon_is_read_as_a_file_not_as_an_embedded_asset(cx: &mut TestAppContext) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .join("plugins/pomodoro/resources/icon.png");
+        assert!(path.is_file());
+        let mut card = sample_card();
+        card.icon_url = Some(path.display().to_string());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let icon = window
+                .find(SharedString::from("plugin-icon-com.example.card"))
+                .bounds();
+            assert_eq!(icon.size.width, px(48.));
+            assert_eq!(icon.size.height, px(48.));
         });
     }
 
@@ -2287,9 +2358,7 @@ mod tests {
                     name: card.name,
                     description: card.description,
                     localizations: card.localizations,
-                    icon: card.icon,
-                    icon_fallback: card.icon_fallback,
-                    icon_path: card.icon_path,
+                    icon_url: card.icon_url,
                     enabled: card.enabled,
                     failed: card.failed,
                     version: card.version,

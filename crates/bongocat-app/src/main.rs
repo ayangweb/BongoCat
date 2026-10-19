@@ -70,6 +70,7 @@ use gpui_kit::{
     platform::current_platform,
 };
 use gpui_kit::{AsyncApp, Context, Window};
+use reqwest_client::ReqwestClient;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
@@ -136,7 +137,25 @@ fn gpui_application() -> GpuiApplication {
     // update restart), not by window bookkeeping: the product stays alive behind
     // the overlay and the status icon even when every product window is closed,
     // so GPUI must never auto-quit on last-window-closed.
-    GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
+    //
+    // Plugin card PNGs arrive from GitHub Release in Production and are loaded
+    // by GPUI's image element through `cx.http_client()`. `new_inaccessible`
+    // installs a null client, so the product must provide the same Rustls-backed
+    // client for both Development and Production.
+    let http_client = ReqwestClient::user_agent(&product_user_agent())
+        .expect("the product user agent is a valid HTTP header");
+    GpuiApplication::new_inaccessible(current_platform(false))
+        .with_http_client(std::sync::Arc::new(http_client))
+        .with_quit_mode(QuitMode::Explicit)
+}
+
+fn product_user_agent() -> String {
+    format!(
+        "BongoCat/{} ({}/{})",
+        bongocat_app::PRODUCT_VERSION,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
 }
 
 /// How long a Windows taskbar check waits for the runtime's published

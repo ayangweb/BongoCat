@@ -102,6 +102,18 @@ class PluginIconTests(unittest.TestCase):
             "plugin icons must live at resources/icon.png",
         )
 
+    def test_card_artwork_is_not_a_manifest_field(self):
+        schema_fields = {
+            "icon_url",
+            "icon_path",
+            "fallback_icon",
+            "icon_fallback",
+        }
+        for manifest_path in self.plugin_manifests():
+            with self.subTest(plugin=manifest_path.parent.name):
+                metadata = json.loads(manifest_path.read_text(encoding="utf-8"))["metadata"]
+                self.assertTrue(schema_fields.isdisjoint(metadata))
+
     def test_every_icon_is_a_square_with_antialiased_rounded_corners(self):
         for manifest_path in self.plugin_manifests():
             icon = manifest_path.parent / EXPECTED_ICON

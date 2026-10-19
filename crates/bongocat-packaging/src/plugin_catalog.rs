@@ -139,6 +139,8 @@ fn validate_release_archive(
             return failure("release plugin icon path is unsafe");
         }
         expected.insert(relative.clone());
+    } else {
+        return failure("every release plugin must declare a local PNG icon");
     }
     let entries = (0..archive.len())
         .map(|index| {
@@ -243,7 +245,8 @@ pub(super) fn publish(
     let mut catalog = Catalog {
         plugins: Vec::new(),
     };
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = std::collections::BTreeMap::<String, Vec<u8>>::new();
+    let mut icon_names = std::collections::BTreeMap::<(String, String), String>::new();
     for (target, directory) in inputs {
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
@@ -264,24 +267,51 @@ pub(super) fn publish(
                 metadata.version,
                 target.manifest_platform()
             );
-            if !names.insert(name.clone()) {
+            if let Some(previous) = names.insert(name.clone(), bytes.clone())
+                && previous != bytes
+            {
                 return failure("duplicate plugin release asset");
             }
             fs::write(staging.path().join(&name), &bytes)?;
-            catalog.plugins.push(CatalogEntry {
-                id: metadata.id,
-                name: metadata.name,
-                description: metadata.description,
-                localizations: metadata.localizations,
-                version: metadata.version,
-                app_versions: metadata.app_versions,
-                protocol_version: metadata.protocol_version,
-                icon: metadata.icon,
-                icon_fallback: metadata.icon_fallback,
-                downloads: [(target.manifest_platform().to_owned(), name)].into(),
-                sha256: Some(sha256_of(&bytes)),
-                homepage: None,
-            });
+            if let bongocat_plugin_sdk::PluginIcon::LocalImage(relative) = &metadata.icon {
+                let icon_name = format!("{}-{}.png", metadata.id, metadata.version);
+                let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes))?;
+                let mut icon = archive.by_name(relative)?;
+                let mut icon_bytes = Vec::new();
+                std::io::copy(&mut icon, &mut icon_bytes)?;
+                if let Some(previous) = names.insert(icon_name.clone(), icon_bytes.clone())
+                    && previous != icon_bytes
+                {
+                    return failure("published plugin icon changed for one version");
+                }
+                fs::write(staging.path().join(&icon_name), &icon_bytes)?;
+                let identity = (metadata.id.clone(), metadata.version.clone());
+                if let Some(previous) = icon_names.insert(identity.clone(), icon_name.clone())
+                    && previous != icon_name
+                {
+                    return failure("published plugin icon changed for one plugin");
+                }
+                let icon_url = icon_names
+                    .get(&identity)
+                    .cloned()
+                    .ok_or("every plugin catalog entry needs a PNG icon")?;
+                catalog.plugins.push(CatalogEntry {
+                    id: metadata.id,
+                    name: metadata.name,
+                    description: metadata.description,
+                    localizations: metadata.localizations,
+                    version: metadata.version,
+                    app_versions: metadata.app_versions,
+                    protocol_version: metadata.protocol_version,
+                    icon: metadata.icon,
+                    icon_url,
+                    downloads: [(target.manifest_platform().to_owned(), name)].into(),
+                    sha256: Some(sha256_of(&bytes)),
+                    homepage: None,
+                });
+            } else {
+                return failure("every release plugin must declare a local PNG icon");
+            }
         }
     }
     catalog
@@ -292,7 +322,7 @@ pub(super) fn publish(
     let signature = fs::read_to_string(cargo_packager::sign::sign_file(signing, &canonical)?)?;
     let signed = serde_json::json!({ "catalog": catalog, "signature": signature });
     let mut assets = Vec::new();
-    for name in names {
+    for name in names.into_keys() {
         let destination = parent.join(&name);
         // Versioned assets are immutable, just as installed package versions are.
         if destination.exists() && fs::read(&destination)? != fs::read(staging.path().join(&name))?
@@ -380,10 +410,28 @@ mod tests {
         let assets =
             publish_release_with_key(&workspace, &output, &inputs, &history, &signing, &keys.pk)
                 .unwrap();
-        assert_eq!(assets.len(), sources.len() * 3 + 1);
+        let icons = sources
+            .iter()
+            .filter(|(_, manifest, _)| {
+                matches!(
+                    manifest.metadata.icon,
+                    bongocat_plugin_sdk::PluginIcon::LocalImage(_)
+                )
+            })
+            .count();
+        assert_eq!(assets.len(), sources.len() * 3 + icons + 1);
         let catalog =
             bongocat_plugin_manager::parse_catalog(&fs::read(&output).unwrap(), &keys.pk).unwrap();
         for entry in &catalog.plugins {
+            let icon = &entry.icon_url;
+            assert!(icon.ends_with(".png"));
+            assert!(!icon.contains('/'));
+            assert_eq!(
+                icon,
+                &format!("{}-{}.png", entry.id, entry.version),
+                "each platform row must point at its own versioned artwork"
+            );
+            assert!(output.parent().unwrap().join(icon).is_file());
             let asset = entry.downloads.values().next().unwrap();
             assert_eq!(
                 entry.sha256,

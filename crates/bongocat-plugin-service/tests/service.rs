@@ -16,6 +16,7 @@ const BINARY_FILE: &str = "bongocat-pomodoro.exe";
 const BINARY_FILE: &str = "bongocat-pomodoro";
 
 const PLUGIN_ID: &str = "com.bongocat.pomodoro";
+const CATALOG_FILE: &str = "catalog.json";
 
 fn plugin_package() -> Option<Vec<u8>> {
     plugin_package_with_manifest(|_| {})
@@ -420,6 +421,48 @@ fn versioned_package(bytes: &[u8], version: &str, broken: bool) -> Vec<u8> {
     output.finish().unwrap().into_inner()
 }
 
+/// Publish one local package, icon and catalog entry, as `just dev-plugins` does.
+fn write_local_catalog(directory: &std::path::Path, bytes: &[u8]) {
+    use std::io::Read;
+
+    let manifest = bongocat_plugin_manager::install::inspect_package(bytes).unwrap();
+    let package_name = format!("{}-{}.zip", manifest.metadata.id, manifest.metadata.version);
+    std::fs::write(directory.join(package_name), bytes).unwrap();
+
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut icon_bytes = Vec::new();
+    archive
+        .by_name("resources/icon.png")
+        .unwrap()
+        .read_to_end(&mut icon_bytes)
+        .unwrap();
+    let icon_file = directory.join(format!("{}.png", manifest.metadata.id));
+    std::fs::write(&icon_file, icon_bytes).unwrap();
+
+    let entry = bongocat_plugin_manager::CatalogEntry {
+        id: manifest.metadata.id,
+        name: manifest.metadata.name,
+        description: manifest.metadata.description,
+        localizations: manifest.metadata.localizations,
+        version: manifest.metadata.version,
+        app_versions: manifest.metadata.app_versions,
+        protocol_version: manifest.metadata.protocol_version,
+        icon: manifest.metadata.icon,
+        icon_url: icon_file.display().to_string(),
+        downloads: Default::default(),
+        sha256: Some(bongocat_plugin_manager::sha256_of(bytes)),
+        homepage: None,
+    };
+    let catalog = bongocat_plugin_manager::Catalog {
+        plugins: vec![entry],
+    };
+    std::fs::write(
+        directory.join(CATALOG_FILE),
+        serde_json::to_vec(&catalog).unwrap(),
+    )
+    .unwrap();
+}
+
 #[test]
 fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
     let Some(bytes) = plugin_package() else {
@@ -427,8 +470,11 @@ fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
     };
     let catalog = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
-    std::fs::write(catalog.path().join("pomodoro.zip"), &bytes).unwrap();
-    let source = bongocat_plugin_service::PluginSource::Development(catalog.path().to_owned());
+    write_local_catalog(catalog.path(), &bytes);
+    let source = bongocat_plugin_service::PluginSource::Development {
+        catalog: catalog.path().join(CATALOG_FILE),
+        packages: catalog.path().to_owned(),
+    };
     let (service, _) =
         PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
     let client = service.client();
@@ -463,8 +509,11 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
         plugin_package().expect("build Pomodoro with just dev-plugins before lifecycle tests");
     let catalog = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
-    std::fs::write(catalog.path().join("pomodoro.zip"), &bytes).unwrap();
-    let source = bongocat_plugin_service::PluginSource::Development(catalog.path().to_owned());
+    write_local_catalog(catalog.path(), &bytes);
+    let source = bongocat_plugin_service::PluginSource::Development {
+        catalog: catalog.path().join(CATALOG_FILE),
+        packages: catalog.path().to_owned(),
+    };
     let (service, _) =
         PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
     let client = service.client();
@@ -475,8 +524,14 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
         available.cards[0].version.is_none(),
         "discovery must not install"
     );
+    assert!(
+        std::path::Path::new(available.cards[0].icon_url.as_deref().unwrap()).is_file(),
+        "catalog artwork must exist outside the installed package tree"
+    );
     client.install_available_blocking(PLUGIN_ID).unwrap();
-    assert_eq!(settled(&client).cards[0].version.as_deref(), Some("1.0.0"));
+    let installed = settled(&client);
+    assert_eq!(installed.cards[0].version.as_deref(), Some("1.0.0"));
+    assert_eq!(installed.cards[0].icon_url, available.cards[0].icon_url);
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
     client
         .configure_blocking(
@@ -486,11 +541,7 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
         )
         .unwrap();
 
-    std::fs::write(
-        catalog.path().join("pomodoro.zip"),
-        versioned_package(&bytes, "1.1.0", false),
-    )
-    .unwrap();
+    write_local_catalog(catalog.path(), &versioned_package(&bytes, "1.1.0", false));
     client.refresh_blocking().unwrap();
     let update = settled(&client);
     assert!(update.cards[0].update_available);
@@ -507,11 +558,7 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
             .any(|node| matches!(node, bongocat_plugin_sdk::UiNode::Integer { value: 5, .. }))
     );
 
-    std::fs::write(
-        catalog.path().join("pomodoro.zip"),
-        versioned_package(&bytes, "1.2.0", true),
-    )
-    .unwrap();
+    write_local_catalog(catalog.path(), &versioned_package(&bytes, "1.2.0", true));
     client.refresh_blocking().unwrap();
     settled(&client);
     client.install_available_blocking(PLUGIN_ID).unwrap();

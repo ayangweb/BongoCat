@@ -139,20 +139,6 @@ fn card_view(
     let enabled = card.enabled;
     let (name, description) = card.copy(locale);
     let (name, description) = (name.to_owned(), description.to_owned());
-    let fallback = card
-        .icon_fallback
-        .as_ref()
-        .and_then(|icon| match icon {
-            bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => Some(emoji.clone()),
-            bongocat_plugin_sdk::PluginIcon::LocalImage(_)
-            | bongocat_plugin_sdk::PluginIcon::RemoteImage(_) => None,
-        })
-        .or_else(|| match &card.icon {
-            bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => Some(emoji.clone()),
-            bongocat_plugin_sdk::PluginIcon::LocalImage(_)
-            | bongocat_plugin_sdk::PluginIcon::RemoteImage(_) => None,
-        })
-        .unwrap_or_default();
     let mut heading = div()
         .min_w_0()
         .flex_1()
@@ -240,7 +226,7 @@ fn card_view(
                 .flex()
                 .items_start()
                 .gap_3()
-                .child(plugin_icon(card, fallback, cx))
+                .child(plugin_icon(card))
                 .child(heading)
                 .children(settings_entry),
         )
@@ -382,45 +368,31 @@ fn card_view(
 
 /// A plugin icon occupies one fixed square without changing its aspect ratio.
 ///
-/// Local icons already carry their own rounded silhouette, so the frame adds
-/// no surface, padding or clipping around them. Only the emoji fallback needs
-/// the themed tile that a local image would otherwise provide for itself.
-fn plugin_icon(card: &PluginCardView, fallback: String, cx: &App) -> AnyElement {
+/// The catalog supplies a URL in Production and a file path in Development.
+/// Both identify the same PNG and neither depends on whether the package is
+/// installed. A malformed or missing catalog value leaves the square empty
+/// rather than substituting a font glyph.
+fn plugin_icon(card: &PluginCardView) -> AnyElement {
     let frame = div().size_12().flex_shrink_0();
     let frame_id = SharedString::from(format!("plugin-icon-{}", card.id));
-    let fallback_style = (cx.theme().radius, cx.theme().secondary);
-    let fallback_for_image = fallback.clone();
-    let fallback_element = move || fallback_icon(fallback_for_image.clone(), fallback_style);
-    match card.icon_path.clone() {
-        Some(path) => frame
-            .id(frame_id)
-            .test_support()
-            .child(
-                img(path)
-                    .size_full()
-                    .object_fit(ObjectFit::Contain)
-                    .with_fallback(fallback_element),
-            )
-            .into_any_element(),
-        None => frame
-            .id(frame_id)
-            .test_support()
-            .child(fallback_icon(fallback, fallback_style))
-            .into_any_element(),
+    match card.icon_url.clone() {
+        Some(url) => {
+            // `img(String)` treats a non-URL as an embedded asset. Development
+            // catalogs name a local path, which GPUI can only read as one when
+            // the source is a `PathBuf`.
+            let source = if url.starts_with("https://") {
+                ImageSource::from(url)
+            } else {
+                ImageSource::from(PathBuf::from(url))
+            };
+            frame
+                .id(frame_id)
+                .test_support()
+                .child(img(source).size_full().object_fit(ObjectFit::Contain))
+                .into_any_element()
+        }
+        None => frame.id(frame_id).test_support().into_any_element(),
     }
-}
-
-fn fallback_icon(fallback: String, style: (Pixels, Hsla)) -> AnyElement {
-    div()
-        .size_full()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(style.0)
-        .bg(style.1)
-        .text_xl()
-        .child(fallback)
-        .into_any_element()
 }
 
 /// One plugin-published model-window control, as the card shows it.

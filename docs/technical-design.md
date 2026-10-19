@@ -66,8 +66,11 @@ Rust 2024 edition application
   窗口不影响插件继续运行、继续 tick 和继续更新模型窗口。
 - 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
   action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
-- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板；Emoji 图标来自清单，
-  本地/网络图片是后续扩展。主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
+- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板。插件中心身份图标固定为
+  清单声明的本地 PNG，由目录单独投影 `icon_url`：Development 指向构建产物中的本地文件，
+  Production 指向 GitHub Release 中与插件版本同名的独立 PNG 资源；两者都复用目录的代理顺序。
+  卡片不使用字体或 Emoji 回退，也不依赖插件是否已安装。主程序按 anchor 渲染到模型窗口，
+  配置界面渲染到插件中心。
 - 插件中心复用模型库页的响应式网格：同一套“窗口宽度 → 列数”规则、同一个滚动网格与行模板，
   只是卡片列宽下限按插件卡片的内容取更高值；两处目录对“一行放几列”保持一致。
 - 插件中心使用统一卡片：图标、名称、版本和设置入口在顶部，描述与配置在中部，底部左侧使用
@@ -109,8 +112,10 @@ Rust 2024 edition application
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
   HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
 - Development 的 `just dev` / `just dev-smoke` 先经打包工具把本地插件构建为 ZIP 写入
-  `target/plugins`，构建工具不写入应用数据目录；Development 构建启动后由产品自身的安装
-  目录发现可用插件；全部本地插件构建成功后清理不再对应源码插件的旧 ZIP，避免改名后残留目录项，
+  `target/plugins`，同时生成 `catalog.json` 并把图标复制到
+  `target/plugins/icons/<plugin-id>/icon.png`，构建工具不写入应用数据目录；Development 构建
+  启动后由产品自身的安装目录发现可用插件；全部本地插件构建成功后清理不再对应源码插件的旧
+  ZIP，避免改名后残留目录项，
   不自动安装或重新安装已卸载的插件。生产环境从 GitHub release 的签名
   `plugins.json` 发现列表；两个环境复用插件中心的安装、更新、启用、禁用和卸载路径。
   清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。

@@ -311,27 +311,6 @@ impl PluginManager {
     pub fn plugin_output(&self, id: &str) -> Option<&bongocat_plugin_sdk::PluginOutput> {
         self.registry.output(id)
     }
-    /// Resolve the plugin's local icon against the selected package root.
-    ///
-    /// The manifest only ever names a safe package-relative path. Returning an
-    /// absolute path here keeps package layout ownership in the manager and
-    /// prevents a UI process from having to know where a plugin is installed.
-    pub fn plugin_icon_path(&self, id: &str) -> Option<PathBuf> {
-        let (metadata, _) = self
-            .list_plugins()
-            .into_iter()
-            .find(|(metadata, _)| metadata.id == id)?;
-        let bongocat_plugin_sdk::PluginIcon::LocalImage(relative) = metadata.icon else {
-            return None;
-        };
-        let relative = Path::new(&relative);
-        if !install::safe_relative_path(relative) {
-            return None;
-        }
-        let root = install::selected_root(&self.plugin_dir, id)?;
-        let path = root.join(relative);
-        path.is_file().then_some(path)
-    }
     pub fn shutdown(&mut self) -> Result<(), PluginManagerError> {
         self.registry.shutdown().map_err(Into::into)
     }
@@ -356,7 +335,6 @@ mod tests {
             protocol_version: 1,
             entry: "../x".into(),
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("x".into()),
-            icon_fallback: None,
             capabilities: vec![],
             localizations: Default::default(),
         };

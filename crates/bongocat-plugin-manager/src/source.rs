@@ -1,5 +1,5 @@
 //! Package discovery never installs or executes the advertised code.
-use crate::{CatalogEntry, catalog, install};
+use crate::{Catalog, CatalogEntry, catalog, install};
 use bongocat_plugin_sdk::PluginMetadata;
 use cargo_packager_updater::semver::{Version, VersionReq};
 use std::{
@@ -12,7 +12,10 @@ use std::{
 #[derive(Clone, Debug)]
 pub enum PluginSource {
     InstalledOnly,
-    Development(PathBuf),
+    Development {
+        catalog: PathBuf,
+        packages: PathBuf,
+    },
     Production {
         owner: String,
         repository: String,
@@ -24,6 +27,11 @@ pub enum PluginSource {
 #[derive(Clone, Debug)]
 pub struct AvailablePlugin {
     pub metadata: PluginMetadata,
+    /// Where the card reads the same PNG the package carries.
+    ///
+    /// This is catalog projection state rather than package manifest data, so it
+    /// stays beside the metadata instead of entering the plugin protocol.
+    pub icon_url: String,
     pub digest: String,
     location: PackageLocation,
 }
@@ -62,44 +70,35 @@ impl PluginSource {
         let mut candidates = Vec::new();
         match self {
             Self::InstalledOnly => {}
-            Self::Development(directory) => {
-                // A missing directory is an empty local catalog, not an installed store.
-                let entries = match fs::read_dir(directory) {
-                    Ok(entries) => entries,
+            Self::Development { catalog, packages } => {
+                let catalog = match fs::read(catalog) {
+                    Ok(bytes) => serde_json::from_slice::<Catalog>(&bytes)
+                        .map_err(|error| error.to_string())?,
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                         return Ok(Vec::new());
                     }
                     Err(error) => return Err(error.to_string()),
                 };
-                for entry in entries {
+                for entry in catalog.plugins {
                     if stop.load(Ordering::Acquire) {
                         return Err("catalog refresh cancelled".into());
                     }
-                    let entry = entry.map_err(|error| error.to_string())?;
-                    if !entry
-                        .file_type()
-                        .map_err(|error| error.to_string())?
-                        .is_file()
-                        || entry
-                            .path()
-                            .extension()
-                            .is_none_or(|extension| extension != "zip")
-                    {
-                        continue;
-                    }
-                    if entry.metadata().map_err(|error| error.to_string())?.len()
-                        > catalog::MAX_DOWNLOAD_BYTES as u64
-                    {
-                        return Err("local plugin package exceeds size limit".into());
-                    }
-                    let bytes = install::read_bounded(&entry.path(), catalog::MAX_DOWNLOAD_BYTES)
+                    let package = packages.join(format!("{}-{}.zip", entry.id, entry.version));
+                    let bytes = install::read_bounded(&package, catalog::MAX_DOWNLOAD_BYTES)
                         .map_err(|error| error.to_string())?;
                     let manifest =
                         install::inspect_package(&bytes).map_err(|error| error.to_string())?;
+                    if manifest.metadata.id != entry.id
+                        || manifest.metadata.version != entry.version
+                    {
+                        return Err("local catalog and package disagree".into());
+                    }
                     candidates.push(AvailablePlugin {
-                        metadata: manifest.metadata,
+                        metadata: from_catalog(&entry, String::new(), catalog::sha256_of(&bytes))
+                            .metadata,
+                        icon_url: entry.icon_url,
                         digest: catalog::sha256_of(&bytes),
-                        location: PackageLocation::Local(entry.path()),
+                        location: PackageLocation::Local(package),
                     });
                 }
             }
@@ -174,12 +173,12 @@ fn from_catalog(entry: &CatalogEntry, url: String, digest: String) -> AvailableP
             protocol_version: entry.protocol_version,
             entry: String::new(),
             icon: entry.icon.clone(),
-            icon_fallback: entry.icon_fallback.clone(),
             capabilities: Vec::new(),
             // The catalog carries the plugin's own localized copy, so an
             // available card reads the same words an installed one does.
             localizations: entry.localizations.clone(),
         },
+        icon_url: entry.icon_url.clone(),
         digest,
         location: PackageLocation::Https(url),
     }
@@ -302,26 +301,53 @@ mod tests {
     #[test]
     fn discovers_latest_per_id_without_installing_or_executing() {
         let directory = tempfile::tempdir().unwrap();
+        let mut entries = Vec::new();
         for (filename, id, version, app) in [
-            ("a.zip", "org.test.a", "1.0.0", ">=2"),
-            ("b.zip", "org.test.a", "1.1.0", ">=2"),
-            ("c.zip", "org.test.b", "1.0.0", ">=2"),
-            ("d.zip", "org.test.a", "9.0.0", ">=9"),
+            ("org.test.a-1.0.0.zip", "org.test.a", "1.0.0", ">=2"),
+            ("org.test.a-1.1.0.zip", "org.test.a", "1.1.0", ">=2"),
+            ("org.test.b-1.0.0.zip", "org.test.b", "1.0.0", ">=2"),
+            ("org.test.a-9.0.0.zip", "org.test.a", "9.0.0", ">=9"),
         ] {
-            fs::write(directory.path().join(filename), package(id, version, app)).unwrap();
+            let bytes = package(id, version, app);
+            fs::write(directory.path().join(filename), &bytes).unwrap();
+            if filename != "org.test.a-9.0.0.zip" {
+                let manifest = install::inspect_package(&bytes).unwrap();
+                entries.push(CatalogEntry {
+                    id: manifest.metadata.id,
+                    name: manifest.metadata.name,
+                    description: manifest.metadata.description,
+                    localizations: manifest.metadata.localizations,
+                    version: manifest.metadata.version,
+                    app_versions: manifest.metadata.app_versions,
+                    protocol_version: manifest.metadata.protocol_version,
+                    icon: manifest.metadata.icon,
+                    icon_url: "https://example.com/a.png".into(),
+                    downloads: Default::default(),
+                    sha256: Some(catalog::sha256_of(&bytes)),
+                    homepage: None,
+                });
+            }
         }
-        let source = PluginSource::Development(directory.path().to_owned());
+        fs::write(
+            directory.path().join("catalog.json"),
+            serde_json::to_vec(&Catalog { plugins: entries }).unwrap(),
+        )
+        .unwrap();
+        let source = PluginSource::Development {
+            catalog: directory.path().join("catalog.json"),
+            packages: directory.path().to_owned(),
+        };
         let offers = source.discover("2.3.1", &AtomicBool::new(false)).unwrap();
         assert_eq!(offers.len(), 2);
         assert_eq!(offers[0].metadata.version, "1.1.0");
         assert_eq!(offers[1].metadata.id, "org.test.b");
         assert!(!directory.path().join(crate::PACKAGES_DIRECTORY).exists());
         assert!(offers[0].read(&AtomicBool::new(false)).is_ok());
-        fs::write(
-            directory.path().join("b.zip"),
-            package("org.test.a", "1.2.0", ">=2"),
-        )
-        .unwrap();
+        let mut replaced = package("org.test.a", "1.1.0", ">=2");
+        // ZIP readers accept trailing data, so this changes the digest while
+        // leaving the manifest identity the catalog validates.
+        replaced.extend_from_slice(b"replaced");
+        fs::write(directory.path().join("org.test.a-1.1.0.zip"), replaced).unwrap();
         assert!(
             offers[0].read(&AtomicBool::new(false)).is_err(),
             "a replaced local package needs a fresh catalog/digest"
@@ -331,10 +357,13 @@ mod tests {
     fn missing_directory_empty_catalog_and_version_ordering() {
         let root = tempfile::tempdir().unwrap();
         assert!(
-            PluginSource::Development(root.path().join("not-built"))
-                .discover("2.3.1", &AtomicBool::new(false))
-                .unwrap()
-                .is_empty()
+            PluginSource::Development {
+                catalog: root.path().join("not-built/catalog.json"),
+                packages: root.path().join("not-built"),
+            }
+            .discover("2.3.1", &AtomicBool::new(false))
+            .unwrap()
+            .is_empty()
         );
         assert!(is_newer("1.10.0", "1.9.0"));
         assert!(!is_newer("1.0.0", "1.0.0"));
@@ -356,7 +385,7 @@ mod production_tests {
             app_versions: app.into(),
             protocol_version: 1,
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("A".into()),
-            icon_fallback: None,
+            icon_url: "https://example.com/a.png".into(),
             downloads: Default::default(),
             sha256: None,
             homepage: None,

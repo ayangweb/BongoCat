@@ -344,14 +344,12 @@ pub(crate) fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerErr
             "installed manifest is invalid".into(),
         ));
     }
-    for icon in std::iter::once(&metadata.icon).chain(metadata.icon_fallback.as_ref()) {
-        if let PluginIcon::LocalImage(path) = icon
-            && !safe_relative_path(Path::new(path))
-        {
-            return Err(PluginManagerError::UnsafeManifest(
-                "plugin icon path is unsafe".into(),
-            ));
-        }
+    if let PluginIcon::LocalImage(path) = &metadata.icon
+        && !safe_relative_path(Path::new(path))
+    {
+        return Err(PluginManagerError::UnsafeManifest(
+            "plugin icon path is unsafe".into(),
+        ));
     }
     Ok(())
 }
@@ -372,7 +370,6 @@ mod tests {
             protocol_version: bongocat_plugin_sdk::PROTOCOL_VERSION,
             entry: "plugin".into(),
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("🍅".into()),
-            icon_fallback: None,
             capabilities: vec![bongocat_plugin_sdk::Capability::ModelUi],
             localizations: Default::default(),
         }
@@ -505,11 +502,10 @@ mod tests {
     }
 
     #[test]
-    fn local_icon_paths_are_validated_and_resolved_from_the_selected_package() {
+    fn local_icon_paths_are_validated_against_the_package() {
         let directory = tempfile::tempdir().unwrap();
         let mut local = metadata("com.bongocat.pomodoro", "1.0.0");
         local.icon = PluginIcon::LocalImage("resources/icon.png".into());
-        local.icon_fallback = Some(PluginIcon::Emoji("🍅".into()));
         let manifest = serde_json::to_vec(&PluginManifest {
             metadata: local.clone(),
             sha256: None,
@@ -520,19 +516,7 @@ mod tests {
             ("plugin", b"binary"),
             ("resources/icon.png", b"png"),
         ]);
-        let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
-        manager.install(&bytes).unwrap();
-        manager.discover_plugins().unwrap();
-        assert_eq!(
-            manager.plugin_icon_path(&local.id),
-            Some(
-                directory
-                    .path()
-                    .join(PACKAGES_DIRECTORY)
-                    .join(&local.id)
-                    .join("1.0.0/resources/icon.png")
-            )
-        );
+        install_package(directory.path(), None, &bytes).unwrap();
 
         for unsafe_path in ["../icon.png", "/icon.png", "resources\\icon.png"] {
             let mut invalid = local.clone();
@@ -545,6 +529,23 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn a_manifest_with_a_removed_icon_fallback_is_rejected() {
+        let mut manifest = serde_json::to_value(PluginManifest {
+            metadata: metadata("com.bongocat.pomodoro", "1.0.0"),
+            sha256: None,
+        })
+        .unwrap();
+        manifest["metadata"]["icon_fallback"] =
+            serde_json::json!({ "type": "emoji", "value": "🍅" });
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        let archive = archive(&[(MANIFEST_FILE, &bytes), ("plugin", b"binary")]);
+        assert!(matches!(
+            inspect_package(&archive),
+            Err(PluginManagerError::Manifest(_))
+        ));
     }
 
     #[test]

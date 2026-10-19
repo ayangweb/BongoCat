@@ -43,8 +43,12 @@ pub struct CatalogEntry {
     pub app_versions: String,
     pub protocol_version: u32,
     pub icon: PluginIcon,
-    #[serde(default)]
-    pub icon_fallback: Option<PluginIcon>,
+    /// Location of the same PNG the package carries.
+    ///
+    /// The catalog is what the center reads before a package is installed, so it
+    /// has to name artwork that exists independently of any installed version.
+    /// Production uses an HTTPS URL; Development uses an absolute file path.
+    pub icon_url: String,
     /// Per-platform download paths relative to the catalog URL.
     #[serde(default)]
     pub downloads: BTreeMap<String, String>,
@@ -115,8 +119,7 @@ fn resolve_downloads(
     official: &str,
 ) -> CatalogEntry {
     let base = official
-        .rsplit_once('/')
-        .map(|(base, _)| base)
+        .strip_suffix(&format!("/{CATALOG_NAME}"))
         .unwrap_or(official);
     for value in entry.downloads.values_mut() {
         if value.starts_with("https://") {
@@ -125,12 +128,19 @@ fn resolve_downloads(
         let relative = value.trim_start_matches('/');
         *value = format!("{base}/{relative}");
     }
+    if !entry.icon_url.starts_with("https://") {
+        let relative = entry.icon_url.trim_start_matches('/');
+        entry.icon_url = format!("{base}/{relative}");
+    }
     if let Some(prefix) = proxy {
         let prefix = format!("{}/", prefix.trim_end_matches('/'));
         for value in entry.downloads.values_mut() {
             if value.starts_with("https://") {
                 *value = format!("{prefix}{value}");
             }
+        }
+        if entry.icon_url.starts_with("https://") {
+            entry.icon_url = format!("{prefix}{}", entry.icon_url);
         }
     }
     entry
@@ -251,6 +261,50 @@ mod tests {
             Err(CatalogError::Invalid) | Err(CatalogError::Signature)
         ));
     }
+
+    #[test]
+    fn icon_assets_use_the_same_official_or_proxied_base_as_packages() {
+        let official = "https://github.com/example/BongoCat/releases/latest/download/plugins.json";
+        let entry = CatalogEntry {
+            id: "org.test.a".into(),
+            name: "A".into(),
+            description: String::new(),
+            localizations: Default::default(),
+            version: "1.0.0".into(),
+            app_versions: ">=2".into(),
+            protocol_version: 1,
+            icon: PluginIcon::LocalImage("resources/icon.png".into()),
+            icon_url: "org.test.a-1.0.0.png".into(),
+            downloads: [("macos-aarch64".into(), "org.test.a-1.0.0.zip".into())].into(),
+            sha256: None,
+            homepage: None,
+        };
+
+        let official_entry = resolve_downloads(entry.clone(), None, official);
+        assert_eq!(
+            official_entry.icon_url,
+            "https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.png"
+        );
+        assert_eq!(
+            official_entry.downloads["macos-aarch64"],
+            "https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.zip"
+        );
+
+        let prefix = GITHUB_PROXY_PREFIXES[0];
+        let proxied_entry = resolve_downloads(entry, Some(prefix), official);
+        assert_eq!(
+            proxied_entry.icon_url,
+            format!(
+                "{prefix}/https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.png"
+            )
+        );
+        assert_eq!(
+            proxied_entry.downloads["macos-aarch64"],
+            format!(
+                "{prefix}/https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.zip"
+            )
+        );
+    }
 }
 
 #[cfg(test)]
@@ -281,7 +335,8 @@ mod signed_tests {
         let mut tampered: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         tampered["catalog"]["plugins"] = serde_json::json!([{
             "id": "org.test.a", "name": "A", "description": "", "version": "1.0.0", "app_versions": ">=2", "protocol_version": 1,
-            "icon": { "type": "emoji", "value": "A" }, "downloads": {}
+            "icon": { "type": "emoji", "value": "A" },
+            "icon_url": "https://example.com/a.png", "downloads": {}
         }]);
         bytes = serde_json::to_vec(&tampered).unwrap();
         assert_eq!(

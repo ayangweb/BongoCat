@@ -5,13 +5,17 @@ use std::path::Path;
 
 pub(crate) fn source() -> PluginSource {
     match bongocat_app::BUILD_ENVIRONMENT {
-        BuildEnvironment::Development => PluginSource::Development(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
+        BuildEnvironment::Development => {
+            let packages = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .ancestors()
                 .nth(2)
                 .expect("workspace root")
-                .join("target/plugins"),
-        ),
+                .join("target/plugins");
+            PluginSource::Development {
+                catalog: packages.join("catalog.json"),
+                packages,
+            }
+        }
         BuildEnvironment::Production => PluginSource::Production {
             owner: bongocat_update::RELEASE_REPOSITORY_OWNER.into(),
             repository: bongocat_update::RELEASE_REPOSITORY_NAME.into(),
@@ -31,10 +35,12 @@ mod tests {
     #[test]
     fn sources_are_fixed_and_environment_isolated() {
         match source() {
-            PluginSource::Development(path) => {
-                assert!(path.ends_with("target/plugins"));
+            PluginSource::Development { catalog, packages } => {
+                assert!(catalog.ends_with(std::path::Path::new("target/plugins/catalog.json")));
+                assert!(packages.ends_with("target/plugins"));
                 assert!(
-                    path.parent()
+                    packages
+                        .parent()
                         .unwrap()
                         .parent()
                         .unwrap()
