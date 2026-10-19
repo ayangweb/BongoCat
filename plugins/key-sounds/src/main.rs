@@ -51,8 +51,8 @@ impl PackCategory {
 
 /// One device edge a sound can be played for.
 ///
-/// These four are the whole vocabulary the plugin reacts to, and they are also
-/// the four things a user can choose a sound for.
+/// These four are the whole vocabulary the plugin reacts to. The sound set is
+/// chosen per device, so a press and its release always play from the same set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Action {
     KeyboardDown,
@@ -180,53 +180,29 @@ impl Action {
         }
     }
 
-    /// Whether this action plays a release sound, which is what decides whether a
-    /// set that has none is worth warning about beside it.
     fn is_release(self) -> bool {
         matches!(self, Self::KeyboardUp | Self::MouseUp)
     }
 
-    /// The configuration key that pins this action to one set.
-    fn config_key(self) -> &'static str {
-        match self {
-            Self::KeyboardDown => "keyboard_down_pack",
-            Self::KeyboardUp => "keyboard_up_pack",
-            Self::MouseDown => "mouse_down_pack",
-            Self::MouseUp => "mouse_up_pack",
-        }
-    }
-
     fn from_config_key(key: &str) -> Option<Self> {
         match key {
-            "keyboard_pack" | "keyboard_down_pack" => Some(Self::KeyboardDown),
-            "mouse_pack" | "mouse_down_pack" => Some(Self::MouseDown),
-            "keyboard_up_pack" => Some(Self::KeyboardUp),
-            "mouse_up_pack" => Some(Self::MouseUp),
+            "keyboard_pack" => Some(Self::KeyboardDown),
+            "mouse_pack" => Some(Self::MouseDown),
             _ => None,
         }
     }
 }
 
-/// The one configuration value the plugin reserves for "follow the device's own
-/// set", so a per-action choice has a default that is not a sound set.
-///
-/// It cannot collide with a set: a set's id is generated from the name of the
-/// registry entry it came from, and `resources/fetch_packs.py` refuses any entry
-/// whose id would slugify to this word.
-const FOLLOW: &str = "auto";
-
 const DEFAULT_VOLUME: i64 = 50;
 const MIN_VOLUME: i64 = 0;
 const MAX_VOLUME: i64 = 100;
-/// The starting minimum gap between two sounds of the same kind.
+/// Thock's built-in rapid key filter.
 ///
-/// It is small on purpose. The host already coalesces activity, so this is the
-/// knob for a user who finds a press and its release too close together, not a
-/// fix for one; it is counted per action, so a release is never lost to the press
-/// that came before it.
-const DEFAULT_COOLDOWN_MS: i64 = 30;
-const MIN_COOLDOWN_MS: i64 = 0;
-const MAX_COOLDOWN_MS: i64 = 1000;
+/// Thock ignores keyboard events that arrive within 10 ms of the previous one
+/// when its "ignore rapid key events" option is on. Key Sounds keeps that
+/// behavior always on and applies the same window per action, so a release is
+/// never swallowed by the press before it.
+const MINIMUM_SOUND_GAP_MS: u64 = 10;
 /// How many sounds may be audible at once.
 ///
 /// A press and its release overlap by design, so this is a ceiling on a
@@ -244,18 +220,10 @@ const DEVICE_IDLE: Duration = Duration::from_secs(2);
 /// without shipping a new application build.
 struct Copy {
     volume: &'static str,
-    cooldown: &'static str,
     mouse_enabled: &'static str,
-    follow_group: &'static str,
     other_group: &'static str,
     keyboard_pack: &'static str,
-    keyboard_down_pack: &'static str,
-    keyboard_up_pack: &'static str,
     mouse_pack: &'static str,
-    mouse_down_pack: &'static str,
-    mouse_up_pack: &'static str,
-    follow_keyboard: &'static str,
-    follow_mouse: &'static str,
     no_release: &'static str,
     decode_failed: &'static str,
     output_unavailable: &'static str,
@@ -263,36 +231,20 @@ struct Copy {
 
 const ENGLISH: Copy = Copy {
     volume: "Volume",
-    cooldown: "Minimum gap (ms)",
     mouse_enabled: "Play mouse sounds",
-    follow_group: "Follow",
     other_group: "Other sounds",
     keyboard_pack: "Keyboard sound",
-    keyboard_down_pack: "Keyboard press sound",
-    keyboard_up_pack: "Keyboard release sound",
     mouse_pack: "Mouse sound",
-    mouse_down_pack: "Mouse press sound",
-    mouse_up_pack: "Mouse release sound",
-    follow_keyboard: "Follow the keyboard sound",
-    follow_mouse: "Follow the mouse sound",
     no_release: "no release sound",
     decode_failed: "The sound effect could not be decoded.",
     output_unavailable: "No audio output device is available.",
 };
 const SIMPLIFIED_CHINESE: Copy = Copy {
     volume: "音量",
-    cooldown: "最小间隔（毫秒）",
     mouse_enabled: "播放鼠标音效",
-    follow_group: "跟随",
     other_group: "其他音效",
     keyboard_pack: "键盘音效",
-    keyboard_down_pack: "键盘按下音效",
-    keyboard_up_pack: "键盘弹起音效",
     mouse_pack: "鼠标音效",
-    mouse_down_pack: "鼠标按下音效",
-    mouse_up_pack: "鼠标弹起音效",
-    follow_keyboard: "跟随键盘音效",
-    follow_mouse: "跟随鼠标音效",
     no_release: "无弹起音",
     decode_failed: "无法解码音效。",
     output_unavailable: "没有可用的音频输出设备。",
@@ -545,15 +497,10 @@ impl Playback {
     }
 }
 
-/// The sound choices a user made, exactly as they are stored.
-///
-/// The raw value is kept beside the set it resolves to because the two answer
-/// different questions: what to play is the resolved set, and what to show is
-/// whether the user pinned that particular set or is following the device's own.
+/// The sound sets a user chose, one per device.
 struct Choices {
     keyboard: String,
     mouse: String,
-    actions: BTreeMap<Action, String>,
 }
 
 impl Choices {
@@ -565,28 +512,6 @@ impl Choices {
         Self {
             keyboard: text("keyboard_pack", PackCategory::Keyboard.default_pack().id),
             mouse: text("mouse_pack", PackCategory::Mouse.default_pack().id),
-            actions: Action::ALL
-                .into_iter()
-                .map(|action| (action, text(action.config_key(), FOLLOW)))
-                .collect(),
-        }
-    }
-
-    /// The stored value of one action's key, normalized for display.
-    ///
-    /// A stored id this build does not carry — a set dropped by an update, or a
-    /// value written by a newer plugin — reads as the reserved "follow" value
-    /// rather than as an id the panel would have to publish outside its own
-    /// option list.
-    fn action_value(&self, action: Action) -> &str {
-        let stored = self
-            .actions
-            .get(&action)
-            .map(String::as_str)
-            .unwrap_or(FOLLOW);
-        match pack_by_id(stored) {
-            Some(pack) if pack.category == action.category() => stored,
-            _ => FOLLOW,
         }
     }
 }
@@ -595,7 +520,6 @@ impl Choices {
 struct Selection {
     keyboard: &'static PackAsset,
     mouse: &'static PackAsset,
-    actions: BTreeMap<Action, &'static PackAsset>,
 }
 
 impl Selection {
@@ -612,44 +536,21 @@ impl Selection {
         };
         let keyboard = device(PackCategory::Keyboard, &choices.keyboard);
         let mouse = device(PackCategory::Mouse, &choices.mouse);
-        let actions = Action::ALL
-            .into_iter()
-            .map(|action| {
-                let stored = choices.action_value(action);
-                let own = if action.category() == PackCategory::Keyboard {
-                    keyboard
-                } else {
-                    mouse
-                };
-                let chosen = pack_by_id(stored)
-                    .filter(|pack| pack.category == action.category())
-                    .unwrap_or(own);
-                (action, chosen)
-            })
-            .collect();
-        Self {
-            keyboard,
-            mouse,
-            actions,
-        }
+        Self { keyboard, mouse }
     }
 
     /// The set one action plays from.
     fn pack(&self, action: Action) -> &'static PackAsset {
-        self.actions.get(&action).copied().unwrap_or_else(|| {
-            if action.category() == PackCategory::Keyboard {
-                self.keyboard
-            } else {
-                self.mouse
-            }
-        })
+        if action.category() == PackCategory::Keyboard {
+            self.keyboard
+        } else {
+            self.mouse
+        }
     }
 
     /// Every set this selection can play, for pruning the decoded cache.
     fn ids(&self) -> Vec<&'static str> {
-        let mut ids = vec![self.keyboard.id, self.mouse.id];
-        ids.extend(self.actions.values().map(|pack| pack.id));
-        ids
+        vec![self.keyboard.id, self.mouse.id]
     }
 }
 
@@ -692,7 +593,6 @@ impl Pick {
 
 struct KeySounds {
     volume: i64,
-    cooldown_ms: i64,
     mouse_enabled: bool,
     choices: Choices,
     selection: Selection,
@@ -718,7 +618,6 @@ impl Default for KeySounds {
         let selection = Selection::resolve(&choices);
         Self {
             volume: DEFAULT_VOLUME,
-            cooldown_ms: DEFAULT_COOLDOWN_MS,
             mouse_enabled: true,
             choices,
             selection,
@@ -757,32 +656,22 @@ impl KeySounds {
         // carries: an id this build does not know is accepted here and resolved
         // to the device's default set when playback asks for it. Refusing it
         // would turn a set dropped by an update into a plugin that will not
-        // start.
-        if let Some(key) = ["keyboard_pack", "mouse_pack"]
-            .into_iter()
-            .chain(Action::ALL.into_iter().map(Action::config_key))
-            .find(|key| {
-                config.get(*key).is_some_and(
-                    |value| !matches!(value, ConfigValue::Text(text) if text.len() <= 128),
-                )
-            })
-        {
+        // start. Retired per-action keys are still accepted and ignored so an
+        // existing session remains readable.
+        if let Some(key) = ["keyboard_pack", "mouse_pack"].into_iter().find(|key| {
+            config
+                .get(*key)
+                .is_some_and(|value| !matches!(value, ConfigValue::Text(text) if text.len() <= 128))
+        }) {
             return Err(format!("Invalid {key}"));
         }
         let volume = integer("volume", DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME)?;
-        let cooldown = integer(
-            "cooldown_ms",
-            DEFAULT_COOLDOWN_MS,
-            MIN_COOLDOWN_MS,
-            MAX_COOLDOWN_MS,
-        )?;
         let mouse_enabled = boolean("mouse_enabled", true)?;
 
         if self.playback.previewing {
             self.playback.clear_voices();
         }
         self.volume = volume;
-        self.cooldown_ms = cooldown;
         self.mouse_enabled = mouse_enabled;
         self.choices = Choices::from_config(config);
         self.selection = Selection::resolve(&self.choices);
@@ -806,7 +695,7 @@ impl KeySounds {
             .playback
             .last_played
             .get(&action)
-            .is_some_and(|last| now_ms.saturating_sub(*last) < self.cooldown_ms as u64)
+            .is_some_and(|last| now_ms.saturating_sub(*last) < MINIMUM_SOUND_GAP_MS)
         {
             return false;
         }
@@ -852,8 +741,7 @@ impl KeySounds {
         self.play_from_pack(action, None, self.selection.pack(action));
     }
 
-    /// Resolve a published option, not the currently pinned action. "Follow"
-    /// always means the device default even when the action is currently pinned.
+    /// Resolve a published device option to the edge whose preview it plays.
     fn preview_choice(
         &self,
         key: &str,
@@ -861,17 +749,9 @@ impl KeySounds {
     ) -> Result<(Action, &'static PackAsset), String> {
         let action =
             Action::from_config_key(key).ok_or_else(|| "Unknown preview key".to_owned())?;
-        let pack = if value == FOLLOW && key == action.config_key() {
-            if action.category() == PackCategory::Keyboard {
-                self.selection.keyboard
-            } else {
-                self.selection.mouse
-            }
-        } else {
-            pack_by_id(value)
-                .filter(|pack| pack.category == action.category())
-                .ok_or_else(|| "Unknown preview option".to_owned())?
-        };
+        let pack = pack_by_id(value)
+            .filter(|pack| pack.category == action.category())
+            .ok_or_else(|| "Unknown preview option".to_owned())?;
         Ok((action, pack))
     }
 
@@ -928,59 +808,19 @@ impl KeySounds {
         }
     }
 
-    /// The sounds one action may be set to, in the order the panel offers them.
-    fn pack_options(&self, action: Action, copy: &Copy) -> Vec<SelectOption> {
-        let category = action.category();
-        let mut options = vec![SelectOption {
-            value: FOLLOW.into(),
-            label: if category == PackCategory::Keyboard {
-                copy.follow_keyboard.to_owned()
-            } else {
-                copy.follow_mouse.to_owned()
-            },
-            group: Some(copy.follow_group.to_owned()),
-        }];
-        options.extend(category.packs().map(|pack| SelectOption {
-            value: pack.id.into(),
-            // A set that carries no release sound says so, because choosing it
-            // for a release is choosing silence.
-            label: if action.is_release() && !pack.supports_key_up {
-                format!("{} · {}", pack.label, copy.no_release)
-            } else {
-                pack.label.to_owned()
-            },
-            // Group sound sets by the source's device/brand metadata rather
-            // than making the host infer categories from plugin-specific IDs.
-            group: Some(pack.group_label(copy).to_owned()),
-        }));
-        options
-    }
-
-    /// The value one configuration key holds, as the panel shows it.
-    fn configured_pack(&self, key: &str) -> &str {
-        match key {
-            "keyboard_pack" => self.selection.keyboard.id,
-            "mouse_pack" => self.selection.mouse.id,
-            _ => {
-                let action = Action::ALL
-                    .into_iter()
-                    .find(|action| action.config_key() == key)
-                    .expect("only a pack key asks for a configured set");
-                self.choices.action_value(action)
-            }
-        }
-    }
-
     /// One select node for a device's own sound.
     fn device_select(&self, category: PackCategory, label: &str) -> UiNode {
-        // The device dropdown is the quick path, so it offers the sets of that
-        // device and nothing else: the reserved "follow" value belongs to the
-        // per-action dropdowns below it.
         let options = category
             .packs()
             .map(|pack| SelectOption {
                 value: pack.id.into(),
-                label: pack.label.into(),
+                // A set with no release recording still has press sounds, but
+                // choosing it makes the release edge silent.
+                label: if !pack.supports_key_up {
+                    format!("{} · {}", pack.label, self.copy().no_release)
+                } else {
+                    pack.label.into()
+                },
                 group: Some(pack.group_label(self.copy()).into()),
             })
             .collect();
@@ -999,13 +839,6 @@ impl KeySounds {
 
     fn output(&self) -> PluginOutput {
         let copy = self.copy();
-        let action_select = |key: &'static str, label: &str, action: Action| UiNode::Select {
-            key: key.into(),
-            label: label.into(),
-            value: self.configured_pack(key).into(),
-            options: self.pack_options(action, copy),
-            preview: true,
-        };
         let nodes = vec![
             UiNode::Integer {
                 key: "volume".into(),
@@ -1014,36 +847,16 @@ impl KeySounds {
                 min: MIN_VOLUME,
                 max: MAX_VOLUME,
             },
-            UiNode::Integer {
-                key: "cooldown_ms".into(),
-                label: copy.cooldown.into(),
-                value: self.cooldown_ms,
-                min: MIN_COOLDOWN_MS,
-                max: MAX_COOLDOWN_MS,
-            },
             UiNode::Toggle {
                 key: "mouse_enabled".into(),
                 label: copy.mouse_enabled.into(),
                 value: self.mouse_enabled,
             },
             self.device_select(PackCategory::Keyboard, copy.keyboard_pack),
-            action_select(
-                "keyboard_down_pack",
-                copy.keyboard_down_pack,
-                Action::KeyboardDown,
-            ),
-            action_select(
-                "keyboard_up_pack",
-                copy.keyboard_up_pack,
-                Action::KeyboardUp,
-            ),
             self.device_select(PackCategory::Mouse, copy.mouse_pack),
-            action_select("mouse_down_pack", copy.mouse_down_pack, Action::MouseDown),
-            action_select("mouse_up_pack", copy.mouse_up_pack, Action::MouseUp),
         ];
-        let mut config = Configuration::from([
+        let config = Configuration::from([
             ("volume".into(), ConfigValue::Integer(self.volume)),
-            ("cooldown_ms".into(), ConfigValue::Integer(self.cooldown_ms)),
             (
                 "mouse_enabled".into(),
                 ConfigValue::Boolean(self.mouse_enabled),
@@ -1057,15 +870,6 @@ impl KeySounds {
                 ConfigValue::Text(self.selection.mouse.id.into()),
             ),
         ]);
-        // What is stored is the resolved value, not the raw one: an id this build
-        // could not resolve is rewritten to the set actually in use, so the
-        // stored configuration never drifts away from what is playing.
-        for action in Action::ALL {
-            config.insert(
-                action.config_key().into(),
-                ConfigValue::Text(self.configured_pack(action.config_key()).into()),
-            );
-        }
         PluginOutput {
             errors: self
                 .error
@@ -1091,9 +895,9 @@ impl KeySounds {
 
 /// Every configuration key this plugin accepts.
 ///
-/// The list is closed so a typo is refused rather than stored, and it keeps the
-/// key an earlier build wrote (`cooldown_ms`) so a session saved before the
-/// release sound existed still starts.
+/// The list is closed so a typo is refused rather than stored. Retired keys from
+/// this plugin's unreleased development builds remain accepted and ignored, so
+/// an existing session still starts.
 fn is_known_key(key: &str) -> bool {
     matches!(
         key,
@@ -1208,7 +1012,6 @@ mod tests {
         let mut ids = BTreeSet::new();
         for pack in PACKS {
             assert!(ids.insert(pack.id), "{} is embedded twice", pack.id);
-            assert_ne!(pack.id, FOLLOW, "a set may not claim the reserved value");
             assert!(!pack.down.is_empty(), "{} carries no press sound", pack.id);
             assert_eq!(
                 pack.supports_key_up,
@@ -1538,7 +1341,6 @@ mod tests {
 
         for invalid in [
             ("volume".to_owned(), ConfigValue::Integer(101)),
-            ("cooldown_ms".to_owned(), ConfigValue::Integer(-1)),
             ("mouse_enabled".to_owned(), ConfigValue::Text("yes".into())),
             ("secret".to_owned(), ConfigValue::Boolean(true)),
         ] {
@@ -1554,12 +1356,42 @@ mod tests {
         plugin
             .configure(&Configuration::from([
                 ("volume".into(), ConfigValue::Integer(80)),
-                ("cooldown_ms".into(), ConfigValue::Integer(0)),
                 ("mouse_enabled".into(), ConfigValue::Boolean(true)),
             ]))
             .unwrap();
-        assert_eq!((plugin.volume, plugin.cooldown_ms), (80, 0));
+        assert_eq!(plugin.volume, 80);
         assert!(plugin.mouse_enabled);
+
+        // Keys written by earlier unreleased builds are accepted and ignored, so
+        // upgrading does not reject an existing session.
+        plugin
+            .configure(&Configuration::from([
+                ("cooldown_ms".into(), ConfigValue::Integer(0)),
+                (
+                    "keyboard_pack".into(),
+                    ConfigValue::Text("skcm-blue".into()),
+                ),
+                (
+                    "keyboard_down_pack".into(),
+                    ConfigValue::Text("alpaca".into()),
+                ),
+                ("keyboard_up_pack".into(), ConfigValue::Text("auto".into())),
+                (
+                    "mouse_down_pack".into(),
+                    ConfigValue::Text("orochi-v2".into()),
+                ),
+                ("mouse_up_pack".into(), ConfigValue::Text("auto".into())),
+            ]))
+            .unwrap();
+        assert_eq!(plugin.selection.keyboard.id, "skcm-blue");
+        assert_eq!(plugin.selection.pack(Action::KeyboardUp).id, "skcm-blue");
+        let published = plugin.output().config;
+        assert!(!published.contains_key("cooldown_ms"));
+        assert!(
+            !published
+                .keys()
+                .any(|key| key.ends_with("_down_pack") || key.ends_with("_up_pack"))
+        );
     }
 
     #[test]
@@ -1606,20 +1438,16 @@ mod tests {
         assert!(plugin.mouse_enabled);
     }
 
-    /// A per-action choice either follows the device's set or names one, and a
-    /// value this build no longer carries resolves to the default rather than
-    /// failing the exchange.
+    /// A stored set id this build no longer carries resolves to the default
+    /// rather than failing the exchange.
     #[test]
     fn a_stored_set_id_this_build_lost_repairs_itself_to_the_default() {
         let mut plugin = KeySounds::default();
         plugin
-            .configure(&Configuration::from([
-                ("keyboard_pack".into(), ConfigValue::Text("gone".into())),
-                (
-                    "keyboard_up_pack".into(),
-                    ConfigValue::Text("also-gone".into()),
-                ),
-            ]))
+            .configure(&Configuration::from([(
+                "keyboard_pack".into(),
+                ConfigValue::Text("gone".into()),
+            )]))
             .unwrap();
 
         let keyboard = PackCategory::Keyboard.default_pack();
@@ -1631,16 +1459,11 @@ mod tests {
             published.get("keyboard_pack"),
             Some(&ConfigValue::Text(keyboard.id.into()))
         );
-        assert_eq!(
-            published.get("keyboard_up_pack"),
-            Some(&ConfigValue::Text(FOLLOW.into()))
-        );
     }
 
-    /// A pinned set is used for the action it was pinned to and nothing else, and
-    /// an empty per-action value means "follow the device's own set".
+    /// Both edges of a device use that device's selected set.
     #[test]
-    fn a_pinned_action_set_overrides_only_that_action() {
+    fn one_device_set_serves_both_of_its_edges() {
         let pinned = PackCategory::Keyboard
             .packs()
             .nth(1)
@@ -1648,20 +1471,17 @@ mod tests {
         let mut plugin = KeySounds::default();
         plugin
             .configure(&Configuration::from([(
-                "keyboard_down_pack".into(),
+                "keyboard_pack".into(),
                 ConfigValue::Text(pinned.id.into()),
             )]))
             .unwrap();
 
         assert_eq!(plugin.selection.pack(Action::KeyboardDown).id, pinned.id);
-        assert_eq!(
-            plugin.selection.pack(Action::KeyboardUp).id,
-            plugin.selection.keyboard.id
-        );
+        assert_eq!(plugin.selection.pack(Action::KeyboardUp).id, pinned.id);
     }
 
-    /// A set with no release recording is silent on release: the panel says so
-    /// beside the option, and playback reuses nothing to fill the gap.
+    /// A set with no release recording is silent on release, and both device
+    /// selectors mark it so the choice is not mistaken for complete coverage.
     #[test]
     fn a_set_without_a_release_sound_is_silent_on_release() {
         let silent = PackCategory::Keyboard
@@ -1672,30 +1492,16 @@ mod tests {
 
         let copy = &ENGLISH;
         let mut plugin = KeySounds::default();
+        let output = plugin.output();
+        let chosen = select_option(&output, "keyboard_pack", silent.id);
+        assert!(chosen.label.ends_with(copy.no_release));
+
         plugin
             .configure(&Configuration::from([(
-                "keyboard_up_pack".into(),
+                "keyboard_pack".into(),
                 ConfigValue::Text(silent.id.into()),
             )]))
             .unwrap();
-
-        let options = plugin.pack_options(Action::KeyboardUp, copy);
-        let chosen = options
-            .iter()
-            .find(|option| option.value == silent.id)
-            .expect("the chosen set is one of the options");
-        assert!(chosen.label.ends_with(copy.no_release));
-        // The press options do not carry the warning: a set with no release still
-        // has presses, and warning beside every one of them would be noise.
-        assert!(
-            plugin
-                .pack_options(Action::KeyboardDown, copy)
-                .iter()
-                .all(|option| !option.label.ends_with(copy.no_release))
-        );
-
-        // Playing it resolves to a set whose release list is empty, which is what
-        // makes the release silent rather than a second press.
         assert_eq!(plugin.selection.pack(Action::KeyboardUp).id, silent.id);
         let decoded = decode_pack(silent).unwrap();
         assert!(decoded.sounds(Action::KeyboardUp).is_empty());
@@ -1904,16 +1710,16 @@ mod tests {
         );
     }
 
-    /// Pausing, resuming and a zero volume stop playback; the cooldown is per
-    /// action, so a release is never swallowed by the press before it.
+    /// Pausing, resuming and a zero volume stop playback; the fixed Thock-derived
+    /// gap is per action, so a release is never swallowed by the press before it.
     #[test]
     fn cooldown_pause_and_mute_are_plugin_policy() {
         let mut plugin = KeySounds::default();
         assert!(plugin.admit(Action::KeyboardDown, 0));
-        assert!(!plugin.admit(Action::KeyboardDown, DEFAULT_COOLDOWN_MS as u64 - 1));
-        assert!(plugin.admit(Action::KeyboardDown, DEFAULT_COOLDOWN_MS as u64));
+        assert!(!plugin.admit(Action::KeyboardDown, MINIMUM_SOUND_GAP_MS - 1));
+        assert!(plugin.admit(Action::KeyboardDown, MINIMUM_SOUND_GAP_MS));
         assert!(
-            plugin.admit(Action::KeyboardUp, DEFAULT_COOLDOWN_MS as u64),
+            plugin.admit(Action::KeyboardUp, MINIMUM_SOUND_GAP_MS),
             "the release keeps its own clock"
         );
 
@@ -1954,21 +1760,17 @@ mod tests {
                     PackCategory::Mouse
                 };
                 for option in options {
-                    if option.value == FOLLOW {
-                        assert_eq!(option.group.as_deref(), Some(copy.follow_group));
+                    let pack = category
+                        .packs()
+                        .find(|pack| pack.id == option.value)
+                        .unwrap();
+                    assert_eq!(option.group.as_deref(), Some(pack.group_label(copy)));
+                    let expected_label = if !pack.supports_key_up {
+                        format!("{} · {}", pack.label, copy.no_release)
                     } else {
-                        let pack = category
-                            .packs()
-                            .find(|pack| pack.id == option.value)
-                            .unwrap();
-                        assert_eq!(option.group.as_deref(), Some(pack.group_label(copy)));
-                        let expected_label = if key.ends_with("_up_pack") && !pack.supports_key_up {
-                            format!("{} · {}", pack.label, copy.no_release)
-                        } else {
-                            pack.label.to_owned()
-                        };
-                        assert_eq!(option.label, expected_label);
-                    }
+                        pack.label.to_owned()
+                    };
+                    assert_eq!(option.label, expected_label);
                 }
             }
         }
@@ -1982,12 +1784,8 @@ mod tests {
         let english = plugin.output();
         assert_eq!(integer_label(&plugin.output(), "volume"), "Volume");
         assert_eq!(
-            select_label(&plugin.output(), "keyboard_down_pack"),
-            "Keyboard press sound"
-        );
-        assert_eq!(
-            select_option_group(&plugin.output(), "keyboard_down_pack", FOLLOW),
-            "Follow"
+            select_label(&plugin.output(), "keyboard_pack"),
+            "Keyboard sound"
         );
         assert_eq!(
             select_option_group(&english, "mouse_pack", "pixabay-unknown-unknown"),
@@ -1996,7 +1794,7 @@ mod tests {
         assert_eq!(
             select_option_group(
                 &plugin.output(),
-                "keyboard_down_pack",
+                "keyboard_pack",
                 PackCategory::Keyboard.default_pack().id
             ),
             PackCategory::Keyboard.default_pack().brand
@@ -2008,16 +1806,14 @@ mod tests {
             })
             .unwrap();
         assert_eq!(integer_label(&localized, "volume"), "音量");
-        assert_eq!(integer_label(&localized, "cooldown_ms"), "最小间隔（毫秒）");
-        assert_eq!(select_label(&localized, "mouse_up_pack"), "鼠标弹起音效");
-        assert_eq!(
-            select_option_label(&localized, "keyboard_up_pack", FOLLOW),
-            "跟随键盘音效"
+        assert!(
+            !localized
+                .settings
+                .nodes
+                .iter()
+                .any(|node| matches!(node, UiNode::Integer { key, .. } if key == "cooldown_ms"))
         );
-        assert_eq!(
-            select_option_group(&localized, "keyboard_up_pack", FOLLOW),
-            "跟随"
-        );
+        assert_eq!(select_label(&localized, "mouse_pack"), "鼠标音效");
         assert_eq!(
             select_option_group(&localized, "mouse_pack", "pixabay-unknown-unknown"),
             "其他音效"
@@ -2025,7 +1821,7 @@ mod tests {
         assert_eq!(
             select_option_group(
                 &localized,
-                "mouse_down_pack",
+                "mouse_pack",
                 PackCategory::Mouse.default_pack().id
             ),
             PackCategory::Mouse.default_pack().brand
@@ -2129,18 +1925,15 @@ mod tests {
     fn hovering_a_sound_option_previews_without_committing_configuration() {
         let mut plugin = KeySounds::default();
         plugin
-            .configure(&Configuration::from([
-                ("volume".into(), ConfigValue::Integer(0)),
-                (
-                    "keyboard_down_pack".into(),
-                    ConfigValue::Text(FOLLOW.into()),
-                ),
-            ]))
+            .configure(&Configuration::from([(
+                "volume".into(),
+                ConfigValue::Integer(0),
+            )]))
             .unwrap();
         let before = plugin.output().config;
         let output = plugin
             .handle(HostMessage::Preview {
-                key: "keyboard_down_pack".into(),
+                key: "keyboard_pack".into(),
                 value: PACKS
                     .iter()
                     .find(|pack| pack.category == PackCategory::Keyboard)
@@ -2156,15 +1949,15 @@ mod tests {
         assert!(
             plugin
                 .handle(HostMessage::Preview {
-                    key: "keyboard_pack".into(),
+                    key: "mouse_pack".into(),
                     value: PackCategory::Keyboard.default_pack().id.into(),
                 })
-                .is_ok()
+                .is_err()
         );
         assert!(
             plugin
                 .handle(HostMessage::Preview {
-                    key: "keyboard_down_pack".into(),
+                    key: "keyboard_pack".into(),
                     value: "missing-pack".into(),
                 })
                 .is_err()
@@ -2172,27 +1965,8 @@ mod tests {
     }
 
     #[test]
-    fn every_published_preview_resolves_to_its_device_and_direction() {
-        let mut plugin = KeySounds::default();
-        let pinned = PackCategory::Keyboard.packs().nth(1).unwrap();
-        plugin
-            .configure(
-                &[(
-                    "keyboard_down_pack".into(),
-                    ConfigValue::Text(pinned.id.into()),
-                )]
-                .into(),
-            )
-            .unwrap();
-        assert_eq!(plugin.selection.pack(Action::KeyboardDown).id, pinned.id);
-        assert_eq!(
-            plugin
-                .preview_choice("keyboard_down_pack", FOLLOW)
-                .unwrap()
-                .1
-                .id,
-            plugin.selection.keyboard.id
-        );
+    fn every_published_preview_resolves_to_its_device() {
+        let plugin = KeySounds::default();
         for node in plugin.output().settings.nodes {
             if let UiNode::Select {
                 key,
@@ -2210,7 +1984,12 @@ mod tests {
                 }
             }
         }
-        assert!(plugin.preview_choice("keyboard_pack", FOLLOW).is_err());
+        assert!(plugin.preview_choice("keyboard_pack", "auto").is_err());
+        assert!(
+            plugin
+                .preview_choice("keyboard_down_pack", "skcm-blue")
+                .is_err()
+        );
         assert!(plugin.preview_choice("volume", "skcm-blue").is_err());
         assert!(plugin.preview_choice("mouse_pack", "skcm-blue").is_err());
     }
@@ -2273,16 +2052,11 @@ mod tests {
     }
 
     #[test]
-    fn silent_release_preview_replaces_old_voice_and_pause_mute_reset_stop_are_safe() {
+    fn preview_replaces_old_voice_and_pause_mute_reset_stop_are_safe() {
         let mut plugin = KeySounds::default();
-        let no_release = PackCategory::Keyboard
-            .packs()
-            .find(|pack| !pack.supports_key_up)
-            .unwrap();
         install_test_voice(&mut plugin, true);
-        plugin.preview("keyboard_up_pack", no_release.id).unwrap();
-        assert!(!plugin.playback.playing());
-        assert!(plugin.playback.device.is_none());
+        plugin.preview("keyboard_pack", "skcm-blue").unwrap();
+        assert!(plugin.playback.playing());
         assert!(plugin.error.is_none());
         for message in [HostMessage::Pause, HostMessage::Reset, HostMessage::Stop] {
             install_test_voice(&mut plugin, true);
@@ -2290,6 +2064,7 @@ mod tests {
             assert!(!plugin.playback.preview_active());
             assert!(plugin.playback.players.is_empty());
         }
+        plugin.handle(HostMessage::Pause).unwrap();
         plugin.preview("keyboard_pack", "skcm-blue").unwrap();
         assert!(
             plugin.playback.device.is_none(),
@@ -2456,20 +2231,17 @@ mod tests {
         }
     }
 
-    /// The label one dropdown shows for the option it currently holds.
-    fn select_option_label<'a>(output: &'a PluginOutput, key: &str, value: &str) -> &'a str {
+    /// The option one dropdown publishes for a value.
+    fn select_option<'a>(output: &'a PluginOutput, key: &str, value: &str) -> &'a SelectOption {
         match output.settings.nodes.iter().find_map(|node| match node {
             UiNode::Select {
                 key: node_key,
                 options,
                 ..
-            } if node_key == key => options
-                .iter()
-                .find(|option| option.value == value)
-                .map(|option| option.label.as_str()),
+            } if node_key == key => options.iter().find(|option| option.value == value),
             _ => None,
         }) {
-            Some(label) => label,
+            Some(option) => option,
             None => panic!("the settings panel always publishes the {key} dropdown"),
         }
     }

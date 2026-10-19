@@ -110,8 +110,7 @@ fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
     let before = process.exchange(HostMessage::Tick { elapsed_ms: 110 });
     for (key, value) in [
         ("keyboard_pack", "skcm-blue"),
-        ("keyboard_up_pack", "auto"),
-        ("mouse_down_pack", "auto"),
+        ("mouse_pack", "pixabay-unknown-unknown"),
     ] {
         let preview = process.exchange(HostMessage::Preview {
             key: key.into(),
@@ -138,7 +137,6 @@ fn locale_switches_relabel_the_whole_panel_without_changing_saved_settings() {
     let english = process.exchange(HostMessage::Start {
         config: [
             ("volume".into(), ConfigValue::Integer(0)),
-            ("cooldown_ms".into(), ConfigValue::Integer(55)),
             ("mouse_enabled".into(), ConfigValue::Boolean(true)),
         ]
         .into(),
@@ -149,6 +147,7 @@ fn locale_switches_relabel_the_whole_panel_without_changing_saved_settings() {
     });
     assert_ne!(chinese.settings, english.settings);
     assert_eq!(chinese.config, english.config);
+    assert!(!english.config.contains_key("cooldown_ms"));
 
     for locale in [
         "en-US", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR", "fr-FR", "unknown", "",
@@ -184,8 +183,8 @@ fn preview_and_device_activity_use_the_real_audio_output() {
         activity: InputActivity::default(),
     });
     let preview = process.exchange(HostMessage::Preview {
-        key: "keyboard_down_pack".into(),
-        value: "auto".into(),
+        key: "keyboard_pack".into(),
+        value: "skcm-blue".into(),
     });
     assert_no_audio_error(&preview);
     process.exchange(HostMessage::Pause);

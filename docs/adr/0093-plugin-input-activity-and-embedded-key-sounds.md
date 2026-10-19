@@ -8,10 +8,10 @@ Date: 2026-10-15
 ADR-0091 gave the key-sounds plugin one anonymous number: how many keyboard
 presses the runtime had captured. That is enough for "play a sound while typing"
 and nothing more. The plugin cannot tell a press from a release, cannot tell the
-keyboard from the mouse, and cannot let a user choose which recording each of
-those four edges plays. The user-facing request is exactly that: separate
-keyboard and mouse handling, a switch for mouse sounds, and an independent sound
-choice for each of the four edges.
+keyboard from the mouse, and cannot let a user choose which sound set each
+device uses. The user-facing request is separate keyboard and mouse handling, a
+switch for mouse sounds, and one sound-set choice per device. Per-edge choices
+are deliberately deferred until custom sound effects are expanded.
 
 The reference implementation is Thock (`kamillobinski/thock`), which resolves the
 same four edges and plays a `down` or `up` recording out of a soundpack, and
@@ -110,14 +110,14 @@ component's grouped delegate for filtering, row indexing, selection restoration
 and muted section headers. A list that mixes grouped and ungrouped options falls
 back to the flat delegate, which keeps older or partially upgraded plugins
 readable without inventing a host-local category. The key-sounds plugin groups
-its embedded sets by the source soundpack brand and keeps the localized “Follow”
-choice in its own group; brand names are provenance metadata and therefore do not
-need translation. Unknown-brand sets use a localized "Other sounds" heading.
+its embedded sets by the source soundpack brand; brand names are provenance
+metadata and therefore do not need translation. Unknown-brand sets use a
+localized "Other sounds" heading.
 Option labels show only the soundpack name, without repeating the brand or
-author; release choices still append the localized missing-release warning
-when applicable. Source attribution remains in the resource index.
-Group headings and follow labels use the same English/Chinese locale selection
-and English fallback as the rest of the panel; changing language never changes
+author; a set without a release recording appends the localized warning.
+Source attribution remains in the resource index. Group headings and the
+missing-release warning use the same English/Chinese locale selection and
+English fallback as the rest of the panel; changing language never changes
 option ids or persisted selections. Menu width includes section titles as well
 as option labels.
 
@@ -149,10 +149,9 @@ unsent request, dismissing the menu cancels its pending request, and closing the
 panel invalidates its pending work. An in-flight
 one-shot may finish naturally. The registry validates that the running plugin
 published the preview-enabled select and option before sending the message.
-The plugin reuses the output device, preserves normal input cooldowns, suppresses
+The plugin reuses the output device, preserves the fixed input gap, suppresses
 input audio while the preview is audible (without replaying those input edges),
-and respects pause and mute. Following a device previews its current device pack,
-not the action's pinned pack; a missing release recording remains silent. The
+and respects pause and mute. A missing release recording remains silent. The
 separate preview button and its localized labels are removed. Plugins
 and selects that do not opt in retain ordinary confirm-only behavior, preserving
 compatibility with older installed plugins.
@@ -163,7 +162,7 @@ display-only numbers/selects and stale/loading controls never route actions.
 Control IDs are unique within each view, and option values within each select,
 so neither surface can ambiguously resolve a control or choice.
 
-### The key-sounds plugin owns four sound choices
+### The key-sounds plugin owns one sound choice per device
 
 The plugin carries 25 sound sets copied out of Thock's public soundpack registry
 and compiled into its own executable with `include_bytes!`, so nothing it needs
@@ -182,16 +181,22 @@ the counters cannot identify the individual keys in that batch, and guessing
 would either play the wrong recording or play several sounds for one coalesced
 edge.
 
-Configuration is a closed vocabulary: `volume`, `cooldown_ms`, `mouse_enabled`,
-`keyboard_pack`, `mouse_pack`, and one `*_pack` key per action. A per-action value
-is either the reserved `auto` — follow the device's own set — or a set id. A
-stored id this build no longer carries resolves to the device's default set and
-the resolved id is what the plugin publishes, so a value that names nothing
-repairs itself on the first frame instead of failing the exchange. A set with no
-release recording is silent on release rather than reusing a press sound, and the
-panel says so beside the option. Mouse sounds default to on for new or reset
-configurations and when the field is absent; an explicitly stored `false` stays
-off.
+Configuration is a closed vocabulary: `volume`, `mouse_enabled`,
+`keyboard_pack` and `mouse_pack`. Both edges of a device play from that device's
+chosen set, so a press and its release cannot drift into different sound packs.
+The plugin has no user-facing limiter: it always ignores a second sound of the
+same action within 10 ms, the window Thock uses for its rapid-key filter. That
+window is per action, so a release is never suppressed by the press before it.
+The retired `cooldown_ms` and four per-action keys
+(`keyboard_down_pack`, `keyboard_up_pack`, `mouse_down_pack`, `mouse_up_pack`)
+from this plugin's unreleased development builds remain accepted and ignored, so
+an existing session still starts; the current values are what the plugin
+publishes. A stored id this build no longer carries resolves to the device's
+default set, so a value that names nothing repairs itself on the first frame
+instead of failing the exchange. A set with no release recording is silent on
+release rather than reusing a press sound, and the panel says so beside the
+option. Mouse sounds default to on for new or reset configurations and when the
+field is absent; an explicitly stored `false` stays off.
 
 ## Dependencies and licensing
 
@@ -233,13 +238,14 @@ Unit tests cover the select node's validation (a value outside its own list, an
 empty list and an invalid option value are all refused), the activity message's
 round trip, the runtime's per-device counters (a repeat, a mouse edge, a
 reconciliation and a reset each move exactly what they should), and the plugin's
-own policy: closed and bounded configuration, a lost set id repairing itself,
-per-action pinning, a set with no release recording staying silent, one sound per
-edge with an unchanged counter playing nothing, the mouse switch gating both
-mouse edges, the cooldown being per action, the locale relabelling every control,
-and the published panel validating inside its node budget. Every embedded set is
-decoded by a test, so a recording this build cannot read fails at test time
-rather than at a user's first keystroke.
+own policy: closed and bounded configuration, retired per-action keys still
+loading, a lost set id repairing itself, both edges sharing the device set, a set
+with no release recording staying silent, one sound per edge with an unchanged
+counter playing nothing, the mouse switch gating both mouse edges, the fixed
+10 ms gap being per action, the locale relabelling every control, and the published panel
+validating inside its node budget. Every embedded set is decoded by a test, so a
+recording this build cannot read fails at test time rather than at a user's first
+keystroke.
 
 `just check` (fmt, clippy across targets and features, workspace tests, release
 check), `python3 -m unittest discover -s tools/tests` and

@@ -31,7 +31,7 @@ monotonic timestamp: no key identity, text, modifiers or release sequence crosse
 the plugin boundary. Activity is coalesced over the service cadence and never
 shares or delays the reliable edge queue. The runtime counts only newly captured
 keyboard downs; repeats, mouse/gamepad input and reconciliation do not count.
-The plugin owns volume, cooldown, playback, device idle release and its audio.
+The plugin owns volume, playback, the fixed rapid-input gap, device idle release and its audio.
 It reuses the workspace's pinned rodio, enabling its existing MP3 decoder feature
 only for the plugin. No audio dependency or key-sounds rule enters the host.
 
@@ -150,7 +150,7 @@ documentation and docs.rs 0.7.3 were consulted before implementation.
 
 ## Acceptance
 
-- Automated catalog/lifecycle, previous-data, activity/privacy and cooldown
+- Automated catalog/lifecycle, previous-data, activity/privacy and timing
   regression tests must pass, along with workspace quality checks.
 - macOS real UI/audio smoke evidence is recorded with the implementation report.
 - Windows interaction/DPI and real audio remain a separate platform gate.
