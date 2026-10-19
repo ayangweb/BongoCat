@@ -466,6 +466,7 @@ impl Worker {
             .into_iter()
             .map(|(metadata, state)| {
                 let output = self.manager.plugin_output(&metadata.id);
+                let icon_path = self.manager.plugin_icon_path(&metadata.id);
                 let version = self.manager.installed_version(&metadata.id);
                 let available_version = self
                     .offers
@@ -484,6 +485,8 @@ impl Worker {
                     description: metadata.description,
                     localizations: metadata.localizations,
                     icon: metadata.icon,
+                    icon_fallback: metadata.icon_fallback,
+                    icon_path,
                     enabled: state == PluginState::Enabled,
                     failed: state == PluginState::Failed,
                     version,
@@ -512,6 +515,8 @@ impl Worker {
                 description: offer.metadata.description.clone(),
                 localizations: offer.metadata.localizations.clone(),
                 icon: offer.metadata.icon.clone(),
+                icon_fallback: offer.metadata.icon_fallback.clone(),
+                icon_path: None,
                 enabled: false,
                 failed: version.is_some(),
                 version,

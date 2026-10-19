@@ -7,7 +7,8 @@
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
     "entry": "bongocat-key-sounds",
-    "icon": { "type": "emoji", "value": "🐱" },
+    "icon": { "type": "local_image", "value": "resources/icon.png" },
+    "icon_fallback": { "type": "emoji", "value": "🐱" },
     "capabilities": ["configuration", "input_activity_v1", "localized_views_v1"],
     "localizations": {
       "zh-CN": {

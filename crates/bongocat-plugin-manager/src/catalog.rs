@@ -43,6 +43,8 @@ pub struct CatalogEntry {
     pub app_versions: String,
     pub protocol_version: u32,
     pub icon: PluginIcon,
+    #[serde(default)]
+    pub icon_fallback: Option<PluginIcon>,
     /// Per-platform download paths relative to the catalog URL.
     #[serde(default)]
     pub downloads: BTreeMap<String, String>,

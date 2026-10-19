@@ -233,6 +233,8 @@ pub(crate) struct PluginCardView {
     /// The plugin's own name and description per locale, and the fallback above.
     pub(crate) localizations: BTreeMap<String, PluginCopy>,
     pub(crate) icon: PluginIcon,
+    pub(crate) icon_fallback: Option<PluginIcon>,
+    pub(crate) icon_path: Option<std::path::PathBuf>,
     pub(crate) enabled: bool,
     pub(crate) failed: bool,
     pub(crate) version: Option<String>,
@@ -275,6 +277,8 @@ impl From<PluginCard> for PluginCardView {
             description: card.description,
             localizations: card.localizations,
             icon: card.icon,
+            icon_fallback: card.icon_fallback,
+            icon_path: card.icon_path,
             enabled: card.enabled,
             failed: card.failed,
             version: card.version,
@@ -950,6 +954,10 @@ mod tests {
         archive
             .write_all(&std::fs::read(root.join("plugin.json")).ok()?)
             .ok()?;
+        archive.start_file("resources/icon.png", options).ok()?;
+        archive
+            .write_all(&std::fs::read(root.join("resources/icon.png")).ok()?)
+            .ok()?;
         archive
             .start_file(BINARY_FILE, options.unix_permissions(0o755))
             .ok()?;
@@ -1412,6 +1420,8 @@ mod tests {
                 ),
             ]),
             icon: PluginIcon::Emoji("🐱".into()),
+            icon_fallback: None,
+            icon_path: None,
             enabled: true,
             failed: false,
             errors: Vec::new(),
@@ -1600,6 +1610,26 @@ mod tests {
                 "at {width}px the seventh card starts a second row"
             );
         }
+    }
+
+    #[gpui_kit::test]
+    fn a_plugin_icon_keeps_a_uniform_square_in_every_card(cx: &mut TestAppContext) {
+        let mut card = sample_card();
+        let mut local = sample_card();
+        local.id = "com.example.local-icon".into();
+        local.icon = PluginIcon::LocalImage("resources/icon.png".into());
+        local.icon_fallback = Some(PluginIcon::Emoji("🍅".into()));
+        card.id = "com.example.emoji-icon".into();
+        let (_, visual) = card_page(cx, vec![card, local], 800.);
+        visual.update(|window, _| {
+            for id in ["com.example.emoji-icon", "com.example.local-icon"] {
+                let icon = window
+                    .find(SharedString::from(format!("plugin-icon-{id}")))
+                    .bounds();
+                assert_eq!(icon.size.width, px(48.));
+                assert_eq!(icon.size.height, px(48.));
+            }
+        });
     }
 
     #[gpui_kit::test]
@@ -2152,6 +2182,8 @@ mod tests {
                     description: card.description,
                     localizations: card.localizations,
                     icon: card.icon,
+                    icon_fallback: card.icon_fallback,
+                    icon_path: card.icon_path,
                     enabled: card.enabled,
                     failed: card.failed,
                     version: card.version,

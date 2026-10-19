@@ -139,11 +139,20 @@ fn card_view(
     let enabled = card.enabled;
     let (name, description) = card.copy(locale);
     let (name, description) = (name.to_owned(), description.to_owned());
-    let icon = match &card.icon {
-        bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => emoji.clone(),
-        bongocat_plugin_sdk::PluginIcon::LocalImage(path) => path.clone(),
-        bongocat_plugin_sdk::PluginIcon::RemoteImage(url) => url.clone(),
-    };
+    let fallback = card
+        .icon_fallback
+        .as_ref()
+        .and_then(|icon| match icon {
+            bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => Some(emoji.clone()),
+            bongocat_plugin_sdk::PluginIcon::LocalImage(_)
+            | bongocat_plugin_sdk::PluginIcon::RemoteImage(_) => None,
+        })
+        .or_else(|| match &card.icon {
+            bongocat_plugin_sdk::PluginIcon::Emoji(emoji) => Some(emoji.clone()),
+            bongocat_plugin_sdk::PluginIcon::LocalImage(_)
+            | bongocat_plugin_sdk::PluginIcon::RemoteImage(_) => None,
+        })
+        .unwrap_or_default();
     let mut heading = div()
         .min_w_0()
         .flex_1()
@@ -231,18 +240,7 @@ fn card_view(
                 .flex()
                 .items_start()
                 .gap_3()
-                .child(
-                    div()
-                        .size_12()
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(cx.theme().radius)
-                        .bg(cx.theme().secondary)
-                        .text_xl()
-                        .child(icon),
-                )
+                .child(plugin_icon(card, fallback, cx))
                 .child(heading)
                 .children(settings_entry),
         )
@@ -380,6 +378,49 @@ fn card_view(
         );
     }
     body.child(footer.child(actions))
+}
+
+/// A plugin icon occupies one fixed square without changing its aspect ratio.
+///
+/// Local icons already carry their own rounded silhouette, so the frame adds
+/// no surface, padding or clipping around them. Only the emoji fallback needs
+/// the themed tile that a local image would otherwise provide for itself.
+fn plugin_icon(card: &PluginCardView, fallback: String, cx: &App) -> AnyElement {
+    let frame = div().size_12().flex_shrink_0();
+    let frame_id = SharedString::from(format!("plugin-icon-{}", card.id));
+    let fallback_style = (cx.theme().radius, cx.theme().secondary);
+    let fallback_for_image = fallback.clone();
+    let fallback_element = move || fallback_icon(fallback_for_image.clone(), fallback_style);
+    match card.icon_path.clone() {
+        Some(path) => frame
+            .id(frame_id)
+            .test_support()
+            .child(
+                img(path)
+                    .size_full()
+                    .object_fit(ObjectFit::Contain)
+                    .with_fallback(fallback_element),
+            )
+            .into_any_element(),
+        None => frame
+            .id(frame_id)
+            .test_support()
+            .child(fallback_icon(fallback, fallback_style))
+            .into_any_element(),
+    }
+}
+
+fn fallback_icon(fallback: String, style: (Pixels, Hsla)) -> AnyElement {
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(style.0)
+        .bg(style.1)
+        .text_xl()
+        .child(fallback)
+        .into_any_element()
 }
 
 /// One plugin-published model-window control, as the card shows it.

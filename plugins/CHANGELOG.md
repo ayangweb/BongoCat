@@ -14,7 +14,7 @@
 #### ✨ Features
 
 - Added customizable sounds for keyboard and mouse button presses and releases.
-- Added volume, per-device sound-set selection, and built-in sound sets.
+- Added volume (default 100), per-device sound-set selection, and built-in sound sets.
 
 ### Pomodoro
 

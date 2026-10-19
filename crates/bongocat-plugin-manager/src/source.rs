@@ -174,6 +174,7 @@ fn from_catalog(entry: &CatalogEntry, url: String, digest: String) -> AvailableP
             protocol_version: entry.protocol_version,
             entry: String::new(),
             icon: entry.icon.clone(),
+            icon_fallback: entry.icon_fallback.clone(),
             capabilities: Vec::new(),
             // The catalog carries the plugin's own localized copy, so an
             // available card reads the same words an installed one does.
@@ -355,6 +356,7 @@ mod production_tests {
             app_versions: app.into(),
             protocol_version: 1,
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("A".into()),
+            icon_fallback: None,
             downloads: Default::default(),
             sha256: None,
             homepage: None,

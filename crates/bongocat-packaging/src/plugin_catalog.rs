@@ -130,26 +130,63 @@ fn validate_release_archive(
         ReleaseTarget::WindowsX86_64 => format!("{}.exe", manifest.metadata.entry),
         _ => manifest.metadata.entry.clone(),
     };
-    if archive.len() != 2 {
-        return failure("release plugin archive must contain only its manifest and executable");
+    let mut expected = std::collections::BTreeSet::from([
+        bongocat_plugin_manager::MANIFEST_FILE.to_owned(),
+        entry.clone(),
+    ]);
+    if let bongocat_plugin_sdk::PluginIcon::LocalImage(relative) = &manifest.metadata.icon {
+        if !bongocat_plugin_manager::install::safe_relative_path(Path::new(relative)) {
+            return failure("release plugin icon path is unsafe");
+        }
+        expected.insert(relative.clone());
     }
-    let mut executable = archive.by_name(&entry)?;
-    if executable.is_dir()
-        || executable.is_symlink()
-        || executable.size() == 0
-        || executable.size() > bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64
-        || target.is_apple() && executable.unix_mode().is_none_or(|mode| mode & 0o111 == 0)
+    let entries = (0..archive.len())
+        .map(|index| {
+            archive
+                .by_index(index)
+                .and_then(|entry| entry.name().map(|name| name.into_owned()))
+        })
+        .collect::<std::result::Result<std::collections::BTreeSet<_>, _>>()?;
+    if archive.len() != expected.len() || entries != expected {
+        return failure(
+            "release plugin archive must contain only its manifest, executable and declared assets",
+        );
+    }
     {
-        return failure("release plugin executable is invalid or not executable");
+        let mut executable = archive.by_name(&entry)?;
+        if executable.is_dir()
+            || executable.is_symlink()
+            || executable.size() == 0
+            || executable.size() > bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64
+            || target.is_apple() && executable.unix_mode().is_none_or(|mode| mode & 0o111 == 0)
+        {
+            return failure("release plugin executable is invalid or not executable");
+        }
+        // Fully consume the entry to check decompression and CRC before signing it.
+        let mut sink = std::io::sink();
+        std::io::copy(
+            &mut executable
+                .by_ref()
+                .take(bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64 + 1),
+            &mut sink,
+        )?;
     }
-    // Fully consume the entry to check decompression and CRC before signing it.
-    let mut sink = std::io::sink();
-    std::io::copy(
-        &mut executable
-            .by_ref()
-            .take(bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64 + 1),
-        &mut sink,
-    )?;
+    if let bongocat_plugin_sdk::PluginIcon::LocalImage(relative) = &manifest.metadata.icon {
+        let mut icon = archive.by_name(relative)?;
+        if icon.is_dir()
+            || icon.is_symlink()
+            || icon.size() == 0
+            || icon.size() > bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64
+        {
+            return failure("release plugin icon is invalid");
+        }
+        std::io::copy(
+            &mut icon
+                .by_ref()
+                .take(bongocat_plugin_manager::install::MAX_EXTRACT_BYTES as u64 + 1),
+            &mut std::io::sink(),
+        )?;
+    }
     Ok(())
 }
 
@@ -240,6 +277,7 @@ pub(super) fn publish(
                 app_versions: metadata.app_versions,
                 protocol_version: metadata.protocol_version,
                 icon: metadata.icon,
+                icon_fallback: metadata.icon_fallback,
                 downloads: [(target.manifest_platform().to_owned(), name)].into(),
                 sha256: Some(sha256_of(&bytes)),
                 homepage: None,
@@ -311,21 +349,27 @@ mod tests {
         let sources = super::super::dev_plugins::release_manifests(&workspace).unwrap();
         let mut inputs = Vec::new();
         for target in ReleaseTarget::ALL {
-            let source = root.path().join(target.manifest_platform());
-            for (_, manifest, bytes) in &sources {
-                fs::create_dir_all(&source).unwrap();
-                let executable = source.join(if target == ReleaseTarget::WindowsX86_64 {
+            let target_directory = root.path().join(target.manifest_platform());
+            for (plugin_source, manifest, bytes) in &sources {
+                fs::create_dir_all(&target_directory).unwrap();
+                let executable = target_directory.join(if target == ReleaseTarget::WindowsX86_64 {
                     format!("{}.exe", manifest.metadata.entry)
                 } else {
                     manifest.metadata.entry.clone()
                 });
                 fs::write(&executable, b"test executable").unwrap();
-                super::super::dev_plugins::package_plugin(&source, manifest, bytes, &executable)
-                    .unwrap();
+                super::super::dev_plugins::package_plugin(
+                    &target_directory,
+                    plugin_source,
+                    manifest,
+                    bytes,
+                    &executable,
+                )
+                .unwrap();
             }
             inputs.push((
                 target,
-                source.join(super::super::dev_plugins::PLUGIN_OUTPUT_DIRECTORY),
+                target_directory.join(super::super::dev_plugins::PLUGIN_OUTPUT_DIRECTORY),
             ));
         }
         let history = root.path().join("history");
@@ -387,10 +431,21 @@ mod tests {
             serde_json::from_slice(bytes).unwrap();
         let executable = root.path().join(&manifest.metadata.entry);
         fs::write(&executable, b"executable").unwrap();
-        let package =
-            super::super::dev_plugins::package_plugin(root.path(), &manifest, bytes, &executable)
-                .unwrap();
+        let package = super::super::dev_plugins::package_plugin(
+            root.path(),
+            &workspace_root().unwrap().join("plugins/pomodoro"),
+            &manifest,
+            bytes,
+            &executable,
+        )
+        .unwrap();
         let archive = fs::read(package).unwrap();
+        assert!(
+            zip::ZipArchive::new(std::io::Cursor::new(&archive))
+                .unwrap()
+                .by_name("resources/icon.png")
+                .is_ok()
+        );
         validate_release_archive(&archive, &manifest, ReleaseTarget::MacosAarch64).unwrap();
         assert!(
             validate_release_archive(&archive, &manifest, ReleaseTarget::WindowsX86_64).is_err()
@@ -449,8 +504,14 @@ mod tests {
             serde_json::from_slice(bytes).unwrap();
         let executable = workspace.path().join(&manifest.metadata.entry);
         fs::write(&executable, b"test executable").unwrap();
-        super::super::dev_plugins::package_plugin(workspace.path(), &manifest, bytes, &executable)
-            .unwrap();
+        super::super::dev_plugins::package_plugin(
+            workspace.path(),
+            &workspace_root().unwrap().join("plugins/key-sounds"),
+            &manifest,
+            bytes,
+            &executable,
+        )
+        .unwrap();
         let keys = cargo_packager::sign::generate_key(Some(String::new())).unwrap();
         let signing = SigningConfig::new().private_key(keys.sk).password("");
         let output = directory.path().join("plugins.json");

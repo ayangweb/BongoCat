@@ -22,6 +22,9 @@ fn pomodoro_package() -> Option<Vec<u8>> {
     zip.start_file("plugin.json", options).unwrap();
     zip.write_all(&fs::read(workspace.join("plugins/pomodoro/plugin.json")).unwrap())
         .unwrap();
+    zip.start_file("resources/icon.png", options).unwrap();
+    zip.write_all(&fs::read(workspace.join("plugins/pomodoro/resources/icon.png")).unwrap())
+        .unwrap();
     zip.start_file(binary.file_name().unwrap().to_str().unwrap(), options)
         .unwrap();
     zip.write_all(&fs::read(binary).unwrap()).unwrap();

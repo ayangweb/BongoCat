@@ -1,9 +1,10 @@
 //! The service drives a real plugin process and publishes what it draws.
 //!
 //! The package is built the way the packaging tool builds one — the checked-in
-//! manifest plus the compiled pomodoro binary, in one ZIP — and installed
-//! through the manager, so this exercises the same lifecycle a download does. A
-//! checkout with no built plugin binary skips rather than pretending.
+//! manifest, compiled pomodoro binary and package-local icon in one ZIP — and
+//! installed through the manager, so this exercises the same lifecycle a
+//! download does. A checkout with no built plugin binary skips rather than
+//! pretending.
 
 use bongocat_plugin_hud::{HudInteraction, HudViewport};
 use bongocat_plugin_service::{PluginService, plugin_directory};
@@ -38,6 +39,10 @@ fn plugin_package_with_manifest(edit: impl FnOnce(&mut serde_json::Value)) -> Op
     edit(&mut manifest);
     archive
         .write_all(&serde_json::to_vec(&manifest).ok()?)
+        .ok()?;
+    archive.start_file("resources/icon.png", options).ok()?;
+    archive
+        .write_all(&std::fs::read(root.join("resources/icon.png")).ok()?)
         .ok()?;
     archive
         .start_file(BINARY_FILE, options.unix_permissions(0o755))

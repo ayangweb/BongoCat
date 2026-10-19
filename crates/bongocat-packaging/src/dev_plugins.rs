@@ -163,7 +163,7 @@ fn prepare_into(
         }
         let executable = executable_from_messages(&report.stdout, &manifest.metadata.entry)
             .ok_or("Cargo did not report the plugin executable")?;
-        let package = package_into(output, &manifest, &bytes, &executable)?;
+        let package = package_into(output, &manifest, &bytes, &source, &executable)?;
         if target.is_some() {
             let store = tempfile::tempdir()?;
             bongocat_plugin_manager::install::install_package(
@@ -194,22 +194,25 @@ fn prune_packages(output: &Path, current: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-/// Write one plugin's ZIP, containing its manifest and its executable.
+/// Write one plugin's ZIP, containing its manifest, executable and declared
+/// package-local assets.
 #[cfg(test)]
 pub(super) fn package_plugin(
-    workspace: &Path,
+    output: &Path,
+    source: &Path,
     manifest: &PluginManifest,
     manifest_bytes: &[u8],
     executable: &Path,
 ) -> Result<PathBuf> {
-    let output = workspace.join(PLUGIN_OUTPUT_DIRECTORY);
-    package_into(&output, manifest, manifest_bytes, executable)
+    let output = output.join(PLUGIN_OUTPUT_DIRECTORY);
+    package_into(&output, manifest, manifest_bytes, source, executable)
 }
 
 fn package_into(
     output: &Path,
     manifest: &PluginManifest,
     manifest_bytes: &[u8],
+    source: &Path,
     executable: &Path,
 ) -> Result<PathBuf> {
     fs::create_dir_all(output)?;
@@ -227,6 +230,18 @@ fn package_into(
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     archive.start_file(MANIFEST_FILE, options)?;
     archive.write_all(manifest_bytes)?;
+    if let bongocat_plugin_sdk::PluginIcon::LocalImage(relative) = &manifest.metadata.icon {
+        let relative = Path::new(relative);
+        if !bongocat_plugin_manager::install::safe_relative_path(relative) {
+            return Err("plugin icon path is unsafe".into());
+        }
+        let icon = source.join(relative);
+        if !icon.is_file() {
+            return Err("plugin icon is missing".into());
+        }
+        archive.start_file(relative.to_string_lossy(), options)?;
+        std::io::copy(&mut fs::File::open(icon)?, &mut archive)?;
+    }
     // The executable bit has to travel in the archive, because installation is
     // what recreates the file and a download has no mode to inherit.
     archive.start_file(entry, options.unix_permissions(0o755))?;
@@ -288,7 +303,14 @@ mod tests {
         let executable = root.path().join(&manifest.metadata.entry);
         fs::write(&executable, b"test executable").unwrap();
 
-        let package = package_plugin(root.path(), &manifest, bytes, &executable).unwrap();
+        let package = package_plugin(
+            root.path(),
+            &workspace_root().unwrap().join("plugins/pomodoro"),
+            &manifest,
+            bytes,
+            &executable,
+        )
+        .unwrap();
         assert_eq!(
             package.file_name().unwrap().to_string_lossy(),
             "com.bongocat.pomodoro-1.0.0.zip"
@@ -375,7 +397,14 @@ mod tests {
         assert_eq!(id, "com.bongocat.key-sounds");
         let executable = workspace.path().join(&manifest.metadata.entry);
         fs::write(&executable, b"test executable").unwrap();
-        let package = package_plugin(workspace.path(), &manifest, bytes, &executable).unwrap();
+        let package = package_plugin(
+            workspace.path(),
+            &workspace_root().unwrap().join("plugins/key-sounds"),
+            &manifest,
+            bytes,
+            &executable,
+        )
+        .unwrap();
         assert_eq!(
             package.file_name().unwrap(),
             "com.bongocat.key-sounds-1.0.0.zip"
@@ -401,7 +430,14 @@ mod tests {
 
         manifest.metadata.version = "1.0.1".into();
         let bytes = serde_json::to_vec(&manifest).unwrap();
-        let package = package_plugin(workspace.path(), &manifest, &bytes, &executable).unwrap();
+        let package = package_plugin(
+            workspace.path(),
+            &workspace_root().unwrap().join("plugins/key-sounds"),
+            &manifest,
+            &bytes,
+            &executable,
+        )
+        .unwrap();
         manager.install(&fs::read(package).unwrap()).unwrap();
         assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.1"));
         assert!(data.join("marker").is_file());

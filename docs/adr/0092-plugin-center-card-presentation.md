@@ -101,12 +101,37 @@ publication changes only failure/loading state under the cache lock and never
 replaces newer cards or in-flight bookkeeping. Plugin Reset preserves the current
 session language rather than treating it as a plugin-owned preference.
 
+## Plugin identity artwork
+
+Every bundled plugin uses one artwork entry: its manifest names
+`resources/icon.png` as a safe package-relative `local_image`, and the icon is
+also listed as the plugin's `icon_fallback`. The image is a square RGBA PNG
+exported at its native source resolution. Its rounded silhouette reaches every
+edge of the canvas, so no transparent padding is baked around the artwork. No
+second icon directory or plugin-specific asset path is supported. The manager
+resolves that path against the selected installed version and requires the file
+to exist during install; the settings process never reconstructs a package
+location itself. A catalog offer that is not installed still has no local
+path, so its card uses the declared glyph until installation succeeds.
+
+A card displays a local image in a fixed 48px square frame with
+`ObjectFit::Contain`, which preserves aspect ratio without stretching or
+cropping. The image supplies its own rounded silhouette; the frame adds no
+surface, padding, clipping or second radius around it. Only an emoji fallback
+uses the themed tile. Packaging includes exactly the declared icon alongside
+the manifest and executable, and a repository contract test requires the same
+file name, square canvas, RGBA mode, antialiased corners and opaque edge
+midpoints for every bundled plugin.
+
 ## Compatibility
 
 Every protocol addition is optional and defaults to the previous behavior: a
 button with no `icon` and no `loading`, a manifest with no `localizations`, a
-plugin without `localized_views_v1`. No config, state, session or catalog format
-changes, `schema_version` stays 1, and ADR-0091's lifecycle, storage and catalog
+plugin without `localized_views_v1`, or a manifest with no `icon_fallback`.
+Local-image manifests that predate the common artwork entry remain readable and
+resolve their own safe relative path; the shipped plugins are normalized to
+`resources/icon.png`. No config, state, session or catalog format changes,
+`schema_version` stays 1, and ADR-0091's lifecycle, storage and catalog
 decisions are unchanged. Widgets already pinned to `gpui-kit` are reused; no new
 dependency is introduced.
 
@@ -123,6 +148,8 @@ and restart declarations together across timer transitions. Real-process service
 tests cover whole-plugin English fallback for incomplete metadata. Application
 settings tests verify initialization without windows, all application languages,
 stale and failed commits, disable/enable and restart language propagation.
+Repository tests also pin the single artwork entry and verify every shipped icon
+is a square RGBA PNG with partial-alpha rounded edges.
 `just check` (fmt, clippy across targets/features, workspace tests, release check)
 and `tools/validate-locales.py` pass.
 macOS `just dev-smoke` also passes bounded startup, settings window destruction

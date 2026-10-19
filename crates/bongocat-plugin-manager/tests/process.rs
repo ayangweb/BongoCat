@@ -24,8 +24,8 @@ fn target_binary() -> Option<std::path::PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
-/// Build the package the way the packaging tool does: one ZIP with the manifest
-/// and the executable, installed through the manager's own lifecycle.
+/// Build the package the way the packaging tool does: one ZIP with the manifest,
+/// executable and the package-local icon, installed through the manager.
 fn install(source: &std::path::Path, binary: &std::path::Path, directory: &std::path::Path) {
     let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default()
@@ -35,6 +35,12 @@ fn install(source: &std::path::Path, binary: &std::path::Path, directory: &std::
         .expect("start manifest");
     archive
         .write_all(&std::fs::read(source.join("plugin.json")).unwrap())
+        .unwrap();
+    archive
+        .start_file("resources/icon.png", options)
+        .expect("start icon");
+    archive
+        .write_all(&std::fs::read(source.join("resources/icon.png")).unwrap())
         .unwrap();
     archive
         .start_file(BINARY_FILE, options.unix_permissions(0o755))

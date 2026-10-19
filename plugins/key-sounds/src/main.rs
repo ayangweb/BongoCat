@@ -193,7 +193,7 @@ impl Action {
     }
 }
 
-const DEFAULT_VOLUME: i64 = 50;
+const DEFAULT_VOLUME: i64 = 100;
 const MIN_VOLUME: i64 = 0;
 const MAX_VOLUME: i64 = 100;
 /// Thock's built-in rapid key filter.
@@ -985,7 +985,7 @@ mod tests {
             .unwrap();
         let output = plugin.handle(HostMessage::Reset).unwrap();
         assert!(output.validate());
-        assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        assert_eq!(plugin.volume, 100);
         assert!(output.settings.nodes.iter().any(|node| {
             matches!(node, UiNode::Integer { label, .. } if label == SIMPLIFIED_CHINESE.volume)
         }));
@@ -1314,16 +1314,22 @@ mod tests {
     #[test]
     fn the_configuration_vocabulary_is_closed_and_bounded() {
         let mut plugin = KeySounds::default();
-        assert!(
-            plugin
-                .handle(HostMessage::Start {
-                    config: Configuration::new(),
-                    state: Vec::new(),
-                })
-                .unwrap()
-                .validate()
-        );
-        assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        let output = plugin
+            .handle(HostMessage::Start {
+                config: Configuration::new(),
+                state: Vec::new(),
+            })
+            .unwrap();
+        assert!(output.validate());
+        let volume = output.settings.nodes.iter().find_map(|node| match node {
+            UiNode::Integer {
+                key,
+                value: value @ 100,
+                ..
+            } if key == "volume" => Some(*value),
+            _ => None,
+        });
+        assert_eq!(volume, Some(100));
         assert!(plugin.mouse_enabled);
 
         for invalid in [
@@ -1338,7 +1344,7 @@ mod tests {
                 "{invalid:?} was accepted"
             );
         }
-        assert_eq!(plugin.volume, DEFAULT_VOLUME);
+        assert_eq!(plugin.volume, 100);
 
         plugin
             .configure(&Configuration::from([

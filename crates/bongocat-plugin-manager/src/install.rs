@@ -9,7 +9,7 @@
 use crate::{
     CURRENT_FILE, MANIFEST_FILE, PACKAGES_DIRECTORY, PluginManagerError, PluginManifest, sha256_of,
 };
-use bongocat_plugin_sdk::PluginMetadata;
+use bongocat_plugin_sdk::{PluginIcon, PluginMetadata};
 use std::{
     collections::BTreeSet,
     fs,
@@ -82,6 +82,14 @@ pub fn install_package(
     let manifest = read_manifest(&staging.path().join(MANIFEST_FILE))?;
     let id = manifest.metadata.id;
     let version = manifest.metadata.version;
+    if let PluginIcon::LocalImage(relative) = &manifest.metadata.icon {
+        let icon = staging.path().join(relative);
+        if !fs::symlink_metadata(&icon).is_ok_and(|metadata| metadata.is_file()) {
+            return Err(PluginManagerError::UnsafeManifest(
+                "plugin icon is missing".into(),
+            ));
+        }
+    }
     if !fs::symlink_metadata(crate::loader::entry_path(
         staging.path(),
         &manifest.metadata.entry,
@@ -336,6 +344,15 @@ pub(crate) fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerErr
             "installed manifest is invalid".into(),
         ));
     }
+    for icon in std::iter::once(&metadata.icon).chain(metadata.icon_fallback.as_ref()) {
+        if let PluginIcon::LocalImage(path) = icon
+            && !safe_relative_path(Path::new(path))
+        {
+            return Err(PluginManagerError::UnsafeManifest(
+                "plugin icon path is unsafe".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -355,6 +372,7 @@ mod tests {
             protocol_version: bongocat_plugin_sdk::PROTOCOL_VERSION,
             entry: "plugin".into(),
             icon: bongocat_plugin_sdk::PluginIcon::Emoji("🍅".into()),
+            icon_fallback: None,
             capabilities: vec![bongocat_plugin_sdk::Capability::ModelUi],
             localizations: Default::default(),
         }
@@ -484,6 +502,49 @@ mod tests {
         assert!(!safe_relative_path(Path::new("")));
         assert!(!safe_relative_path(Path::new("a\\..\\outside")));
         assert!(!safe_relative_path(Path::new("file:stream")));
+    }
+
+    #[test]
+    fn local_icon_paths_are_validated_and_resolved_from_the_selected_package() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut local = metadata("com.bongocat.pomodoro", "1.0.0");
+        local.icon = PluginIcon::LocalImage("resources/icon.png".into());
+        local.icon_fallback = Some(PluginIcon::Emoji("🍅".into()));
+        let manifest = serde_json::to_vec(&PluginManifest {
+            metadata: local.clone(),
+            sha256: None,
+        })
+        .unwrap();
+        let bytes = archive(&[
+            (MANIFEST_FILE, &manifest),
+            ("plugin", b"binary"),
+            ("resources/icon.png", b"png"),
+        ]);
+        let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
+        manager.install(&bytes).unwrap();
+        manager.discover_plugins().unwrap();
+        assert_eq!(
+            manager.plugin_icon_path(&local.id),
+            Some(
+                directory
+                    .path()
+                    .join(PACKAGES_DIRECTORY)
+                    .join(&local.id)
+                    .join("1.0.0/resources/icon.png")
+            )
+        );
+
+        for unsafe_path in ["../icon.png", "/icon.png", "resources\\icon.png"] {
+            let mut invalid = local.clone();
+            invalid.icon = PluginIcon::LocalImage(unsafe_path.into());
+            assert!(
+                validate(&PluginManifest {
+                    metadata: invalid,
+                    sha256: None,
+                })
+                .is_err()
+            );
+        }
     }
 
     #[test]

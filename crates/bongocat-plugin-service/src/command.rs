@@ -30,6 +30,10 @@ pub struct PluginCard {
     /// of the plugin, and picking from it is presentation.
     pub localizations: BTreeMap<String, PluginCopy>,
     pub icon: PluginIcon,
+    /// A glyph shown when `icon` is a local image that cannot be read.
+    pub icon_fallback: Option<PluginIcon>,
+    /// Absolute path to the installed local icon, when one is available.
+    pub icon_path: Option<std::path::PathBuf>,
     pub enabled: bool,
     pub failed: bool,
     /// The version the selected package names, when one is installed.

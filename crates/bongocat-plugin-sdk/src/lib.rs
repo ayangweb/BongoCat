@@ -155,6 +155,10 @@ pub struct PluginMetadata {
     pub protocol_version: u32,
     pub entry: String,
     pub icon: PluginIcon,
+    /// The icon to show when a local image is unavailable or has not been
+    /// installed yet. Older manifests omit this field and remain readable.
+    #[serde(default)]
+    pub icon_fallback: Option<PluginIcon>,
     pub capabilities: Vec<Capability>,
     /// Per-locale name and description; currently only `zh-CN` is served.
     ///
@@ -836,6 +840,7 @@ mod tests {
             protocol_version: PROTOCOL_VERSION,
             entry: "bongocat-pomodoro".into(),
             icon: PluginIcon::Emoji("🍅".into()),
+            icon_fallback: None,
             capabilities: vec![Capability::LocalizedViewsV1],
             localizations: BTreeMap::from([
                 (
