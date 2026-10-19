@@ -12,7 +12,7 @@ use bongocat_plugin_service::{
     PluginCard, PluginCenterSnapshot, PluginCommandError, PluginServiceClient,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex, Weak},
 };
 
@@ -218,6 +218,28 @@ pub(crate) enum PluginFailure {
     },
 }
 
+impl PluginFailure {
+    /// The one plugin a command was aimed at, if the failure names one.
+    ///
+    /// A snapshot produced by a successful command is allowed to carry that
+    /// plugin's new failed state without also becoming a separate "load failed"
+    /// notification. The same target is remembered when the command itself
+    /// fails, because that command returns no snapshot.
+    fn command_target(&self) -> Option<&str> {
+        match self {
+            Self::Install { plugin, .. }
+            | Self::Enable { plugin, .. }
+            | Self::Uninstall { plugin }
+            | Self::Action { plugin, .. }
+            | Self::Configure { plugin, .. }
+            | Self::Preview { plugin, .. } => Some(plugin),
+            Self::Refresh | Self::Load { .. } | Self::Reported { .. } | Self::UpdateAll { .. } => {
+                None
+            }
+        }
+    }
+}
+
 /// A failure and the stable code the service returned for it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PluginFailureReport {
@@ -350,6 +372,13 @@ pub(crate) struct PluginHost {
     requests: Arc<Mutex<()>>,
     previews: Arc<Mutex<PreviewMailbox>>,
     failures: Arc<Mutex<Vec<PluginFailureReport>>>,
+    /// The plugin whose failed state was reported by the command that produced
+    /// it, until a later snapshot shows that plugin healthy again.
+    ///
+    /// A failed enable returns no snapshot, so the card only learns that the
+    /// plugin is now `Failed` on the next poll. That poll must not turn the same
+    /// failure into a second "loading failed" notification.
+    failed_command_targets: Arc<Mutex<BTreeSet<String>>>,
     discovery_failure_reported: Arc<Mutex<Option<String>>>,
     update_succeeded: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -362,6 +391,7 @@ impl Default for PluginHost {
             requests: Arc::default(),
             previews: Arc::default(),
             failures: Arc::default(),
+            failed_command_targets: Arc::default(),
             discovery_failure_reported: Arc::default(),
             update_succeeded: Arc::default(),
         }
@@ -377,6 +407,7 @@ impl PluginHost {
             requests: Arc::default(),
             previews: Arc::default(),
             failures: Arc::default(),
+            failed_command_targets: Arc::default(),
             discovery_failure_reported: Arc::default(),
             update_succeeded: Arc::default(),
         }
@@ -426,22 +457,23 @@ impl PluginHost {
 
     fn publish_reply(&self, snapshot: PluginCenterSnapshot, command: Option<&PluginFailure>) {
         let previous = self.snapshot();
+        // A failed command returns no snapshot. Consume the marker on the next
+        // publication, which is the first one that can show the resulting
+        // `Failed` card; keeping it any longer could hide a later independent
+        // failure after the plugin recovers.
+        let failed_command_targets = std::mem::take(
+            &mut *self
+                .failed_command_targets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         for card in &snapshot.cards {
             let old = previous.cards.iter().find(|old| old.id == card.id);
-            let command_target = match command {
-                Some(
-                    PluginFailure::Install { plugin, .. }
-                    | PluginFailure::Enable { plugin, .. }
-                    | PluginFailure::Uninstall { plugin }
-                    | PluginFailure::Action { plugin, .. }
-                    | PluginFailure::Configure { plugin, .. }
-                    | PluginFailure::Preview { plugin, .. },
-                ) => Some(plugin.as_str()),
-                _ => None,
-            };
+            let command_target = command.and_then(PluginFailure::command_target);
             if card.failed
                 && !old.is_some_and(|old| old.failed)
                 && command_target != Some(card.id.as_str())
+                && !failed_command_targets.contains(&card.id)
             {
                 self.record_failure(
                     PluginFailure::Load {
@@ -854,6 +886,12 @@ impl PluginHost {
                     PluginCommandError::ServiceUnavailable,
                 );
             } else {
+                if let Some(plugin) = failure.command_target() {
+                    self.failed_command_targets
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .insert(plugin.to_owned());
+                }
                 self.record_failure(failure, PluginCommandError::ServiceUnavailable);
             }
             return false;
@@ -872,6 +910,12 @@ impl PluginHost {
                     // does not immediately emit a duplicate notification.
                     self.report_discovery_failure(Some(error.code().into()), error);
                 } else {
+                    if let Some(plugin) = failure.command_target() {
+                        self.failed_command_targets
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .insert(plugin.to_owned());
+                    }
                     self.record_failure(failure, error);
                 }
                 false
@@ -1017,6 +1061,68 @@ mod tests {
         );
         host.refresh();
         assert!(host.take_failure().is_none());
+    }
+
+    #[test]
+    fn a_failed_enable_reports_once_when_the_next_poll_shows_the_failed_card() {
+        let (client, endpoint) = PluginServiceClient::bounded(4);
+        let host = PluginHost::new(client);
+        let mut card = sample_card();
+        card.enabled = false;
+        host.publish(PluginHubState {
+            cards: vec![card.clone()],
+            ..Default::default()
+        });
+
+        let responder = std::thread::spawn(move || {
+            loop {
+                match endpoint.try_recv().unwrap() {
+                    Some(PluginCommand::SetEnabled { reply, .. }) => {
+                        // Enabling starts the process, records the failure on the
+                        // card, and returns an error without a snapshot.
+                        reply.respond(Err(PluginCommandError::Operation)).unwrap();
+                        break;
+                    }
+                    Some(_) => panic!("only the enable command was sent"),
+                    None => std::thread::sleep(Duration::from_millis(1)),
+                }
+            }
+            let mut failed = card;
+            failed.failed = true;
+            loop {
+                match endpoint.try_recv().unwrap() {
+                    Some(PluginCommand::ReadCenter { reply }) => {
+                        reply.respond(plugin_center_snapshot(failed)).unwrap();
+                        break;
+                    }
+                    Some(_) => panic!("the window polls after the failed command"),
+                    None => std::thread::sleep(Duration::from_millis(1)),
+                }
+            }
+        });
+
+        host.begin(PluginInFlight::package(
+            "com.example.card",
+            PluginPackageOperation::Enable,
+        ));
+        host.set_enabled("com.example.card", true);
+        assert_eq!(
+            host.take_failure(),
+            Some(PluginFailureReport {
+                failure: PluginFailure::Enable {
+                    plugin: "com.example.card".into(),
+                    enabled: true,
+                },
+                code: PluginCommandError::Operation,
+            })
+        );
+        host.refresh();
+        responder.join().unwrap();
+        assert_eq!(
+            host.take_failure(),
+            None,
+            "the failed card the enable produced must not become a second load failure"
+        );
     }
 
     #[test]
