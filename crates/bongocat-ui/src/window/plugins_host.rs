@@ -145,10 +145,16 @@ impl PluginHubState {
             && !self.updating_all()
             && !self.refreshing()
             && !self.package_busy()
-            && self
-                .cards
-                .iter()
-                .any(|card| card.version.is_some() && card.update_available)
+            && self.has_updates()
+    }
+
+    /// Whether the catalog has a newer version for an installed plugin.
+    ///
+    /// This is what the page needs rather than "the batch may start now": a
+    /// command already running blocks the button without emptying the catalog, so
+    /// the two conditions decide different things.
+    pub(crate) fn has_updates(&self) -> bool {
+        self.cards.iter().any(PluginCardView::pending_update)
     }
 }
 
@@ -239,6 +245,14 @@ pub(crate) struct PluginCardView {
 }
 
 impl PluginCardView {
+    /// Whether a newer version is waiting to be installed for this plugin.
+    ///
+    /// The badge, the per-card update button and the batch all answer from this
+    /// one rule, so the center cannot show an update and refuse to run it.
+    pub(crate) fn pending_update(&self) -> bool {
+        self.version.is_some() && self.update_available
+    }
+
     /// The name and description the plugin wrote for a resolved catalog tag.
     ///
     /// The card resolves the tag rather than the service because the language on
@@ -523,7 +537,7 @@ impl PluginHost {
         let targets = state
             .cards
             .iter()
-            .filter(|card| card.version.is_some() && card.update_available)
+            .filter(|card| card.pending_update())
             .map(|card| card.id.clone())
             .collect::<Vec<_>>();
         state.in_flight.insert(PluginInFlight::UpdateAll, 1);
@@ -1169,6 +1183,32 @@ mod tests {
         assert_eq!(host.take_failure(), None);
     }
 
+    /// A batch only ever carries installed plugins the catalog has a newer version
+    /// for, and the page asks the same rule before it draws the control.
+    #[test]
+    fn a_plugin_the_catalog_only_offers_is_not_an_update() {
+        let mut catalog_only = sample_card();
+        catalog_only.version = None;
+        let mut current = sample_card();
+        current.id = "com.example.current".into();
+        current.update_available = false;
+        let host = PluginHost::default();
+        host.publish(PluginHubState {
+            cards: vec![catalog_only.clone(), current],
+            ..Default::default()
+        });
+        assert!(!host.snapshot().has_updates());
+        assert!(host.begin_update_all().is_empty());
+
+        let mut stale = sample_card();
+        stale.id = "com.example.stale".into();
+        host.publish(PluginHubState {
+            cards: vec![catalog_only, stale],
+            ..Default::default()
+        });
+        assert!(host.snapshot().has_updates());
+    }
+
     /// What a window is still waiting for is the window's own bookkeeping: a state
     /// the service publishes while a command runs must not clear the control that
     /// is waiting for it.
@@ -1693,6 +1733,42 @@ mod tests {
                     .try_find("plugin-settings-com.example.card")
                     .is_none()
             );
+        });
+    }
+
+    /// Nothing to update is an absent control rather than a dead one.
+    #[gpui_kit::test]
+    fn a_center_with_nothing_to_update_hides_the_batch_button(cx: &mut TestAppContext) {
+        let mut up_to_date = sample_card();
+        up_to_date.update_available = false;
+        let mut catalog_only = sample_card();
+        catalog_only.id = "com.example.available".into();
+        catalog_only.version = None;
+        catalog_only.update_available = false;
+        let (_, visual) = card_page(cx, vec![up_to_date, catalog_only], 800.);
+        visual.update(|window, _| {
+            assert!(
+                window.try_find("plugin-refresh").is_some(),
+                "the header keeps the button that still does something"
+            );
+            assert!(
+                window.try_find("plugin-update-all").is_none(),
+                "no installed plugin is behind the catalog, so nothing can be updated"
+            );
+        });
+    }
+
+    /// One plugin behind the catalog is enough to offer the batch: hiding the
+    /// control must not hide the work the page can still do.
+    #[gpui_kit::test]
+    fn a_center_with_a_stale_plugin_keeps_the_batch_button(cx: &mut TestAppContext) {
+        let mut up_to_date = sample_card();
+        up_to_date.update_available = false;
+        let mut stale = sample_card();
+        stale.id = "com.example.stale".into();
+        let (_, visual) = card_page(cx, vec![up_to_date, stale], 800.);
+        visual.update(|window, _| {
+            assert!(window.try_find("plugin-update-all").is_some());
         });
     }
 

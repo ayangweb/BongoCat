@@ -34,47 +34,45 @@ pub(super) fn content(
     let handle = cx.entity();
     let refresh_view = handle.clone();
     let update_view = handle.clone();
-    let mut column = div().flex().flex_col().gap_4().w_full().child(
-        div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .justify_end()
-            .gap_3()
-            .child(
-                Button::new("plugin-refresh")
-                    .text()
-                    .label(bongocat_i18n::text(
-                        locale,
-                        if state.loading || state.refreshing() {
-                            "plugins.refreshing"
-                        } else {
-                            "plugins.refresh"
-                        },
-                    ))
-                    .disabled(
-                        state.loading
-                            || state.refreshing()
-                            || state.updating_all()
-                            || state.package_busy(),
-                    )
-                    .on_click(move |_, _, cx| {
-                        refresh_view.update(cx, |view, cx| {
-                            view.refresh_plugin_catalog(cx);
-                        });
-                    }),
-            )
-            .child(
-                Button::new("plugin-update-all")
-                    .primary()
-                    .label(bongocat_i18n::text(locale, "plugins.update_all"))
-                    .loading(state.updating_all())
-                    .disabled(!state.can_update_all())
-                    .on_click(move |_, _, cx| {
-                        update_view.update(cx, |view, cx| view.update_all_plugins(cx));
-                    }),
-            ),
-    );
+    let refresh = Button::new("plugin-refresh")
+        .text()
+        .label(bongocat_i18n::text(
+            locale,
+            if state.loading || state.refreshing() {
+                "plugins.refreshing"
+            } else {
+                "plugins.refresh"
+            },
+        ))
+        .disabled(
+            state.loading || state.refreshing() || state.updating_all() || state.package_busy(),
+        )
+        .on_click(move |_, _, cx| {
+            refresh_view.update(cx, |view, cx| {
+                view.refresh_plugin_catalog(cx);
+            });
+        });
+    let update_all = Button::new("plugin-update-all")
+        .primary()
+        .label(bongocat_i18n::text(locale, "plugins.update_all"))
+        .loading(state.updating_all())
+        .disabled(!state.can_update_all())
+        .on_click(move |_, _, cx| {
+            update_view.update(cx, |view, cx| view.update_all_plugins(cx));
+        });
+    // The batch control is drawn only when an update is waiting. A page with
+    // nothing newer than what is installed cannot enable it by any later state,
+    // whereas loading, refreshing and a running package operation are temporary
+    // and keep the button on screen, disabled, so the user can still read why.
+    let tools = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .justify_end()
+        .gap_3()
+        .child(refresh)
+        .children(state.has_updates().then_some(update_all));
+    let mut column = div().flex().flex_col().gap_4().w_full().child(tools);
     // A refresh with cards already on screen only spins the button that started
     // it: what the user is reading is not replaced by a status line.
     if state.loading && state.cards.is_empty() {

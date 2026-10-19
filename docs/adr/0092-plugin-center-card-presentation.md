@@ -135,6 +135,9 @@ The page header carries only the two catalog actions: a borderless text
 its container are removed rather than kept beside the actions. An installed card
 whose catalog offers a newer version carries a compact outlined `Tag` beside its
 installed version; the update itself remains the existing refresh-icon button.
+`Update all` is hidden, not disabled, while no installed plugin is behind the
+catalog; loading, refreshing and a running package operation keep the disabled
+control on screen because those reasons are temporary and readable.
 
 `Update all` reuses the same per-plugin `InstallAvailable` command, not a second
 installation path. Updates run serially because the service owns one catalog
