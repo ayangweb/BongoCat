@@ -4,10 +4,10 @@
 The plugin plays from sound sets copied out of Thock's public soundpack registry
 (https://github.com/kamillobinski/thock-soundpacks) and committed here, so a user
 never has to be online to hear anything. This script is the recipe that produced
-those bytes: it downloads every soundpack the registry publishes, keeps only the
-sounds this plugin can actually address, writes them under `resources/packs/`,
-and rewrites the two files that describe them — `resources/index.json` for
-provenance and `src/packs.rs` for the build.
+those bytes: it downloads every soundpack the registry publishes that may be
+redistributed, keeps only the sounds this plugin can actually address, writes
+them under `resources/packs/`, and rewrites the two files that describe them —
+`resources/index.json` for provenance and `src/packs.rs` for the build.
 
 Only the part of a pack this plugin can play is kept. The keyboard keeps the
 groups Thock selects by physical keys whose identity crosses the plugin activity
@@ -18,7 +18,7 @@ back to `default` exactly as Thock does. Letter and symbol groups are
 deliberately dropped because no product surface can address them.
 
 A pack whose license does not permit redistribution is refused rather than
-reviewed case by case: Thock's own `Mamba Elite` pack is licensed for the Thock
+reviewed case by case. Thock's own `Mamba Elite` pack is licensed for the Thock
 application alone, so it is skipped and reported.
 
 Run from anywhere:
@@ -155,7 +155,8 @@ def main() -> None:
                 folder = work / entry["id"]
                 with zipfile.ZipFile(download) as source:
                     source.extractall(folder)
-                config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
+                config_path = folder / "config.json"
+                config = json.loads(config_path.read_text(encoding="utf-8"))
                 down, up, groups = playable_names(category, config)
                 if not down:
                     skipped.append(f"{metadata['name']}: no playable sounds")
@@ -164,7 +165,10 @@ def main() -> None:
                     [
                         slug(metadata["name"]),
                         slug(f"{metadata['brand']}-{metadata['name']}"),
-                        slug(f"{metadata['author']}-{metadata['brand']}-{metadata['name']}"),
+                        slug(
+                            f"{metadata['author']}-{metadata['brand']}-"
+                            f"{metadata['name']}"
+                        ),
                     ],
                     taken_ids,
                 )
@@ -230,11 +234,21 @@ def main() -> None:
             "",
             "pub static PACKS: &[PackAsset] = &[",
         ]
+        catalog = sorted(
+            staged,
+            key=lambda pack: (
+                pack.category,
+                pack.entry["metadata"]["brand"],
+                pack.entry["metadata"]["author"],
+                pack.entry["metadata"]["name"],
+            ),
+        )
         audio_bytes = 0
-        for pack in staged:
+        for pack in catalog:
             destination = PACKS_DIRECTORY / pack.category / pack.id
-            destination.mkdir(parents=True, exist_ok=True)
             files = {}
+            metadata = pack.entry["metadata"]
+            destination.mkdir(parents=True, exist_ok=True)
             names = sorted(
                 {
                     name
@@ -248,13 +262,12 @@ def main() -> None:
                 (destination / name).write_bytes(data)
                 audio_bytes += len(data)
                 files[name] = hashlib.sha256(data).hexdigest()
-            metadata = pack.entry["metadata"]
             groups = pack.groups
             index["packs"].append(
                 {
                     "id": pack.id,
                     "category": pack.category,
-                    "label": pack.label,
+                    "label": metadata["name"],
                     "name": metadata["name"],
                     "brand": metadata["brand"],
                     "author": metadata["author"],

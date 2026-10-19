@@ -111,8 +111,9 @@ and muted section headers. A list that mixes grouped and ungrouped options falls
 back to the flat delegate, which keeps older or partially upgraded plugins
 readable without inventing a host-local category. The key-sounds plugin groups
 its embedded sets by the source soundpack brand; brand names are provenance
-metadata and therefore do not need translation. Unknown-brand sets use a
-localized "Other sounds" heading.
+metadata and therefore do not need translation. In particular, Thock's
+`Unknown` brand stays `Unknown` rather than being renamed. Within a brand the
+catalog follows Thock's author-then-name option order.
 Option labels show only the soundpack name, without repeating the brand or
 author; a set without a release recording appends the localized warning.
 Source attribution remains in the resource index. Group headings and the
@@ -164,10 +165,11 @@ so neither surface can ambiguously resolve a control or choice.
 
 ### The key-sounds plugin owns one sound choice per device
 
-The plugin carries 25 sound sets copied out of Thock's public soundpack registry
-and compiled into its own executable with `include_bytes!`, so nothing it needs
-is fetched at runtime and no audio dependency or key-sounds rule enters the
-host. Of each set it keeps only the groups it can address: the keyboard
+The plugin carries the 25 sound sets in Thock's public soundpack registry whose
+licenses permit redistribution and compiles them into its own executable with
+`include_bytes!`, so nothing it needs is fetched at runtime and no audio
+dependency or key-sounds rule enters the host. Of each set it keeps only the
+groups it can address: the keyboard
 `default`, `space`, `enter`, `del`, `tab`, `shiftLeft`, `shiftRight` and
 `ctrlLeft` groups, plus the mouse `left`/`right` groups, each split into `down`
 and `up` recordings. Letter and symbol groups are dropped because no product
@@ -209,15 +211,17 @@ recordings are now committed as files and embedded directly, which is what makes
 the plugin offline-capable and what keeps `cargo build -p bongocat-key-sounds`
 from depending on a zlib backend.
 
-Only soundpacks whose license permits redistribution are carried: 22 MIT sets,
+Only soundpacks whose license permits redistribution carry audio: 22 MIT sets,
 one CC0 set, and two Pixabay Content License sets, whose terms permit use of the
 content as part of a larger work (which embedding in the plugin executable is)
 and forbid only redistribution on a standalone basis. Thock's `Mamba Elite` set
-is licensed for the Thock application alone and is refused rather than reviewed
-case by case. `resources/index.json` records the author, license URL, source URL
-and per-file SHA-256 of every recording;
-`tools/tests/test_key_sounds_assets.py` checks that the index, the committed
-files and the generated Rust table agree, and that no proprietary set is carried.
+is licensed for the Thock application alone; it is refused rather than reviewed
+case by case, and none of its bytes are downloaded, written or embedded.
+`resources/index.json` records the author, license URL, source URL and per-file
+SHA-256 of every recording; the frozen `registry-manifest.json` is the catalog
+oracle. `tools/tests/test_key_sounds_assets.py` checks that the catalog matches
+the redistributable subset of that registry snapshot, that the index, committed
+files and generated Rust table agree, and that no proprietary set is carried.
 
 ## Compatibility
 

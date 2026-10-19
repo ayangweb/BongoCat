@@ -36,7 +36,7 @@ pub enum PackCategory {
 
 impl PackCategory {
     /// The sets embedded for this device, in the order the settings panel lists
-    /// them: registry order, whose first entry is the default.
+    /// them.
     fn packs(self) -> impl Iterator<Item = &'static PackAsset> {
         PACKS.iter().filter(move |pack| pack.category == self)
     }
@@ -221,7 +221,6 @@ const DEVICE_IDLE: Duration = Duration::from_secs(2);
 struct Copy {
     volume: &'static str,
     mouse_enabled: &'static str,
-    other_group: &'static str,
     keyboard_pack: &'static str,
     mouse_pack: &'static str,
     no_release: &'static str,
@@ -232,7 +231,6 @@ struct Copy {
 const ENGLISH: Copy = Copy {
     volume: "Volume",
     mouse_enabled: "Play mouse sounds",
-    other_group: "Other sounds",
     keyboard_pack: "Keyboard sound",
     mouse_pack: "Mouse sound",
     no_release: "no release sound",
@@ -242,7 +240,6 @@ const ENGLISH: Copy = Copy {
 const SIMPLIFIED_CHINESE: Copy = Copy {
     volume: "音量",
     mouse_enabled: "播放鼠标音效",
-    other_group: "其他音效",
     keyboard_pack: "键盘音效",
     mouse_pack: "鼠标音效",
     no_release: "无弹起音",
@@ -256,16 +253,6 @@ fn copy_for(locale: &str) -> &'static Copy {
         &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH
-    }
-}
-
-impl PackAsset {
-    fn group_label(&self, copy: &Copy) -> &'static str {
-        if self.brand == "Unknown" {
-            copy.other_group
-        } else {
-            self.brand
-        }
     }
 }
 
@@ -821,7 +808,7 @@ impl KeySounds {
                 } else {
                     pack.label.into()
                 },
-                group: Some(pack.group_label(self.copy()).into()),
+                group: Some(pack.brand.into()),
             })
             .collect();
         let (key, value) = match category {
@@ -1764,7 +1751,7 @@ mod tests {
                         .packs()
                         .find(|pack| pack.id == option.value)
                         .unwrap();
-                    assert_eq!(option.group.as_deref(), Some(pack.group_label(copy)));
+                    assert_eq!(option.group.as_deref(), Some(pack.brand));
                     let expected_label = if !pack.supports_key_up {
                         format!("{} · {}", pack.label, copy.no_release)
                     } else {
@@ -1789,7 +1776,7 @@ mod tests {
         );
         assert_eq!(
             select_option_group(&english, "mouse_pack", "pixabay-unknown-unknown"),
-            "Other sounds"
+            "Unknown"
         );
         assert_eq!(
             select_option_group(
@@ -1816,7 +1803,7 @@ mod tests {
         assert_eq!(select_label(&localized, "mouse_pack"), "鼠标音效");
         assert_eq!(
             select_option_group(&localized, "mouse_pack", "pixabay-unknown-unknown"),
-            "其他音效"
+            "Unknown"
         );
         assert_eq!(
             select_option_group(

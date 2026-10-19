@@ -7,14 +7,15 @@ committed here so the plugin never has to be online to play a sound.
 
 - Registry manifest: <https://raw.githubusercontent.com/kamillobinski/thock-soundpacks/refs/heads/main/manifest.json>
 - Registry version `1.0.0`, last updated `2026-03-28T12:17:11Z`
+- Frozen registry snapshot used by the tests: `registry-manifest.json`
 - Recipe: `fetch_packs.py` — re-run it to reproduce every byte
 - Per-file SHA-256, license and source URL: `index.json`
 
-## What is carried
+## Catalog and embedded audio
 
-`index.json` is the authoritative list. The registry publishes 26 sets (23
-keyboard, 3 mouse); this plugin carries 25 of them, and of each set it keeps
-only the groups it can address:
+`index.json` lists the 25 redistributable sets in the registry (23 keyboard, 2
+mouse), in the same brand, author and name order Thock's menu uses. Of each set
+it can carry, the plugin embeds only the groups it can address:
 
 - the keyboard `default`, `space`, `enter`, `del`, `tab`, `shiftLeft`,
   `shiftRight` and `ctrlLeft` groups, each split into its `down` and `up`
@@ -31,7 +32,7 @@ recording for a direction, that direction is silent, matching Thock.
 
 ## Licenses
 
-Only sets whose license permits redistribution are carried. `fetch_packs.py`
+Only sets whose license permits redistribution are carried. The generator
 refuses anything else rather than reviewing it case by case:
 
 - **MIT** — 22 keyboard sets from `tplai/kbsim`, `hainguyents13/mechvibes` and
@@ -46,9 +47,10 @@ refuses anything else rather than reviewing it case by case:
   offers them as downloads nor exposes them as files.
 
 One registry entry is refused: `Mamba Elite` (Razer, `kamillobinski`), licensed
-`Proprietary`. Thock's own manifest restricts it to the Thock application, so it
-is not redistributable here and is not carried. The script prints every refused
-entry each time it runs.
+`Proprietary`. Its license permits use only in the Thock application
+(`dev.kamillobinski.Thock`), so none of its bytes are downloaded, written,
+embedded or listed in the plugin. The script prints every refused entry each
+time it runs.
 
 ## Reproducing
 
@@ -56,8 +58,10 @@ entry each time it runs.
 python3 plugins/key-sounds/resources/fetch_packs.py
 ```
 
-The script downloads the registry manifest and each pack, writes the kept
-recordings under `resources/packs/<category>/<set-id>/`, and regenerates both
-`resources/index.json` and `src/packs.rs`. `tools/tests/test_key_sounds_assets.py`
-checks that the three stay in agreement, that no proprietary set is carried and
-that no set claims the reserved `auto` id.
+The script downloads the registry manifest and every redistributable pack, writes
+the kept recordings under `resources/packs/<category>/<set-id>/`, and
+regenerates both `resources/index.json` and `src/packs.rs`.
+`tools/tests/test_key_sounds_assets.py` compares the catalog with the frozen
+registry snapshot, checks that the files and the generated table agree, verifies
+that no proprietary set is carried and that no set claims the reserved `auto`
+id.

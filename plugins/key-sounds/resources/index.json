@@ -1147,6 +1147,61 @@
       }
     },
     {
+      "id": "buckling-spring",
+      "category": "keyboard",
+      "label": "Buckling Spring",
+      "name": "Buckling Spring",
+      "brand": "IBM",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/ibm/tplai/buckling_spring/61861d39-1242-41f5-8cf9-5823c472ce28.zip",
+      "files": {
+        "1.wav": "314ccfe47478c411b17c6c0aadcda3dff4b812997dbb7d2e1944397b361407e6",
+        "2.wav": "7d165654289081b3c60e55fd9035b160babf20752b7c4144abecb8d1c7842fbf",
+        "3.wav": "75c7542953e24235c5e53b3e286e7e851637d4af149aee52ccbaf6433d954b64",
+        "4.wav": "f1fa7070536021add8c074f446a498be80b2d778ab524fdfcc2150e03b95f725",
+        "5.wav": "beb4840cdbf765aa3b837635886f80b85bbbf62b4f3131c95c7e740cbda307aa",
+        "101.wav": "550f65da05bfea55a10c804fb9cdd472d971d2d99a002dac2c2e36eae82a5e64",
+        "201.wav": "d932a700ab8c3dd38c24ac8f3579767feabc4bfe7db659a07fc73ee80aacc08a",
+        "251.wav": "d555a0813ff18729d441777ddfa800aa5736d3c05e65e6f5e53f4e649fcd01e8",
+        "301.wav": "23490cb82cde40c3ccc2cac233c2c10382d8c14fe708ab8ea1488954812d0200",
+        "351.wav": "32b321e683ffd6bae3b48ef34d836c8851fda60ca8c2f1137cb9a7a986d4ffc0"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
       "id": "box-navy",
       "category": "keyboard",
       "label": "Box Navy",
@@ -1253,6 +1308,30 @@
           "up": [
             "351.wav"
           ]
+        }
+      }
+    },
+    {
+      "id": "quack",
+      "category": "keyboard",
+      "label": "Quack",
+      "name": "Quack",
+      "brand": "Quirky",
+      "author": "Freesound Community",
+      "license": {
+        "type": "Pixabay Content License",
+        "url": "https://pixabay.com/pl/service/license-summary/"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/quirky/freesound_community/quack/5e02cd62-f79b-43c4-8899-78bbb630a81d.zip",
+      "files": {
+        "1.wav": "6845172659c9d99107b092375aa689aed94b61657ed141b40a01716de1eaa892"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav"
+          ],
+          "up": []
         }
       }
     },
@@ -1460,85 +1539,6 @@
           "up": [
             "351.wav"
           ]
-        }
-      }
-    },
-    {
-      "id": "buckling-spring",
-      "category": "keyboard",
-      "label": "Buckling Spring",
-      "name": "Buckling Spring",
-      "brand": "IBM",
-      "author": "tplai",
-      "license": {
-        "type": "MIT",
-        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
-      },
-      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/ibm/tplai/buckling_spring/61861d39-1242-41f5-8cf9-5823c472ce28.zip",
-      "files": {
-        "1.wav": "314ccfe47478c411b17c6c0aadcda3dff4b812997dbb7d2e1944397b361407e6",
-        "2.wav": "7d165654289081b3c60e55fd9035b160babf20752b7c4144abecb8d1c7842fbf",
-        "3.wav": "75c7542953e24235c5e53b3e286e7e851637d4af149aee52ccbaf6433d954b64",
-        "4.wav": "f1fa7070536021add8c074f446a498be80b2d778ab524fdfcc2150e03b95f725",
-        "5.wav": "beb4840cdbf765aa3b837635886f80b85bbbf62b4f3131c95c7e740cbda307aa",
-        "101.wav": "550f65da05bfea55a10c804fb9cdd472d971d2d99a002dac2c2e36eae82a5e64",
-        "201.wav": "d932a700ab8c3dd38c24ac8f3579767feabc4bfe7db659a07fc73ee80aacc08a",
-        "251.wav": "d555a0813ff18729d441777ddfa800aa5736d3c05e65e6f5e53f4e649fcd01e8",
-        "301.wav": "23490cb82cde40c3ccc2cac233c2c10382d8c14fe708ab8ea1488954812d0200",
-        "351.wav": "32b321e683ffd6bae3b48ef34d836c8851fda60ca8c2f1137cb9a7a986d4ffc0"
-      },
-      "groups": {
-        "default": {
-          "down": [
-            "1.wav",
-            "2.wav",
-            "3.wav",
-            "4.wav",
-            "5.wav"
-          ],
-          "up": [
-            "101.wav"
-          ]
-        },
-        "space": {
-          "down": [
-            "201.wav"
-          ],
-          "up": [
-            "251.wav"
-          ]
-        },
-        "enter": {
-          "down": [
-            "301.wav"
-          ],
-          "up": [
-            "351.wav"
-          ]
-        }
-      }
-    },
-    {
-      "id": "quack",
-      "category": "keyboard",
-      "label": "Quack",
-      "name": "Quack",
-      "brand": "Quirky",
-      "author": "Freesound Community",
-      "license": {
-        "type": "Pixabay Content License",
-        "url": "https://pixabay.com/pl/service/license-summary/"
-      },
-      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/quirky/freesound_community/quack/5e02cd62-f79b-43c4-8899-78bbb630a81d.zip",
-      "files": {
-        "1.wav": "6845172659c9d99107b092375aa689aed94b61657ed141b40a01716de1eaa892"
-      },
-      "groups": {
-        "default": {
-          "down": [
-            "1.wav"
-          ],
-          "up": []
         }
       }
     },

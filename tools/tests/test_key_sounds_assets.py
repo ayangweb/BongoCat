@@ -30,13 +30,14 @@ INDEX = RESOURCES / "index.json"
 RUST_SOURCE = PLUGIN / "src" / "packs.rs"
 GENERATOR = RESOURCES / "fetch_packs.py"
 PROVENANCE = RESOURCES / "PROVENANCE.md"
+REGISTRY_MANIFEST = RESOURCES / "registry-manifest.json"
 
 #: The id the plugin reserves for "follow the device's own set", and so the one
 #: id no registry entry may claim.
 RESERVED_ID = "auto"
 
-#: The licenses the generator accepts. Anything else has to be refused, because
-#: a set that cannot be redistributed cannot be embedded in a distributed build.
+#: The licenses the generator accepts. Anything else is listed but must not be
+#: embedded, because a set that cannot be redistributed cannot ship.
 DISTRIBUTABLE = {"mit", "cc0", "pixabay content license"}
 
 #: The exact Thock groups the plugin can address. Keeping this closed prevents an
@@ -63,7 +64,58 @@ class KeySoundsAssetTests(unittest.TestCase):
     def setUpClass(cls):
         cls.index = json.loads(read(INDEX))
         cls.packs = cls.index["packs"]
+        cls.registry = json.loads(read(REGISTRY_MANIFEST))
         cls.source = read(RUST_SOURCE)
+
+    def test_the_catalog_is_thocks_redistributable_registry(self):
+        """Every playable registry entry is listed and no refused one is."""
+        registry = [
+            (
+                category,
+                entry["metadata"]["brand"],
+                entry["metadata"]["author"],
+                entry["metadata"]["name"],
+                entry["license"]["type"],
+            )
+            for category, entries in self.registry["soundpacks"].items()
+            for entry in entries
+        ]
+        expected = [
+            entry for entry in registry if entry[4].lower() in DISTRIBUTABLE
+        ]
+        actual = [
+            (
+                pack["category"],
+                pack["brand"],
+                pack["author"],
+                pack["name"],
+                pack["license"]["type"],
+            )
+            for pack in self.packs
+        ]
+        self.assertEqual(sorted(actual), sorted(expected))
+        self.assertEqual(
+            len(actual), len(set(actual)), "a registry entry is duplicated"
+        )
+        refused = [entry for entry in registry if entry[4].lower() not in DISTRIBUTABLE]
+        self.assertEqual(
+            [
+                (entry[1], entry[2], entry[3], entry[4])
+                for entry in refused
+            ],
+            [("Razer", "kamillobinski", "Mamba Elite", "Proprietary")],
+            "the proprietary registry entry must stay out of the catalog",
+        )
+        self.assertEqual(
+            (
+                sum(entry[0] == "keyboard" for entry in expected),
+                sum(entry[0] == "mouse" for entry in expected),
+            ),
+            (
+                sum(pack["category"] == "keyboard" for pack in self.packs),
+                sum(pack["category"] == "mouse" for pack in self.packs),
+            ),
+        )
 
     def test_plugin_identity_matches_the_workspace_and_executable(self):
         metadata = json.loads(read(PLUGIN / "plugin.json"))["metadata"]
@@ -104,7 +156,6 @@ class KeySoundsAssetTests(unittest.TestCase):
             declared,
             "a recording is committed that no index entry names, or the reverse",
         )
-
     def test_the_rust_table_is_generated_from_the_index(self):
         """Every set, category and file in the index is in the compiled table."""
         ids = re.findall(r'(?m)^        id: "([^"]+)",$', self.source)
@@ -120,8 +171,12 @@ class KeySoundsAssetTests(unittest.TestCase):
         self.assertEqual(labels, [pack["label"] for pack in self.packs])
         for pack in self.packs:
             category = pack["category"]
-            self.assertIn(f"category: PackCategory::{category.capitalize()},", self.source)
-            first = sorted(pack["files"], key=lambda name: int(name.removesuffix(".wav")))[0]
+            self.assertIn(
+                f"category: PackCategory::{category.capitalize()},", self.source
+            )
+            first = sorted(
+                pack["files"], key=lambda name: int(name.removesuffix(".wav"))
+            )[0]
             self.assertIn(
                 f'"/resources/packs/{category}/{pack["id"]}/{first}"',
                 self.source,
@@ -163,7 +218,6 @@ class KeySoundsAssetTests(unittest.TestCase):
                 self.assertTrue(pack["source"].startswith("https://"))
                 self.assertNotEqual(pack["id"], RESERVED_ID)
                 self.assertTrue(pack["label"].strip())
-        # Thock's own registry restricts this one to the Thock application.
         self.assertNotIn(
             "mamba",
             " ".join(pack["id"] + pack["label"] for pack in self.packs).lower(),
@@ -173,7 +227,9 @@ class KeySoundsAssetTests(unittest.TestCase):
     def test_each_set_keeps_only_what_a_plugin_can_address(self):
         """Only groups the plugin can address are embedded."""
         for pack in self.packs:
-            names = sorted(pack["files"], key=lambda name: int(name.removesuffix(".wav")))
+            names = sorted(
+                pack["files"], key=lambda name: int(name.removesuffix(".wav"))
+            )
             self.assertTrue(names, f"{pack['id']} carries no sound")
             for name in names:
                 self.assertRegex(name, r"^\d+\.wav$")

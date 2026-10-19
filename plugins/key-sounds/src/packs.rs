@@ -1697,6 +1697,92 @@ pub static PACKS: &[PackAsset] = &[
         ],
     },
     PackAsset {
+        id: "buckling-spring",
+        category: PackCategory::Keyboard,
+        label: "Buckling Spring",
+        brand: "IBM",
+        supports_key_up: true,
+        down: &[
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/buckling-spring/1.wav"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/buckling-spring/2.wav"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/buckling-spring/3.wav"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/buckling-spring/4.wav"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/buckling-spring/5.wav"
+            )),
+        ],
+        up: &[include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/resources/packs/keyboard/buckling-spring/101.wav"
+        ))],
+        key_groups: &[
+            KeyGroupAsset {
+                name: "default",
+                down: &[
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/1.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/2.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/3.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/4.wav"
+                    )),
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/packs/keyboard/buckling-spring/5.wav"
+                    )),
+                ],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/101.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "space",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/201.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/251.wav"
+                ))],
+            },
+            KeyGroupAsset {
+                name: "enter",
+                down: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/301.wav"
+                ))],
+                up: &[include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/packs/keyboard/buckling-spring/351.wav"
+                ))],
+            },
+        ],
+    },
+    PackAsset {
         id: "box-navy",
         category: PackCategory::Keyboard,
         label: "Box Navy",
@@ -1867,6 +1953,26 @@ pub static PACKS: &[PackAsset] = &[
                 ))],
             },
         ],
+    },
+    PackAsset {
+        id: "quack",
+        category: PackCategory::Keyboard,
+        label: "Quack",
+        brand: "Quirky",
+        supports_key_up: false,
+        down: &[include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/resources/packs/keyboard/quack/1.wav"
+        ))],
+        up: &[],
+        key_groups: &[KeyGroupAsset {
+            name: "default",
+            down: &[include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/packs/keyboard/quack/1.wav"
+            ))],
+            up: &[],
+        }],
     },
     PackAsset {
         id: "purple-hybrid-pbt",
@@ -2221,112 +2327,6 @@ pub static PACKS: &[PackAsset] = &[
                 ))],
             },
         ],
-    },
-    PackAsset {
-        id: "buckling-spring",
-        category: PackCategory::Keyboard,
-        label: "Buckling Spring",
-        brand: "IBM",
-        supports_key_up: true,
-        down: &[
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/buckling-spring/1.wav"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/buckling-spring/2.wav"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/buckling-spring/3.wav"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/buckling-spring/4.wav"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/buckling-spring/5.wav"
-            )),
-        ],
-        up: &[include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/packs/keyboard/buckling-spring/101.wav"
-        ))],
-        key_groups: &[
-            KeyGroupAsset {
-                name: "default",
-                down: &[
-                    include_bytes!(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/resources/packs/keyboard/buckling-spring/1.wav"
-                    )),
-                    include_bytes!(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/resources/packs/keyboard/buckling-spring/2.wav"
-                    )),
-                    include_bytes!(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/resources/packs/keyboard/buckling-spring/3.wav"
-                    )),
-                    include_bytes!(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/resources/packs/keyboard/buckling-spring/4.wav"
-                    )),
-                    include_bytes!(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/resources/packs/keyboard/buckling-spring/5.wav"
-                    )),
-                ],
-                up: &[include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/packs/keyboard/buckling-spring/101.wav"
-                ))],
-            },
-            KeyGroupAsset {
-                name: "space",
-                down: &[include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/packs/keyboard/buckling-spring/201.wav"
-                ))],
-                up: &[include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/packs/keyboard/buckling-spring/251.wav"
-                ))],
-            },
-            KeyGroupAsset {
-                name: "enter",
-                down: &[include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/packs/keyboard/buckling-spring/301.wav"
-                ))],
-                up: &[include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/packs/keyboard/buckling-spring/351.wav"
-                ))],
-            },
-        ],
-    },
-    PackAsset {
-        id: "quack",
-        category: PackCategory::Keyboard,
-        label: "Quack",
-        brand: "Quirky",
-        supports_key_up: false,
-        down: &[include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/packs/keyboard/quack/1.wav"
-        ))],
-        up: &[],
-        key_groups: &[KeyGroupAsset {
-            name: "default",
-            down: &[include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/resources/packs/keyboard/quack/1.wav"
-            ))],
-            up: &[],
-        }],
     },
     PackAsset {
         id: "orochi-v2",
