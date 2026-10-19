@@ -228,6 +228,10 @@ fn pause_stop_and_backwards_ticks_do_not_leave_stale_display() {
         .unwrap();
     assert_eq!(plugin.now_ms, 5000);
     assert!(output.model.nodes.is_empty());
-    plugin.handle(HostMessage::Stop).unwrap();
+    let stopped = plugin.handle(HostMessage::Stop).unwrap();
     assert!(plugin.source.is_none() && plugin.visible_until.is_none());
+    assert!(
+        stopped.errors.is_empty(),
+        "stopping is not an unavailable input source"
+    );
 }

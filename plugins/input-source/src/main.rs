@@ -233,6 +233,10 @@ impl Plugin for InputSourceIndicator {
                 self.monitor = None;
                 self.source = None;
                 self.visible_until = None;
+                // Stop ends observation; it is not an unavailable snapshot.
+                // The host is about to discard this process, and the returned
+                // output must not create an error notification while disabling.
+                self.paused = true;
             }
             HostMessage::Pause => {
                 self.paused = true;

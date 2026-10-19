@@ -88,5 +88,9 @@ fn real_process_supports_modes_locale_errors_reset_and_clean_shutdown() {
     assert!(send(HostMessage::Resume).unwrap().validate());
     let stopped = send(HostMessage::Stop).unwrap();
     assert!(stopped.model.nodes.is_empty());
+    assert!(
+        stopped.errors.is_empty(),
+        "disabling the plugin must not publish a runtime error"
+    );
     assert!(child.wait().unwrap().success());
 }
