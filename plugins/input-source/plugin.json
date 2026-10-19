@@ -11,7 +11,7 @@
     "capabilities": ["model_ui", "configuration", "localized_views_v1", "icon_text_v1"],
     "localizations": {
       "zh-CN": {
-        "name": "输入法指示器",
+        "name": "输入法状态",
         "description": "显示当前输入法的图标和名称，支持始终显示或切换后短暂显示"
       }
     }

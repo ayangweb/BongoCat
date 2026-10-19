@@ -203,7 +203,7 @@ fn manifest_identity_and_locale_fallback_match_the_binary() {
     assert_eq!(metadata.id, InputSourceIndicator::default().id());
     assert_eq!(metadata.entry, env!("CARGO_PKG_NAME"));
     assert_eq!(metadata.version, env!("CARGO_PKG_VERSION"));
-    assert_eq!(metadata.localized_copy("zh-CN").0, "输入法指示器");
+    assert_eq!(metadata.localized_copy("zh-CN").0, "输入法状态");
     for locale in ["en-US", "de-DE", "zh-TW", "unknown"] {
         assert_eq!(metadata.localized_copy(locale).0, "Input Source");
     }
