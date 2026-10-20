@@ -74,7 +74,13 @@ fn a_plugin_without_chinese_copy_reads_english_on_its_card_and_controls() {
     // The manifest's own name and description are the English copy, so the map
     // carries no second entry for it and the card falls back to that pair.
     assert!(card.localizations.is_empty());
-    assert_eq!(card.copy("zh-CN"), ("Pomodoro", "A focus timer"));
+    assert_eq!(
+        card.copy("zh-CN"),
+        (
+            "Pomodoro",
+            "A focus timer that helps you stay focused and plan your time."
+        )
+    );
     assert!(card.actions.iter().any(|node| matches!(node,
         bongocat_plugin_sdk::UiNode::Button { id, label, .. }
             if id == "toggle" && label == "Start"

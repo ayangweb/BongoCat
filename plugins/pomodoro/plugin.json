@@ -2,7 +2,7 @@
   "metadata": {
     "id": "com.bongocat.pomodoro",
     "name": "Pomodoro",
-    "description": "A focus timer",
+    "description": "A focus timer that helps you stay focused and plan your time.",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
@@ -17,7 +17,7 @@
     "localizations": {
       "zh-CN": {
         "name": "番茄钟",
-        "description": "专注计时器"
+        "description": "通过专注计时帮助你保持专注、合理安排时间。"
       }
     }
   }

@@ -2,6 +2,7 @@
 
 Status: accepted; implemented, platform smoke remains open
 Date: 2026-10-15
+Amended: 2026-10-20
 
 ## Decision
 
@@ -65,14 +66,14 @@ than optional per-key lookups, with no independent language setting or persisted
 locale. Further languages are deferred until needed; the application's own
 language catalogs remain unchanged.
 
-A `description` states the plugin's core function in one short phrase and stops
+A `description` states the plugin's core function in one sentence and stops
 there. It does not enumerate settings, list configuration options or explain how
 to use a feature: the card's settings surface and the plugin's own published
 controls already carry that, and a description that repeats them dates the
-manifest every time a control changes. "A focus timer", "Keyboard and mouse sound
-effects" and "Shows the current input source" are the shipped examples; the name
-and the icon carry identity, so the description only has to say what the plugin
-is for.
+manifest every time a control changes. The name and the icon carry identity, so
+the description only has to say what the plugin is for. The shipped copy later
+gained one clause naming the value the user gets from the plugin; see the
+amendment below.
 
 A plugin declares `capability::LocalizedViewsV1` to localize its published views.
 The application configuration owner initializes the service with its resolved
@@ -224,3 +225,22 @@ is claimed as verified on a platform that has not run it.
 The keyboard/mouse sound plugin's separate preview button is superseded by the
 Select hover-preview contract in ADR-0093. Other plugin buttons continue to use
 this ADR's loading-state contract.
+
+## Amendment: a description names the value the plugin gives
+
+The original rule stopped a description at the plugin's core function. The
+shipped copy now also names what the user gets, because a card is read by people
+deciding whether to install the plugin, and a bare function phrase repeated the
+name back at them:
+
+- Input Source: "Shows the current input source in real time, so you always know
+  the input state." / "实时显示当前使用的输入法，方便随时了解输入状态。"
+- Key Sounds: "Adds lively sound feedback to keyboard and mouse actions, making
+  every interaction more fun." / "为键盘和鼠标操作添加生动的声音反馈，让每次交互更有趣。"
+- Pomodoro: "A focus timer that helps you stay focused and plan your time." /
+  "通过专注计时帮助你保持专注、合理安排时间。"
+
+The rule keeps its other halves: one sentence, no settings enumeration, no usage
+instructions, and no feature the plugin does not have. Pomodoro still does not
+announce a work/break cycle (ADR-0090 records it as a focus timer only), so its
+description names focus and time planning without claiming rest intervals.

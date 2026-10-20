@@ -2,6 +2,7 @@
 
 Status: accepted; implementation complete, platform acceptance tracked below
 Date: 2026-10-15
+Amended: 2026-10-20
 
 ## Context
 
@@ -29,10 +30,12 @@ a way to publish a list of choices rather than a single number.
 The plugin is named **Key Sounds** in English and **按键音效** in Simplified
 Chinese. The name matches the product's key-sound vocabulary without suggesting
 UI button feedback. Because "key" alone can suggest keyboard-only behavior, the
-description names both devices ("Keyboard and mouse sound effects" / "键盘和鼠标音效")
+description names both devices ("Adds lively sound feedback to keyboard and mouse
+actions, making every interaction more fun." / "为键盘和鼠标操作添加生动的声音反馈，让每次交互更有趣。")
 without implying gamepad, pointer movement or scroll sounds. A description states
-the plugin's core function and nothing else: which devices it covers, not how it
-configures them, because the card's settings surface already shows that.
+the plugin's core function and the value the user gets from it, and nothing else:
+which devices it covers, not how it configures them, because the card's settings
+surface already shows that.
 
 The directory is `plugins/key-sounds`, the Cargo package and executable are
 `bongocat-key-sounds`, the plugin ID is `com.bongocat.key-sounds`, and the Rust owner

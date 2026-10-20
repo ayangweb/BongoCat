@@ -2,7 +2,7 @@
   "metadata": {
     "id": "com.bongocat.input-source",
     "name": "Input Source",
-    "description": "Shows the current input source",
+    "description": "Shows the current input source in real time, so you always know the input state.",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
@@ -12,7 +12,7 @@
     "localizations": {
       "zh-CN": {
         "name": "输入法状态",
-        "description": "显示当前输入法"
+        "description": "实时显示当前使用的输入法，方便随时了解输入状态。"
       }
     }
   }

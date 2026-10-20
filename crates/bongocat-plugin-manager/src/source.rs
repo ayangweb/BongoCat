@@ -243,11 +243,17 @@ mod tests {
         assert_eq!(metadata.entry, "bongocat-key-sounds");
         assert_eq!(
             metadata.localized_copy("en-US"),
-            ("Key Sounds", "Keyboard and mouse sound effects"),
+            (
+                "Key Sounds",
+                "Adds lively sound feedback to keyboard and mouse actions, making every interaction more fun."
+            ),
         );
         assert_eq!(
             metadata.localized_copy("zh-CN"),
-            ("按键音效", "键盘和鼠标音效"),
+            (
+                "按键音效",
+                "为键盘和鼠标操作添加生动的声音反馈，让每次交互更有趣。"
+            ),
         );
     }
 
