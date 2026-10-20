@@ -508,6 +508,11 @@ fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
     let client = service.client();
     settled(&client);
     client.install_available_blocking(PLUGIN_ID).unwrap();
+    // Installing hands the package read to the catalog job, which reports the
+    // install only once it has copied the package. Driving the plugin before
+    // that is what the service refuses with `Operation`, so wait for the job.
+    let installed = settled(&client);
+    assert_eq!(installed.cards[0].version.as_deref(), Some("1.0.0"));
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
     service.shutdown().unwrap();
     std::fs::write(
