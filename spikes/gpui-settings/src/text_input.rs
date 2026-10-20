@@ -186,6 +186,7 @@ impl TextInput {
         &self.buffer.content
     }
 
+    #[cfg(target_os = "macos")]
     pub fn has_selection(&self) -> bool {
         !self.buffer.selected_range.is_empty()
     }
