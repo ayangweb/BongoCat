@@ -101,7 +101,10 @@ without copying the model or the pressed set.
 `UiNode::Select { key, label, value, options }` carries its own
 `Vec<SelectOption { value, label, group }>`. The `group` is plugin-owned display
 metadata: options that name the same group are shown under one stock `gpui-kit`
-section header, and an option without one stands as its own section. The list
+section header, and `None` means the list is not grouped at all. The grouping is
+earned, not universal: it exists because a soundpack catalog is long enough that
+a heading rescues it, while a two-choice mode list has nothing a heading could
+add, and a heading that repeats the row under it is just a duplicate. The list
 travels with the node because the
 options are the plugin's own vocabulary — which key sounds it carries, which
 of them a user may pick — and the host has no way to invent them. Validation
@@ -109,10 +112,10 @@ requires `value` to be one of `options`, every value to be a valid key, and the
 list to be non-empty and bounded by `SELECT_OPTION_LIMIT` (64), so a plugin can
 never publish a selection the list cannot show.
 
-The host does not infer categories from plugin ids or labels. It reuses the
-component's grouped delegate for filtering, row indexing, selection restoration
-and muted section headers, so a partial set of groups needs no separate flat
-delegate. The key-sounds plugin groups
+The host does not infer categories from plugin ids or labels. It uses the
+component's grouped delegate only when every option names a group, and keeps the
+stock flat delegate otherwise: a partial set of categories would otherwise need
+the host to invent a heading for the rest. The key-sounds plugin groups
 its embedded sets by the source soundpack brand; brand names are provenance
 metadata and therefore do not need translation. In particular, Thock's
 `Unknown` brand stays `Unknown` rather than being renamed. Within a brand the
