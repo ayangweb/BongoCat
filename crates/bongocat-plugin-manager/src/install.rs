@@ -238,19 +238,20 @@ fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), PluginManagerErro
     let mut paths = BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        // `enclosed_name` already rejects absolute paths and `..`; the stricter
-        // check below rejects any non-normal component and a name long enough to
-        // be a path-length attack on its own.
-        let Some(path) = entry.enclosed_name() else {
+        // The checks run on the name the archive declares, not on a native path
+        // rebuilt from it: Windows renders `resources/icon.png` as
+        // `resources\icon.png`, so a rebuilt path reads the host's own
+        // separator as the escape the archive asked for.
+        let Some(path) = entry
+            .name()
+            .ok()
+            .and_then(|name| entry_relative_path(&name))
+        else {
             return Err(PluginManagerError::UnsafeManifest(
                 "plugin package contains an unsafe path".into(),
             ));
         };
-        let normalized: PathBuf = path.components().collect();
-        if !safe_relative_path(&path)
-            || !paths.insert(normalized.to_string_lossy().to_ascii_lowercase())
-            || entry.is_symlink()
-        {
+        if !paths.insert(deduplication_key(&path)) || entry.is_symlink() {
             return Err(PluginManagerError::UnsafeManifest(
                 "plugin package contains an unsafe path".into(),
             ));
@@ -351,6 +352,48 @@ pub fn safe_relative_path(path: &Path) -> bool {
             .components()
             .all(|component| matches!(component, Component::Normal(_)))
         && path.to_string_lossy().len() <= 256
+}
+
+/// The relative path an archive entry names, validated before it becomes native.
+///
+/// A ZIP stores entry names with `/` separators, and that spelling is the only
+/// portable one. Validating a path the host already rendered would reject every
+/// nested entry on Windows — where `resources/icon.png` reads back as
+/// `resources\icon.png` — while that same separator is exactly what makes a name
+/// an escape attempt on Unix. So the check runs on the declared name and the
+/// native path is built from the segments only after it passes.
+fn entry_relative_path(name: &str) -> Option<PathBuf> {
+    // A trailing `/` marks a directory entry; every other empty segment is a
+    // name the filesystem would have to interpret.
+    let name = name.strip_suffix('/').unwrap_or(name);
+    if name.is_empty()
+        || name.len() > 256
+        || name.contains(['\\', ':', '\0'])
+        || name.starts_with('/')
+    {
+        return None;
+    }
+    let mut path = PathBuf::new();
+    for segment in name.split('/') {
+        if segment.is_empty() || matches!(segment, "." | "..") {
+            return None;
+        }
+        path.push(segment);
+    }
+    Some(path)
+}
+
+/// How one entry name is compared against another for duplication.
+///
+/// Case-insensitive because the package has to unpack on a case-insensitive
+/// filesystem too, and joined with `/` so two entries that only differ by the
+/// host's separator still collide.
+fn deduplication_key(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+        .to_ascii_lowercase()
 }
 
 pub(crate) fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerError> {
@@ -520,6 +563,64 @@ mod tests {
         assert!(!safe_relative_path(Path::new("")));
         assert!(!safe_relative_path(Path::new("a\\..\\outside")));
         assert!(!safe_relative_path(Path::new("file:stream")));
+    }
+
+    #[test]
+    fn archive_entry_names_are_read_in_the_archives_own_spelling() {
+        // A ZIP entry name is always `/`-separated. Reading it back through the
+        // host path type would turn `resources/icon.png` into
+        // `resources\icon.png` on Windows and then reject it as an escape.
+        assert_eq!(
+            entry_relative_path("resources/icon.png"),
+            Some(PathBuf::from("resources").join("icon.png"))
+        );
+        assert_eq!(entry_relative_path("plugin"), Some(PathBuf::from("plugin")));
+        // A directory entry carries its trailing separator; it names the same
+        // place as the file entries nested under it, so both spellings have to
+        // resolve identically for the duplicate check to catch the pair.
+        assert_eq!(
+            entry_relative_path("resources/"),
+            Some(PathBuf::from("resources"))
+        );
+        assert_eq!(
+            deduplication_key(&entry_relative_path("resources/icon.png").unwrap()),
+            deduplication_key(&entry_relative_path("resources/Icon.PNG/").unwrap()),
+        );
+        for unsafe_name in [
+            "",
+            "/",
+            "../escape",
+            "resources/../escape",
+            "resources//icon.png",
+            "resources\\icon.png",
+            "file:stream",
+            "C:/icon.png",
+            "\\icon.png",
+        ] {
+            assert_eq!(
+                entry_relative_path(unsafe_name),
+                None,
+                "{unsafe_name:?} should not be a safe entry name"
+            );
+        }
+    }
+
+    #[test]
+    fn nested_entries_install_on_every_host() {
+        // The archive below is what a published package looks like: a manifest,
+        // an executable and a nested icon. It has to install on the host running
+        // this test, whichever separator that host spells paths with.
+        let directory = tempfile::tempdir().unwrap();
+        let mut local = metadata("com.bongocat.pomodoro", "1.0.0");
+        local.icon = PluginIcon::LocalImage("resources/icon.png".into());
+        let manifest = serde_json::to_vec(&PluginManifest { metadata: local }).unwrap();
+        let bytes = archive(&[
+            (MANIFEST_FILE, &manifest),
+            ("plugin", b"binary"),
+            ("resources/icon.png", b"png"),
+        ]);
+        let installed = install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
+        assert!(installed.root.join("resources").join("icon.png").is_file());
     }
 
     #[test]
