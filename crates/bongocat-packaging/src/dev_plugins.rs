@@ -285,8 +285,15 @@ fn package_into(
         std::io::copy(&mut fs::File::open(icon)?, &mut archive)?;
     }
     // The executable bit has to travel in the archive, because installation is
-    // what recreates the file and a download has no mode to inherit.
-    archive.start_file(entry, options.unix_permissions(0o755))?;
+    // what recreates the file and a download has no mode to inherit. The Unix
+    // system is recorded explicitly instead of left to `zip`'s per-host default:
+    // on a Windows packaging host that default is DOS, whose external attributes
+    // carry no Unix mode, so the mode set here would never be read back and the
+    // archive would be refused for holding a non-executable executable.
+    archive.start_file(
+        entry,
+        options.unix_permissions(0o755).system(zip::System::Unix),
+    )?;
     archive.write_all(&binary)?;
     let bytes = archive.finish()?.into_inner();
 
@@ -312,6 +319,23 @@ fn executable_from_messages(bytes: &[u8], entry: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use bongocat_plugin_manager::PluginManager;
+
+    /// Write a stand-in build output where Cargo would put it on this host.
+    ///
+    /// `metadata.entry` names the plugin, not its file: Windows compiles a
+    /// `plugin.exe`, and the installer resolves that same name from the manifest.
+    /// A fixture that wrote `plugin` on every host produced an archive whose
+    /// executable the installer could not find once it ran on Windows.
+    fn write_test_executable(directory: &Path, manifest: &PluginManifest) -> PathBuf {
+        let name = if cfg!(windows) {
+            format!("{}.exe", manifest.metadata.entry)
+        } else {
+            manifest.metadata.entry.clone()
+        };
+        let executable = directory.join(name);
+        fs::write(&executable, b"test executable").unwrap();
+        executable
+    }
 
     #[test]
     fn preparation_is_a_separate_mode_not_a_production_build_option() {
@@ -342,8 +366,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let bytes = include_bytes!("../../../plugins/pomodoro/plugin.json");
         let manifest: PluginManifest = serde_json::from_slice(bytes).unwrap();
-        let executable = root.path().join(&manifest.metadata.entry);
-        fs::write(&executable, b"test executable").unwrap();
+        let executable = write_test_executable(root.path(), &manifest);
 
         let package = package_plugin(
             root.path(),
@@ -440,8 +463,7 @@ mod tests {
         let mut manifest: PluginManifest = serde_json::from_slice(bytes).unwrap();
         let id = manifest.metadata.id.clone();
         assert_eq!(id, "com.bongocat.key-sounds");
-        let executable = workspace.path().join(&manifest.metadata.entry);
-        fs::write(&executable, b"test executable").unwrap();
+        let executable = write_test_executable(workspace.path(), &manifest);
         let package = package_plugin(
             workspace.path(),
             &workspace_root().unwrap().join("plugins/key-sounds"),
