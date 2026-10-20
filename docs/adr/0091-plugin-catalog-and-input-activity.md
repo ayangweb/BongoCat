@@ -13,6 +13,14 @@ catalog without reinstalling removed packages. Catalog IO runs separately from
 the plugin tick/action owner. Production requires a signed catalog and a package
 digest bound to that catalog; there is no unsigned or local-file fallback.
 
+An explicit installation, including reinstall after uninstall, automatically
+enables the validated package through the existing handshake, Start, locale and
+persistence lifecycle. Updates preserve the user's enable/disable choice;
+retained session data does not prevent reinstall from enabling.
+Auto-enable failure keeps the package installed for an explicit enable retry and
+uses the existing localized global installation-error notification; no Enabled
+snapshot is published before startup succeeds. Discovery alone never enables code.
+
 Catalog selection is per plugin ID, not the single newest release across all IDs.
 An upgrade preserves plugin config/state, replaces registry metadata and restarts
 an enabled process. A refused package must retain the previous selected version.
@@ -97,8 +105,8 @@ the enabled flag while stopping and joining the process.
 
 Replacement stops preserve that flag even if extraction or the new process's
 Start/locale exchange fails. Uninstall clears it for failed as well as running
-entries before retaining their data, so reinstall cannot resurrect a prior enable
-request. Reset restores a previously running process when data deletion fails;
+entries before retaining their data, so startup cannot resurrect an uninstalled plugin.
+An explicit reinstall enables it as a new installation. Reset restores a previously running process when data deletion fails;
 it reloads only its own package, not unrelated damaged packages. Package downloads
 serialize conflicting install/uninstall/reset/enable requests for their target.
 Service loop drains have finite budgets so a continuously refilled command or

@@ -571,7 +571,7 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
     let installed = settled(&client);
     assert_eq!(installed.cards[0].version.as_deref(), Some("1.0.0"));
     assert_eq!(installed.cards[0].icon_url, available.cards[0].icon_url);
-    client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    assert!(installed.cards[0].enabled, "first install must auto-enable");
     client
         .configure_blocking(
             PLUGIN_ID,
@@ -618,6 +618,18 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
         restarted.cards[0].enabled,
         "enabled state must survive application shutdown"
     );
+    client.set_enabled_blocking(PLUGIN_ID, false).unwrap();
+    write_local_catalog(catalog.path(), &versioned_package(&bytes, "1.3.0", false));
+    client.refresh_blocking().unwrap();
+    settled(&client);
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    let disabled_update = settled(&client);
+    assert!(disabled_update.error.is_none());
+    assert_eq!(disabled_update.cards[0].version.as_deref(), Some("1.3.0"));
+    assert!(
+        !disabled_update.cards[0].enabled,
+        "update must preserve disable"
+    );
     client.uninstall_blocking(PLUGIN_ID).unwrap();
     let removed = settled(&client);
     assert_eq!(
@@ -636,9 +648,40 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
     service.shutdown().unwrap();
 
     let (service, _) = PluginService::start_with_source(store.path(), 4, source, None).unwrap();
+    let client = service.client();
     assert!(
-        settled(&service.client()).cards[0].version.is_none(),
+        settled(&client).cards[0].version.is_none(),
         "startup must not undo uninstall"
     );
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    let reinstalled = settled(&client);
+    assert!(reinstalled.error.is_none());
+    assert!(
+        reinstalled.cards[0].enabled,
+        "explicit reinstall must auto-enable despite the retained disabled session"
+    );
+    service.shutdown().unwrap();
+}
+
+#[test]
+fn first_install_start_failure_keeps_the_package_for_enable_retry() {
+    let bytes =
+        plugin_package().expect("build Pomodoro with just dev-plugins before lifecycle tests");
+    let catalog = tempfile::tempdir().unwrap();
+    let store = tempfile::tempdir().unwrap();
+    write_local_catalog(catalog.path(), &versioned_package(&bytes, "1.0.0", true));
+    let source = bongocat_plugin_service::PluginSource::Development {
+        catalog: catalog.path().join(CATALOG_FILE),
+        packages: catalog.path().to_owned(),
+    };
+    let (service, _) = PluginService::start_with_source(store.path(), 4, source, None).unwrap();
+    let client = service.client();
+    settled(&client);
+    client.install_available_blocking(PLUGIN_ID).unwrap();
+    let failed = settled(&client);
+    assert!(failed.error.is_some());
+    assert_eq!(failed.cards[0].version.as_deref(), Some("1.0.0"));
+    assert!(!failed.cards[0].enabled);
+    assert!(client.set_enabled_blocking(PLUGIN_ID, true).is_err());
     service.shutdown().unwrap();
 }

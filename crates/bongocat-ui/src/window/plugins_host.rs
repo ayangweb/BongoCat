@@ -723,7 +723,7 @@ impl PluginHost {
                     && snapshot.cards.iter().any(|card| {
                         card.id == id && card.version == expected && !card.update_available
                     });
-                if !installed {
+                if !installed || snapshot.error.is_some() {
                     self.publish_reply(
                         snapshot,
                         Some(&PluginFailure::Install {
@@ -1214,7 +1214,7 @@ mod tests {
     }
 
     #[test]
-    fn bulk_updates_wait_for_completion_continue_after_failure_and_can_retry() {
+    fn bulk_updates_wait_for_completion_and_report_start_failure_after_install() {
         let (client, endpoint) = PluginServiceClient::bounded(8);
         let host = PluginHost::new(client);
         let mut cards = (0..3)
@@ -1268,14 +1268,16 @@ mod tests {
                         reads += 1;
                         if reads >= 2 {
                             let id = active.take().unwrap();
-                            if id != "plugin-1" {
-                                let card = cards.iter_mut().find(|card| card.id == id).unwrap();
-                                card.version = card.available_version.clone();
-                                card.update_available = false;
-                            }
+                            let card = cards.iter_mut().find(|card| card.id == id).unwrap();
+                            card.version = card.available_version.clone();
+                            card.update_available = false;
                         }
                         let mut snapshot = plugin_center_snapshots(cards.clone());
                         snapshot.loading = active.is_some();
+                        // Installation may succeed while its automatic start fails.
+                        if active.is_none() && observed.last().is_some_and(|id| id == "plugin-1") {
+                            snapshot.error = Some("automatic enable failed".into());
+                        }
                         reply.respond(snapshot).unwrap();
                         if observed.len() == 3 && active.is_none() {
                             return observed;
@@ -1302,7 +1304,7 @@ mod tests {
             })
         );
         assert_eq!(host.take_failure(), None);
-        assert_eq!(host.begin_update_all(), ["plugin-1"]);
+        assert!(host.begin_update_all().is_empty());
     }
 
     #[test]

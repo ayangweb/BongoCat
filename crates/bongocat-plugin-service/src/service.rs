@@ -402,7 +402,15 @@ impl Worker {
             Ok(CatalogResult::List(offers)) => self.offers = offers,
             Ok(CatalogResult::Package { offer, bytes }) => {
                 self.dispatch_input_activity();
+                // Explicit installs, including reinstalls, auto-start;
+                // updates keep the installed plugin's enable choice.
+                let new_install = self.manager.installed_version(&offer.metadata.id).is_none();
                 if let Err(error) = self.manager.install_verified(&bytes, &offer.digest) {
+                    self.error = Some(error.to_string());
+                } else if new_install
+                    && let Err(error) = self.manager.enable_plugin(&offer.metadata.id)
+                {
+                    // Keep the validated package installed so enable can be retried.
                     self.error = Some(error.to_string());
                 }
                 self.initialize_plugin_input_activity(&offer.metadata.id);
