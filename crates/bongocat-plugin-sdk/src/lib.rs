@@ -24,53 +24,42 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 /// The only keyboard identities here are a small set of physical special keys
 /// that Thock addresses by their own soundpack groups. Letters, symbols, text
 /// and pointer position still never cross this boundary.
+///
+/// Every counter is part of the contract: the message is one shape, so a host
+/// that omits one is refused rather than read as zero.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputActivity {
     pub keyboard_down: u64,
     pub keyboard_up: u64,
     pub mouse_down: u64,
     pub mouse_up: u64,
-    /// Space presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Space presses, a subset of [`Self::keyboard_down`].
     pub space_down: u64,
-    /// Space releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Space releases, a subset of [`Self::keyboard_up`].
     pub space_up: u64,
-    /// Enter presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Enter presses, a subset of [`Self::keyboard_down`].
     pub enter_down: u64,
-    /// Enter releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Enter releases, a subset of [`Self::keyboard_up`].
     pub enter_up: u64,
-    /// Backspace presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Backspace presses, a subset of [`Self::keyboard_down`].
     pub backspace_down: u64,
-    /// Backspace releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Backspace releases, a subset of [`Self::keyboard_up`].
     pub backspace_up: u64,
-    /// Tab presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Tab presses, a subset of [`Self::keyboard_down`].
     pub tab_down: u64,
-    /// Tab releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Tab releases, a subset of [`Self::keyboard_up`].
     pub tab_up: u64,
-    /// Left Shift presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Left Shift presses, a subset of [`Self::keyboard_down`].
     pub shift_left_down: u64,
-    /// Left Shift releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Left Shift releases, a subset of [`Self::keyboard_up`].
     pub shift_left_up: u64,
-    /// Right Shift presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Right Shift presses, a subset of [`Self::keyboard_down`].
     pub shift_right_down: u64,
-    /// Right Shift releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Right Shift releases, a subset of [`Self::keyboard_up`].
     pub shift_right_up: u64,
-    /// Left Control presses, a subset of `keyboard_down`.
-    #[serde(default)]
+    /// Left Control presses, a subset of [`Self::keyboard_down`].
     pub ctrl_left_down: u64,
-    /// Left Control releases, a subset of `keyboard_up`.
-    #[serde(default)]
+    /// Left Control releases, a subset of [`Self::keyboard_up`].
     pub ctrl_left_up: u64,
 }
 
@@ -107,16 +96,13 @@ pub enum Capability {
     ModelUi,
     Configuration,
     PersistentState,
-    /// Anonymous, coalesced keyboard-down activity; message contract version 1.
-    KeyboardActivityV1,
     /// Keyboard/mouse edge counters with a small physical special-key subset;
     /// message contract version 1.
     ///
-    /// It supersedes [`Capability::KeyboardActivityV1`] for a plugin that has to
-    /// tell a press from a release, or a key from a mouse button: the message it
-    /// gates carries four device totals plus monotonic counters for the special
-    /// keys whose Thock sound groups this product can address. It carries no
-    /// letters, symbols, text, pointer position or mouse-button identity.
+    /// The message it gates carries four device totals plus monotonic counters
+    /// for the special keys whose Thock sound groups this product can address.
+    /// It carries no letters, symbols, text, pointer position or mouse-button
+    /// identity.
     InputActivityV1,
     /// The plugin may publish bounded [`UiNode::IconText`] display nodes.
     IconTextV1,
@@ -124,10 +110,8 @@ pub enum Capability {
     /// resolved catalog tag with [`HostMessage::Locale`].
     ///
     /// The capability is the gate rather than the protocol version, exactly as
-    /// [`Capability::KeyboardActivityV1`] gates its message: a plugin built
-    /// before this message existed never receives it, so an installed plugin
-    /// that has not been updated keeps working instead of failing a frame it
-    /// cannot parse.
+    /// [`Capability::InputActivityV1`] gates its message: a plugin declares what
+    /// it handles, so the host never sends it a frame it would fail to parse.
     LocalizedViewsV1,
 }
 
@@ -137,15 +121,13 @@ pub enum Capability {
 /// plugin's own author wrote, so a catalog that repackaged them could not tell
 /// the two apart from the ones it invented.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginCopy {
-    #[serde(default)]
     pub name: String,
-    #[serde(default)]
     pub description: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginMetadata {
     pub id: String,
     pub name: String,
@@ -158,11 +140,80 @@ pub struct PluginMetadata {
     pub capabilities: Vec<Capability>,
     /// Per-locale name and description; currently only `zh-CN` is served.
     ///
-    /// The mandatory `name` and `description` above are the fallback a locale
-    /// this map does not carry reads, so a plugin written before localization —
-    /// and a plugin that has only ever had an English name — loads unchanged.
-    #[serde(default)]
+    /// [`Self::name`] and [`Self::description`] are the English copy and are
+    /// never repeated here, so one language has exactly one source.
     pub localizations: BTreeMap<String, PluginCopy>,
+}
+
+impl<'de> Deserialize<'de> for PluginMetadata {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Raw {
+            id: String,
+            name: String,
+            description: String,
+            version: String,
+            app_versions: String,
+            protocol_version: u32,
+            entry: String,
+            icon: PluginIcon,
+            capabilities: Vec<Capability>,
+            /// A plugin that serves only English declares no other language.
+            #[serde(default)]
+            localizations: BTreeMap<String, PluginCopy>,
+        }
+        let Raw {
+            id,
+            name,
+            description,
+            version,
+            app_versions,
+            protocol_version,
+            entry,
+            icon,
+            capabilities,
+            mut localizations,
+        } = Raw::deserialize(deserializer)?;
+        // The manifest's own name and description are the English entry, so a
+        // map that restates them would give one language two sources, which is
+        // the ambiguity this shape removes.
+        if localizations.remove(DEFAULT_LOCALE).is_some() {
+            return Err(serde::de::Error::custom(
+                "localizations must not restate the manifest's English copy",
+            ));
+        }
+        Ok(Self {
+            id,
+            name,
+            description,
+            version,
+            app_versions,
+            protocol_version,
+            entry,
+            icon,
+            capabilities,
+            localizations,
+        })
+    }
+}
+
+impl Serialize for PluginMetadata {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct as _;
+        let mut manifest = serializer.serialize_struct("PluginMetadata", 10)?;
+        manifest.serialize_field("id", &self.id)?;
+        manifest.serialize_field("name", &self.name)?;
+        manifest.serialize_field("description", &self.description)?;
+        manifest.serialize_field("version", &self.version)?;
+        manifest.serialize_field("app_versions", &self.app_versions)?;
+        manifest.serialize_field("protocol_version", &self.protocol_version)?;
+        manifest.serialize_field("entry", &self.entry)?;
+        manifest.serialize_field("icon", &self.icon)?;
+        manifest.serialize_field("capabilities", &self.capabilities)?;
+        manifest.serialize_field("localizations", &self.localizations)?;
+        manifest.end()
+    }
 }
 
 impl PluginMetadata {
@@ -171,11 +222,9 @@ impl PluginMetadata {
     /// Missing or incomplete translations fall back as a pair, never field by
     /// field, so a card cannot mix languages.
     pub fn localized_copy(&self, locale: &str) -> (&str, &str) {
-        localized_copy(
-            &self.localizations,
-            locale,
-            (self.name.as_str(), self.description.as_str()),
-        )
+        let english: &str = &self.name;
+        let english_description: &str = &self.description;
+        localized_copy(&self.localizations, locale, (english, english_description))
     }
 
     /// The supported locale to send to this plugin's views. The metadata map
@@ -258,19 +307,17 @@ pub enum UiNode {
     Button {
         id: String,
         label: String,
-        /// The glyph the host draws for this action, when the plugin names one.
+        /// The glyph the host draws for this action.
         ///
-        /// A plugin that names none gets the host's neutral action glyph: the
-        /// host never guesses an icon from an id or a label, and it never
-        /// carries a per-plugin rule.
-        #[serde(default)]
-        icon: Option<ActionIcon>,
+        /// It is the plugin's own statement of what the button does: the host
+        /// never guesses an icon from an id or a label, and it never carries a
+        /// per-plugin rule.
+        icon: ActionIcon,
         /// Whether the button is carrying out the action it names.
         ///
         /// The plugin owns this: it is the plugin that knows a preview is still
-        /// playing. It replaces the "playing…" line such a plugin used to
-        /// publish beside the button.
-        #[serde(default)]
+        /// playing, so the host draws the control carrying the action instead
+        /// of a placeholder line beside it.
         loading: bool,
     },
     Toggle {
@@ -298,7 +345,6 @@ pub enum UiNode {
         value: String,
         options: Vec<SelectOption>,
         /// Whether hovering an option asks the plugin to preview it.
-        #[serde(default)]
         preview: bool,
     },
 }
@@ -356,12 +402,11 @@ impl StatusIcon {
 pub struct SelectOption {
     pub value: String,
     pub label: String,
-    /// The category row this option belongs under.
+    /// The category the plugin draws this option under.
     ///
     /// A plugin groups its own vocabulary, and `None` means the list is not
-    /// grouped, which is what a plugin written before this field reads as. The
-    /// label is localized by the plugin like every other option label.
-    #[serde(default)]
+    /// grouped. The label is localized by the plugin like every other option
+    /// label.
     pub group: Option<String>,
 }
 
@@ -398,17 +443,12 @@ impl ActionIcon {
 }
 
 impl UiNode {
-    /// A button with no declared glyph and no in-flight state.
-    ///
-    /// A plugin that asks for nothing specific still says what it means: the
-    /// value carries an absent icon rather than a host guess, so the host can
-    /// keep drawing its neutral action glyph without claiming the button does
-    /// something the plugin never said it does.
-    pub fn button(id: impl Into<String>, label: impl Into<String>) -> Self {
+    /// A button carrying `icon` and no in-flight state.
+    pub fn button(id: impl Into<String>, label: impl Into<String>, icon: ActionIcon) -> Self {
         Self::Button {
             id: id.into(),
             label: label.into(),
-            icon: None,
+            icon,
             loading: false,
         }
     }
@@ -465,10 +505,9 @@ impl PluginView {
                                 && valid_key(&option.value)
                                 && option.value.len() <= 128
                                 && option.label.len() <= 128
-                                && option
-                                    .group
-                                    .as_ref()
-                                    .is_none_or(|group| !group.is_empty() && group.len() <= 128)
+                                && option.group.as_ref().is_none_or(|group| {
+                                    !group.trim().is_empty() && group.len() <= 128
+                                })
                         })
                         && options.iter().any(|option| &option.value == value)
                 }
@@ -503,9 +542,6 @@ pub enum HostMessage {
         state: Vec<u8>,
     },
     Tick {
-        elapsed_ms: u64,
-    },
-    KeyboardActivity {
         elapsed_ms: u64,
     },
     /// Device activity as monotonic totals and special-key counters.
@@ -557,7 +593,6 @@ pub struct PluginOutput {
     pub state: Vec<u8>,
     /// Current user-facing failures, not view nodes or persisted session data.
     /// Stable ids let the host notify once until recovery, even across locale changes.
-    #[serde(default)]
     pub errors: Vec<PluginError>,
 }
 
@@ -680,9 +715,7 @@ pub fn run(plugin: &mut impl Plugin) -> io::Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn plugin_errors_are_optional_bounded_and_reject_internal_formatting() {
-        let legacy: PluginOutput = serde_json::from_str(r#"{"model":{"anchor":"top_right","nodes":[]},"settings":{"anchor":"top_right","nodes":[]},"config":{},"state":[]}"#).unwrap();
-        assert!(legacy.errors.is_empty());
+    fn plugin_errors_are_bounded_and_reject_internal_formatting() {
         let valid = PluginOutput {
             errors: vec![PluginError {
                 id: "audio_device".into(),
@@ -797,7 +830,10 @@ mod tests {
     #[test]
     fn rejects_duplicate_control_ids_and_select_values() {
         let duplicate_controls = PluginView {
-            nodes: vec![UiNode::button("same", "One"), UiNode::button("same", "Two")],
+            nodes: vec![
+                UiNode::button("same", "One", ActionIcon::Play),
+                UiNode::button("same", "Two", ActionIcon::Pause),
+            ],
             ..Default::default()
         };
         assert!(!duplicate_controls.validate());
@@ -858,14 +894,7 @@ mod tests {
 
     #[test]
     fn plugins_serve_only_simplified_chinese_and_english() {
-        let mut metadata = localized_metadata();
-        metadata.localizations.insert(
-            "fr-FR".into(),
-            PluginCopy {
-                name: "Minuteur".into(),
-                description: "Un minuteur".into(),
-            },
-        );
+        let metadata = localized_metadata();
         for locale in ["zh-CN", "zh_cn", "ZH-cn"] {
             assert_eq!(plugin_locale(locale), "zh-CN");
             assert_eq!(metadata.view_locale(locale), "zh-CN");
@@ -896,25 +925,19 @@ mod tests {
     }
 
     #[test]
-    fn missing_or_partial_copy_falls_back_for_the_entire_plugin() {
+    fn an_incomplete_translation_falls_back_for_the_entire_plugin() {
         for copy in [
-            None,
-            Some(PluginCopy {
+            PluginCopy {
                 name: "番茄钟".into(),
                 description: " ".into(),
-            }),
-            Some(PluginCopy {
+            },
+            PluginCopy {
                 name: "".into(),
                 description: "专注计时器".into(),
-            }),
-            Some(serde_json::from_str::<PluginCopy>(r#"{"name":"番茄钟"}"#).unwrap()),
-            Some(serde_json::from_str::<PluginCopy>(r#"{"description":"专注计时器"}"#).unwrap()),
+            },
         ] {
             let metadata = PluginMetadata {
-                localizations: copy
-                    .into_iter()
-                    .map(|copy| ("zh-CN".into(), copy))
-                    .collect(),
+                localizations: [("zh-CN".into(), copy)].into(),
                 ..localized_metadata()
             };
             assert_eq!(metadata.view_locale("zh-CN"), DEFAULT_LOCALE);
@@ -925,34 +948,84 @@ mod tests {
         }
     }
 
-    /// A button a plugin publishes without asking for a glyph still validates,
-    /// and so does one that names a glyph and is carrying it out.
+    /// Copy is supplied by the plugin that publishes it, so a locale entry the
+    /// manifest omitted a field for is a malformed manifest rather than a
+    /// partial translation the host would have to complete.
     #[test]
-    fn a_button_may_declare_an_icon_and_an_in_flight_state() {
+    fn a_partial_locale_entry_is_not_a_valid_manifest() {
+        let mut manifest = serde_json::to_value(localized_metadata()).unwrap();
+        manifest["localizations"]["zh-CN"] = serde_json::json!({ "name": "番茄钟" });
+        assert!(serde_json::from_value::<PluginMetadata>(manifest.clone()).is_err());
+        manifest["localizations"]["zh-CN"] = serde_json::json!({
+            "name": "番茄钟",
+            "description": "专注计时器",
+            "extra": "not part of the contract",
+        });
+        assert!(serde_json::from_value::<PluginMetadata>(manifest).is_err());
+    }
+
+    /// English is the manifest's own name and description, so a locale map that
+    /// repeats it would give one language two sources.
+    #[test]
+    fn a_locale_map_may_not_restate_the_english_copy() {
+        let mut manifest = serde_json::to_value(localized_metadata()).unwrap();
+        manifest["localizations"]["en-US"] = serde_json::json!({
+            "name": "Pomodoro",
+            "description": "A focus timer",
+        });
+        assert!(serde_json::from_value::<PluginMetadata>(manifest).is_err());
+    }
+
+    #[test]
+    fn a_manifest_round_trips_through_its_manifest_file() {
+        let metadata = localized_metadata();
+        let bytes = serde_json::to_vec(&metadata).unwrap();
+        let decoded: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded["name"], "Pomodoro");
+        assert_eq!(decoded["localizations"]["zh-CN"]["name"], "番茄钟");
+        assert_eq!(
+            serde_json::from_slice::<PluginMetadata>(&bytes).unwrap(),
+            metadata
+        );
+    }
+
+    /// A button always names the glyph it asks the host to draw, and may report
+    /// that it is carrying the action out.
+    #[test]
+    fn a_button_names_its_icon_and_may_be_in_flight() {
         let view = PluginView {
             nodes: vec![
-                UiNode::button("toggle", "Start"),
+                UiNode::button("toggle", "Start", ActionIcon::Play),
                 UiNode::Button {
                     id: "preview".into(),
                     label: "Preview".into(),
-                    icon: Some(ActionIcon::Volume),
+                    icon: ActionIcon::Volume,
                     loading: true,
                 },
             ],
             ..Default::default()
         };
         assert!(view.validate());
-        // The absent glyph and the in-flight state are both optional, so a
-        // frame written before either existed still parses.
-        let legacy: PluginView = serde_json::from_str(
-            r#"{"anchor":"top_right","nodes":[{"type":"button","id":"toggle","label":"Start"}]}"#,
+        // The host draws the plugin's own glyph, so a frame that omits it is a
+        // malformed frame rather than one the host guesses an icon for.
+        for node in [
+            r#"{"type":"button","id":"toggle","label":"Start"}"#,
+            r#"{"type":"button","id":"toggle","label":"Start","icon":"play"}"#,
+        ] {
+            let frame = format!(r#"{{"anchor":"top_right","nodes":[{node}]}}"#);
+            assert!(
+                serde_json::from_str::<PluginView>(&frame).is_err(),
+                "{node}"
+            );
+        }
+        let frame: PluginView = serde_json::from_str(
+            r#"{"anchor":"top_right","nodes":[{"type":"button","id":"toggle","label":"Start","icon":"play","loading":false}]}"#,
         )
         .unwrap();
-        assert!(legacy.validate());
         assert!(matches!(
-            legacy.nodes.as_slice(),
+            frame.nodes.as_slice(),
             [UiNode::Button {
-                icon: None,
+                icon: ActionIcon::Play,
                 loading: false,
                 ..
             }]
@@ -987,13 +1060,13 @@ mod tests {
             ..Default::default()
         };
         assert!(view.validate());
-        let legacy: UiNode = serde_json::from_str(
-            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One"}]}"#,
+        let ungrouped: UiNode = serde_json::from_str(
+            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One","group":null}],"preview":false}"#,
         )
         .unwrap();
-        assert!(matches!(legacy, UiNode::Select { preview: false, .. }));
-        let UiNode::Select { options, .. } = legacy else {
-            panic!("the legacy select node round trips");
+        assert!(matches!(ungrouped, UiNode::Select { preview: false, .. }));
+        let UiNode::Select { options, .. } = ungrouped else {
+            panic!("the select node round trips");
         };
         assert_eq!(options[0].group, None);
 
@@ -1018,7 +1091,7 @@ mod tests {
             );
         }
 
-        for group in [Some(String::new()), Some("x".repeat(129))] {
+        for group in [Some(String::new()), Some(" ".into()), Some("x".repeat(129))] {
             assert!(
                 !PluginView {
                     nodes: vec![node(
@@ -1036,9 +1109,42 @@ mod tests {
         }
 
         let grouped: UiNode = serde_json::from_str(
-            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One","group":"Keyboard"}]}"#,
+            r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One","group":"Keyboard"}],"preview":true}"#,
         )
         .unwrap();
+        // Every field of the node is part of the contract, so a frame that omits
+        // one is rejected rather than completed by the host.
+        assert!(
+            serde_json::from_str::<UiNode>(
+                r#"{"type":"select","key":"pack","label":"Pack","value":"one","options":[{"value":"one","label":"One","group":"Keyboard"}]}"#,
+            )
+            .is_err()
+        );
+        // An absent group decodes to `None`; a group that is present must name a
+        // category, so an empty one is not a heading the host would have to draw.
+        assert_eq!(
+            serde_json::from_str::<SelectOption>(r#"{"value":"one","label":"One"}"#)
+                .unwrap()
+                .group,
+            None
+        );
+        assert!(
+            !PluginView {
+                nodes: vec![UiNode::Select {
+                    key: "pack".into(),
+                    label: "Pack".into(),
+                    value: "one".into(),
+                    options: vec![
+                        serde_json::from_str(r#"{"value":"one","label":"One","group":""}"#)
+                            .unwrap()
+                    ],
+                    preview: false,
+                }],
+                ..Default::default()
+            }
+            .validate(),
+            "an empty group is not a category"
+        );
         let UiNode::Select { options, .. } = grouped else {
             panic!("the select node round trips");
         };
@@ -1046,7 +1152,8 @@ mod tests {
     }
 
     /// The activity message carries counters and nothing else, and a plugin
-    /// frames it the same way on both sides of the pipe.
+    /// frames it the same way on both sides of the pipe. Every counter is part
+    /// of the frame, so a partial one is refused rather than read as zeros.
     #[test]
     fn input_activity_round_trips_counters_only() {
         let mut bytes = Vec::new();

@@ -53,18 +53,26 @@ fails, because controls nothing would answer are not a configuration surface. A
 dialog dismissed by the overlay or by Escape never reaches a callback, so the
 draft is reconciled on the next frame instead of leaking an open panel.
 
-Plugin copy belongs to the plugin. `plugin.json` keeps its mandatory English
-`name` and `description` as the fallback and gains an optional `localizations`
-map. The SDK resolves only `zh-CN` (case-insensitive, accepting `_` separators)
-and English; every other resolved application language uses English, even if a
-manifest declares another translation. Missing, blank or incomplete Chinese
-metadata falls back as a whole pair, not field by field. The same metadata map
-declares the plugin's available translated catalogs, so its published views
-receive English when the Chinese entry is incomplete too. Translated catalogs
-must be complete; the shipped plugins use required copy-struct fields rather
+Plugin copy belongs to the plugin. `plugin.json` carries a `localizations` map
+keyed by locale tag. The SDK resolves only `zh-CN` and English; every other
+resolved application language uses English, even if a manifest declares another
+translation. The map is the only copy: English is an entry in it like every other
+language, and an entry missing a name or a description is an invalid manifest
+rather than a pair the host completes. The same map declares the plugin's
+available translated catalogs, so its published views receive English when no
+Chinese entry exists. The shipped plugins use required copy-struct fields rather
 than optional per-key lookups, with no independent language setting or persisted
 locale. Further languages are deferred until needed; the application's own
 language catalogs remain unchanged.
+
+A `description` states the plugin's core function in one short phrase and stops
+there. It does not enumerate settings, list configuration options or explain how
+to use a feature: the card's settings surface and the plugin's own published
+controls already carry that, and a description that repeats them dates the
+manifest every time a control changes. "A focus timer", "Keyboard and mouse sound
+effects" and "Shows the current input source" are the shipped examples; the name
+and the icon carry identity, so the description only has to say what the plugin
+is for.
 
 A plugin declares `capability::LocalizedViewsV1` to localize its published views.
 The application configuration owner initializes the service with its resolved
@@ -73,27 +81,28 @@ language changes only after configuration commits succeed. Opening, rendering,
 closing or replacing the settings window is not a language writer. The registry
 normalizes and remembers the tag, deduplicates unchanged effective tags, and
 sends each plugin's supported catalog through `HostMessage::Locale`; a plugin
-started later (enable, upgrade or startup resume) receives the current tag too.
-The capability gates delivery so an older plugin is never sent a frame it cannot
-parse; one that advertises the capability but refuses the exchange fails like
-any other faulty tick. Framework copy (page title, card chrome and settings panel
+started later (enable, upgrade or startup resume) receives the current tag as part
+of that start, so there is exactly one delivery path. The capability gates
+delivery so a plugin that does not localize its views is never sent a frame it
+cannot parse; one that advertises the capability but refuses the exchange fails
+like any other faulty tick. Framework copy (page title, card chrome and settings panel
 chrome) stays in `bongocat-i18n` and follows the application's language.
 
-Both plugins declare a glyph for every button they publish. The key-sounds
-preview button reports `loading` from its own playback state instead of
-publishing a text node. Runtime failures use the optional typed `errors` field
-on `PluginOutput`; the host adds the plugin and operation context, then sends
-one global error notification instead of rendering an error text node in the
-settings panel.
+Every button declares a glyph, and every action the host draws maps to artwork
+the bundled `gpui-kit` assets ship, so no button depends on a font glyph for its
+meaning and there is no neutral placeholder. The key-sounds preview button
+reports `loading` from its own playback state instead of publishing a text node.
+Runtime failures use the typed `errors` field on `PluginOutput`; the host adds
+the plugin and operation context, then sends one global error notification
+instead of rendering an error text node in the settings panel.
 
-Installed code, not catalog metadata, publishes action labels and icons. An old
-installed package without these declarations therefore keeps its English labels
-and neutral glyph even if a rebuilt package is available. `just dev-plugins`
-only rebuilds the catalog ZIPs; it does not replace installed code. During this
+Installed code, not catalog metadata, publishes action labels and icons, so an
+installed package always describes its own controls. `just dev-plugins` only
+rebuilds the catalog ZIPs; it does not replace installed code. During this
 unreleased PR's fixed 1.0.0 baseline (ADR-0091), testing a rebuilt plugin requires
 uninstalling and installing it through the center, which retains its data. The
-host must not guess icons or translations from legacy action IDs to hide stale
-code, or silently overwrite immutable installed versions.
+host must not guess icons or translations from action IDs, or silently overwrite
+immutable installed versions.
 
 Each window serializes service requests through publication of their replies,
 so a delayed poll cannot overwrite a newer configuration/action snapshot. Failure
@@ -136,30 +145,32 @@ exactly the declared icon alongside the manifest and executable, and a
 repository contract test requires the same file name, square canvas, RGBA mode,
 antialiased corners and opaque edge midpoints for every bundled plugin.
 
-## Compatibility
+## Format
 
-Every protocol addition is optional and defaults to the previous behavior: a
-button with no `icon` and no `loading`, a manifest with no `localizations`, a
-plugin without `localized_views_v1`. The manifest has no icon fallback field;
-unknown fields remain rejected. Every release and Development catalog writes
-`icon_url`, and every bundled manifest names the same `resources/icon.png`.
-There is no compatibility path for a manifest or catalog that omits card
-artwork; both are build inputs and must be corrected at the source. No config,
-state or session format changes, `schema_version` stays 1, and ADR-0091's
-lifecycle, storage and catalog decisions are unchanged. Widgets already pinned
-to `gpui-kit` are reused. The desktop application adds the matching
-`gpui-pre-reqwest-client` transport so GPUI's image element can load release
-PNGs; it is not a second UI dependency.
+The plugin system is unreleased, so this ADR defines one current shape instead of
+tolerating earlier ones. A button always carries `icon` and `loading`, a select
+always carries `preview` and a group on every option, a manifest always carries
+`localizations`, and `PluginOutput::errors` is always present; unknown fields
+remain rejected. The manifest has no icon fallback and no digest field — a
+package's identity is the digest of the signed catalog entry that offers it.
+Every release and Development catalog writes `icon_url`, and every bundled
+manifest names the same `resources/icon.png`. There is no format path for a
+manifest or catalog that omits card artwork; both are build inputs and must be
+corrected at the source. No config, state or session format changes,
+`schema_version` stays 1, and ADR-0091's lifecycle, storage and catalog decisions
+are unchanged. Widgets already pinned to `gpui-kit` are reused. The desktop
+application adds the matching `gpui-pre-reqwest-client` transport so GPUI's image
+element can load release PNGs; it is not a second UI dependency.
 
 ## Validation
 
 Unit tests cover supported-tag normalization, unsupported-language fallback,
-missing and incomplete translations, optional-field decoding of legacy frames,
-the shipped plugins' English fallback for unsupported host languages,
+incomplete translations, rejection of a frame or manifest that omits a required
+field, the shipped plugins' English fallback for unsupported host languages,
 per-control in-flight bookkeeping, grid column selection, the settings entry
-opening and closing one plugin's panel, action glyph mapping (including the
-neutral fallback), typed plugin error validation, global notification rendering, and that a plugin-reported loading state draws on its own
-button. Real-pipe tests check Pomodoro's localized action labels and play, pause
+opening and closing one plugin's panel, action glyph mapping to bundled artwork,
+typed plugin error validation, global notification rendering, and that a
+plugin-reported loading state draws on its own button. Real-pipe tests check Pomodoro's localized action labels and play, pause
 and restart declarations together across timer transitions. Real-process service
 tests cover whole-plugin English fallback for incomplete metadata. Application
 settings tests verify initialization without windows, all application languages,

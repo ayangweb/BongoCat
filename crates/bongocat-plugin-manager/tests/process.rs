@@ -25,7 +25,8 @@ fn target_binary() -> Option<std::path::PathBuf> {
 }
 
 /// Build the package the way the packaging tool does: one ZIP with the manifest,
-/// executable and the package-local icon, installed through the manager.
+/// executable and the package-local icon, installed through the manager with the
+/// digest the catalog would advertise.
 fn install(source: &std::path::Path, binary: &std::path::Path, directory: &std::path::Path) {
     let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default()
@@ -49,7 +50,8 @@ fn install(source: &std::path::Path, binary: &std::path::Path, directory: &std::
     let bytes = archive.finish().unwrap().into_inner();
 
     let mut manager = PluginManager::new(directory.to_path_buf()).unwrap();
-    manager.install(&bytes).unwrap();
+    let digest = bongocat_plugin_manager::sha256_of(&bytes);
+    manager.install(&bytes, &digest).unwrap();
 }
 
 #[test]

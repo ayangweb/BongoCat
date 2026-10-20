@@ -32,13 +32,13 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     minutes: "时长（分钟）",
 };
 
-/// The copy for a catalog tag, falling back to English.
+/// The copy for the catalog tag the host sends.
 ///
-/// The host sends a tag it already resolved, so this only has to pick a
-/// language out of the tags it knows; an unknown tag reads English rather than
-/// showing a raw locale to the user.
+/// The host delivers the tag this plugin's manifest declares a translation for,
+/// so the plugin compares against that one tag instead of resolving tags it does
+/// not serve.
 fn copy_for(locale: &str) -> &'static Copy {
-    if bongocat_plugin_sdk::plugin_locale(locale) == "zh-CN" {
+    if locale == "zh-CN" {
         &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH
@@ -52,11 +52,9 @@ struct Pomodoro {
     /// Whether this session has ever run. A timer that has not run previews the
     /// whole session, and one that has run out reports that it is done instead
     /// of silently looking like a fresh one.
-    #[serde(default)]
     started: bool,
     #[serde(skip)]
     last_tick: Option<u64>,
-    #[serde(default = "default_minutes")]
     minutes: i64,
     /// The catalog tag the host last named, or `None` before it names one.
     ///
@@ -78,7 +76,7 @@ impl Default for Pomodoro {
         }
     }
 }
-fn default_minutes() -> i64 {
+const fn default_minutes() -> i64 {
     25
 }
 impl Pomodoro {
@@ -120,17 +118,17 @@ impl Pomodoro {
                 UiNode::Button {
                     id: "toggle".into(),
                     label: if self.running { copy.pause } else { copy.start }.into(),
-                    icon: Some(if self.running {
+                    icon: if self.running {
                         ActionIcon::Pause
                     } else {
                         ActionIcon::Play
-                    }),
+                    },
                     loading: false,
                 },
                 UiNode::Button {
                     id: "restart".into(),
                     label: copy.restart.into(),
-                    icon: Some(ActionIcon::Restart),
+                    icon: ActionIcon::Restart,
                     loading: false,
                 },
             ],
@@ -200,7 +198,7 @@ fn button_label<'a>(output: &'a PluginOutput, id: &str) -> &'a str {
 
 /// The glyph one panel button asks the host to draw.
 #[cfg(test)]
-fn button_icon(output: &PluginOutput, id: &str) -> Option<ActionIcon> {
+fn button_icon(output: &PluginOutput, id: &str) -> ActionIcon {
     output
         .model
         .nodes
@@ -231,27 +229,22 @@ impl Plugin for Pomodoro {
     }
     fn handle(&mut self, message: HostMessage) -> Result<PluginOutput, String> {
         match message {
-            HostMessage::Start { mut config, state } => {
+            HostMessage::Start { config, state } => {
                 if !state.is_empty() {
                     *self = serde_json::from_slice(&state).map_err(|_| "Invalid saved pomodoro")?;
-                    // State saved before `started` existed has no such field, so
-                    // a remainder it did save is itself evidence that the
-                    // session had already been running. Reading it back as a
-                    // fresh timer would show the full length over the time the
-                    // user had actually left.
-                    self.started |= self.remaining_ms > 0;
                 }
                 self.running = false;
+                // The host starts counting from zero for every process, while
+                // the restored remainder was saved against the previous one's
+                // clock, so the first tick seeds a baseline instead of being read
+                // as time that elapsed since the state was written.
                 self.last_tick = None;
-                // Earlier configurations ignored unknown keys. Keep those saved
-                // sessions readable while rejecting new edits with unknown keys.
-                config.retain(|key, _| key == "minutes");
                 self.configure(&config)?;
             }
             HostMessage::Configure { config } => self.configure(&config)?,
-            // The pomodoro counts time, not keys: both activity messages say
-            // only that some device moved, which is nothing a timer needs.
-            HostMessage::KeyboardActivity { .. } | HostMessage::InputActivity { .. } => {}
+            // The pomodoro counts time, not keys: device activity says only that
+            // something moved, which is nothing a timer needs.
+            HostMessage::InputActivity { .. } => {}
             HostMessage::Tick { elapsed_ms } => {
                 if self.running
                     && let Some(previous) = self.last_tick
@@ -367,20 +360,22 @@ mod tests {
         assert_eq!(button_label(&output, "toggle"), "开始");
     }
 
+    /// The configuration vocabulary is closed: a key this plugin does not
+    /// declare is refused rather than tolerated and dropped.
     #[test]
-    fn saved_configuration_keeps_the_previous_unknown_key_tolerance() {
-        let output = Pomodoro::default()
-            .handle(HostMessage::Start {
-                config: [
-                    ("minutes".into(), ConfigValue::Integer(5)),
-                    ("unused".into(), ConfigValue::Boolean(true)),
-                ]
-                .into(),
-                state: Vec::new(),
-            })
-            .unwrap();
-        assert_eq!(clock_text(&output), "05:00");
-        assert_eq!(output.config.len(), 1);
+    fn a_saved_configuration_with_an_unknown_key_is_refused() {
+        assert!(
+            Pomodoro::default()
+                .handle(HostMessage::Start {
+                    config: [
+                        ("minutes".into(), ConfigValue::Integer(5)),
+                        ("unused".into(), ConfigValue::Boolean(true)),
+                    ]
+                    .into(),
+                    state: Vec::new(),
+                })
+                .is_err()
+        );
     }
     /// The panel shows the duration before the user presses Start.
     #[test]
@@ -429,30 +424,56 @@ mod tests {
         p.handle(HostMessage::Tick { elapsed_ms: 5_000 }).unwrap();
         assert_eq!(clock_text(&p.output().unwrap()), "24:55");
     }
-    /// State written before the preview existed still loads.
-    ///
-    /// The `started` flag was added when the panel began previewing the session
-    /// length. State bytes saved by the previous version have no such field, so
-    /// they must read back rather than fail into a reset.
+    /// A saved remainder survives a restart and keeps counting down from itself,
+    /// because the first tick of a new process only seeds its clock.
     #[test]
-    fn state_saved_before_the_preview_existed_still_loads() {
-        let legacy = br#"{"remaining_ms":120000,"running":false,"minutes":30}"#;
+    fn a_restored_remainder_keeps_counting_from_where_it_stopped() {
         let mut p = Pomodoro {
             minutes: 25,
             ..Default::default()
         };
-        p.handle(HostMessage::Start {
-            config: [("minutes".into(), ConfigValue::Integer(30))].into(),
-            state: legacy.to_vec(),
+        p.handle(HostMessage::Tick { elapsed_ms: 0 }).unwrap();
+        p.handle(HostMessage::Action {
+            id: "toggle".into(),
         })
         .unwrap();
-        assert_eq!(p.remaining_ms, 120_000);
-        assert_eq!(p.minutes, 30);
-        assert!(
-            p.started,
-            "a saved remainder is evidence the session had been running"
-        );
-        assert_eq!(clock_text(&p.output().unwrap()), "02:00");
+        p.handle(HostMessage::Tick { elapsed_ms: 5_000 }).unwrap();
+        let state = p.output().unwrap().state;
+        assert_eq!(p.remaining_ms, 1_495_000);
+
+        let mut restored = Pomodoro::default();
+        restored
+            .handle(HostMessage::Start {
+                config: [("minutes".into(), ConfigValue::Integer(30))].into(),
+                state,
+            })
+            .unwrap();
+        assert_eq!(restored.remaining_ms, 1_495_000);
+        assert!(restored.started);
+        assert!(!restored.running);
+        assert_eq!(clock_text(&restored.output().unwrap()), "24:55");
+        // The new process's clock starts at zero, so the first tick only seeds
+        // it and the second is the first second that elapses.
+        restored
+            .handle(HostMessage::Tick { elapsed_ms: 0 })
+            .unwrap();
+        assert_eq!(restored.remaining_ms, 1_495_000);
+        restored
+            .handle(HostMessage::Tick { elapsed_ms: 1_000 })
+            .unwrap();
+        assert_eq!(restored.remaining_ms, 1_495_000);
+        assert_eq!(clock_text(&restored.output().unwrap()), "24:55");
+        // The countdown is paused on restart, so only a resumed timer moves.
+        restored
+            .handle(HostMessage::Action {
+                id: "toggle".into(),
+            })
+            .unwrap();
+        restored
+            .handle(HostMessage::Tick { elapsed_ms: 2_000 })
+            .unwrap();
+        assert_eq!(restored.remaining_ms, 1_494_000);
+        assert_eq!(clock_text(&restored.output().unwrap()), "24:54");
     }
     #[test]
     fn restart_is_paused_and_state_is_plugin_owned() {
@@ -502,19 +523,7 @@ mod tests {
         let minutes = integer_label(&localized);
         assert_eq!(minutes, "时长（分钟）");
 
-        for locale in ["zh_CN", "ZH-cn"] {
-            let localized = p
-                .handle(HostMessage::Locale {
-                    locale: locale.into(),
-                })
-                .unwrap();
-            assert_eq!(button_label(&localized, "restart"), "重新计时", "{locale}");
-        }
-
-        for locale in [
-            "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh", "ar-SA", "vi-VN",
-            "pt-BR", "ko-KR", "fr-FR", "de-DE", "",
-        ] {
+        for locale in ["en-US", "zh-TW", "ar-SA", "fr-FR", ""] {
             let fallback = p
                 .handle(HostMessage::Locale {
                     locale: locale.into(),
@@ -561,7 +570,7 @@ mod tests {
         };
         assert_eq!(
             button_icon(&p.output().unwrap(), "toggle"),
-            Some(ActionIcon::Play)
+            ActionIcon::Play
         );
         p.handle(HostMessage::Action {
             id: "toggle".into(),
@@ -569,11 +578,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             button_icon(&p.output().unwrap(), "toggle"),
-            Some(ActionIcon::Pause)
+            ActionIcon::Pause
         );
         assert_eq!(
             button_icon(&p.output().unwrap(), "restart"),
-            Some(ActionIcon::Restart)
+            ActionIcon::Restart
         );
     }
 }

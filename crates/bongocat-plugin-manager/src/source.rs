@@ -117,6 +117,10 @@ impl PluginSource {
                     let Some(url) = entry.downloads.get(platform) else {
                         continue;
                     };
+                    // A package is only ever the one the signed catalog
+                    // describes, so an entry without a usable digest is a
+                    // catalog that cannot be acted on rather than one that is
+                    // installed unverified.
                     let digest = entry
                         .sha256
                         .clone()
@@ -239,20 +243,18 @@ mod tests {
         assert_eq!(metadata.entry, "bongocat-key-sounds");
         assert_eq!(
             metadata.localized_copy("en-US"),
-            (
-                "Key Sounds",
-                "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
-            ),
+            ("Key Sounds", "Keyboard and mouse sound effects"),
         );
         assert_eq!(
             metadata.localized_copy("zh-CN"),
-            (
-                "按键音效",
-                "键盘、鼠标按键按下或弹起时播放音效，支持分别设置",
-            ),
+            ("按键音效", "键盘和鼠标音效"),
         );
     }
 
+    /// Which plugins the installed application may offer is the catalog's own
+    /// `app_versions` range, so a bundled manifest declares a lower bound and no
+    /// upper one: a plugin written against this app keeps working in the next
+    /// release instead of disappearing from the center.
     #[test]
     fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
         for bytes in [

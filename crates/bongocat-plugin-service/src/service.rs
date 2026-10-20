@@ -300,7 +300,6 @@ impl Unavailable {
                     let _ = reply.respond(center);
                 }
                 PluginCommand::SetEnabled { reply, .. }
-                | PluginCommand::Install { reply, .. }
                 | PluginCommand::InstallAvailable { reply, .. }
                 | PluginCommand::Uninstall { reply, .. }
                 | PluginCommand::ResetData { reply, .. }
@@ -403,7 +402,7 @@ impl Worker {
             Ok(CatalogResult::List(offers)) => self.offers = offers,
             Ok(CatalogResult::Package { offer, bytes }) => {
                 self.dispatch_input_activity();
-                if let Err(error) = self.manager.install_verified(&bytes, Some(&offer.digest)) {
+                if let Err(error) = self.manager.install_verified(&bytes, &offer.digest) {
                     self.error = Some(error.to_string());
                 }
                 self.initialize_plugin_input_activity(&offer.metadata.id);
@@ -485,8 +484,8 @@ impl Worker {
                     });
                 PluginCard {
                     id: metadata.id.clone(),
-                    name: metadata.name,
-                    description: metadata.description,
+                    name: metadata.name.clone(),
+                    description: metadata.description.clone(),
                     localizations: metadata.localizations,
                     icon_url: icon_urls.get(&metadata.id).cloned(),
                     enabled: state == PluginState::Enabled,
@@ -553,21 +552,11 @@ impl Worker {
     fn apply(&mut self, command: PluginCommand) {
         if let Some(package) = self.job.as_ref().and_then(|job| job.package.as_deref()) {
             match command {
-                PluginCommand::SetEnabled { ref id, .. }
-                | PluginCommand::Uninstall { ref id, .. }
-                | PluginCommand::ResetData { ref id, .. }
+                PluginCommand::SetEnabled { ref id, reply, .. }
+                | PluginCommand::Uninstall { ref id, reply }
+                | PluginCommand::ResetData { ref id, reply }
                     if id == package =>
                 {
-                    let reply = match command {
-                        PluginCommand::SetEnabled { reply, .. }
-                        | PluginCommand::Uninstall { reply, .. }
-                        | PluginCommand::ResetData { reply, .. } => reply,
-                        _ => unreachable!(),
-                    };
-                    self.respond(reply, Err(PluginCommandError::Operation));
-                    return;
-                }
-                PluginCommand::Install { reply, .. } => {
                     self.respond(reply, Err(PluginCommandError::Operation));
                     return;
                 }
@@ -597,24 +586,6 @@ impl Worker {
                     self.interaction_failures.remove(&id);
                 }
                 if result.is_ok() && enabled {
-                    self.initialize_plugin_input_activity(&id);
-                }
-                self.respond(reply, result);
-            }
-            PluginCommand::Install { bytes, reply } => {
-                self.dispatch_input_activity();
-                let id = bongocat_plugin_manager::install::inspect_package(&bytes)
-                    .ok()
-                    .map(|manifest| manifest.metadata.id);
-                let result = if matches!(self.source, PluginSource::Production { .. }) {
-                    Err(PluginCommandError::Operation)
-                } else {
-                    self.manager
-                        .install(&bytes)
-                        .map(|_| ())
-                        .map_err(|error| operation(&error))
-                };
-                if let Some(id) = id {
                     self.initialize_plugin_input_activity(&id);
                 }
                 self.respond(reply, result);
@@ -717,8 +688,11 @@ impl Worker {
                 self.respond(reply, result);
             }
             PluginCommand::SetLocale { locale, reply } => {
-                self.manager.set_locale(&locale);
-                self.respond(reply, Ok(()));
+                let result = self
+                    .manager
+                    .set_locale(&locale)
+                    .map_err(|error| operation(&error));
+                self.respond(reply, result);
             }
             PluginCommand::Shutdown { reply } => {
                 self.catalog_stop.store(true, Ordering::Release);
@@ -962,27 +936,40 @@ mod tests {
             wait.recv().unwrap();
             Ok(CatalogResult::List(Vec::new()))
         });
-        for operation in 0..4 {
+        let uninstall = || PluginCommand::Uninstall {
+            id: id.to_owned(),
+            reply: PluginReply(async_channel::bounded(1).0),
+        };
+        let commands = [
+            PluginCommand::SetEnabled {
+                id: id.to_owned(),
+                enabled: false,
+                reply: PluginReply(async_channel::bounded(1).0),
+            },
+            uninstall(),
+            PluginCommand::ResetData {
+                id: id.to_owned(),
+                reply: PluginReply(async_channel::bounded(1).0),
+            },
+        ];
+        for command in commands {
             let (reply, response) = async_channel::bounded(1);
-            let reply = PluginReply(reply);
-            let command = match operation {
-                0 => PluginCommand::SetEnabled {
-                    id: id.into(),
-                    enabled: false,
-                    reply,
+            // Rebuild the command around this iteration's reply channel.
+            let command = match command {
+                PluginCommand::SetEnabled { id, enabled, .. } => PluginCommand::SetEnabled {
+                    id,
+                    enabled,
+                    reply: PluginReply(reply),
                 },
-                1 => PluginCommand::Uninstall {
-                    id: id.into(),
-                    reply,
+                PluginCommand::Uninstall { id, .. } => PluginCommand::Uninstall {
+                    id,
+                    reply: PluginReply(reply),
                 },
-                2 => PluginCommand::ResetData {
-                    id: id.into(),
-                    reply,
+                PluginCommand::ResetData { id, .. } => PluginCommand::ResetData {
+                    id,
+                    reply: PluginReply(reply),
                 },
-                _ => PluginCommand::Install {
-                    bytes: Vec::new(),
-                    reply,
-                },
+                _ => unreachable!("only lifecycle commands are exercised"),
             };
             worker.apply(command);
             assert_eq!(

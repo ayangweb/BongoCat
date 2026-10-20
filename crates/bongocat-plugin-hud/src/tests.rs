@@ -1,7 +1,7 @@
 //! Cross-module tests for the panel vocabulary.
 
 use crate::{HudFont, HudRect, PluginView};
-use bongocat_plugin_sdk::{Anchor, SelectOption, UiNode};
+use bongocat_plugin_sdk::{ActionIcon, Anchor, SelectOption, UiNode};
 
 fn font() -> HudFont {
     crate::load_platform_font().expect("the platform ships a usable text face")
@@ -64,7 +64,7 @@ fn a_view_measures_to_its_widest_node_and_stacked_height() {
             UiNode::Text {
                 text: "05:00".into(),
             },
-            UiNode::button("toggle", "Start / 开始"),
+            UiNode::button("toggle", "Start / 开始", ActionIcon::Play),
         ],
     };
     let (width, height) = crate::measure_view(&view, &font);
@@ -86,7 +86,7 @@ fn a_point_inside_a_control_is_reported_and_a_point_outside_is_not() {
     let font = font();
     let view = PluginView {
         anchor: Anchor::TopLeft,
-        nodes: vec![UiNode::button("restart", "Restart")],
+        nodes: vec![UiNode::button("restart", "Restart", ActionIcon::Restart)],
     };
     let viewport = HudRect::new(0.0, 0.0, 200.0, 200.0);
     let layout = crate::layout(&view, viewport, &font);
@@ -154,14 +154,14 @@ fn a_select_is_measured_by_its_chosen_option_without_an_action_target() {
 
 #[test]
 fn only_ready_buttons_and_toggles_are_interactive() {
-    let mut loading = UiNode::button("busy", "Busy");
+    let mut loading = UiNode::button("busy", "Busy", ActionIcon::Pause);
     if let UiNode::Button { loading, .. } = &mut loading {
         *loading = true;
     }
     let view = PluginView {
         nodes: vec![
             loading,
-            UiNode::button("ready", "Ready"),
+            UiNode::button("ready", "Ready", ActionIcon::Play),
             UiNode::Toggle {
                 key: "enabled".into(),
                 label: "Enabled".into(),

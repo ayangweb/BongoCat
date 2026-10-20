@@ -62,13 +62,11 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PluginManifest, PluginManagerErro
 /// leaves whatever version was already selected in place.
 pub fn install_package(
     root: &Path,
-    expected_sha256: Option<&str>,
+    expected_sha256: &str,
     bytes: &[u8],
 ) -> Result<InstalledPackage, PluginManagerError> {
     inspect_package(bytes)?;
-    if let Some(expected) = expected_sha256
-        && sha256_of(bytes) != expected.to_ascii_lowercase()
-    {
+    if sha256_of(bytes) != expected_sha256.to_ascii_lowercase() {
         return Err(PluginManagerError::UnsafeManifest(
             "package digest does not match the catalog".into(),
         ));
@@ -82,20 +80,22 @@ pub fn install_package(
     let manifest = read_manifest(&staging.path().join(MANIFEST_FILE))?;
     let id = manifest.metadata.id;
     let version = manifest.metadata.version;
-    if let PluginIcon::LocalImage(relative) = &manifest.metadata.icon {
-        let icon = staging.path().join(relative);
-        if !fs::symlink_metadata(&icon).is_ok_and(|metadata| metadata.is_file()) {
-            return Err(PluginManagerError::UnsafeManifest(
-                "plugin icon is missing".into(),
-            ));
-        }
+    // Both are what the product runs or draws, so a package that lacks either is
+    // refused here rather than discovered as a broken card after install.
+    let nonempty_file = |path: &Path| {
+        fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+    };
+    if let PluginIcon::LocalImage(relative) = &manifest.metadata.icon
+        && !nonempty_file(&staging.path().join(relative))
+    {
+        return Err(PluginManagerError::UnsafeManifest(
+            "plugin icon is missing".into(),
+        ));
     }
-    if !fs::symlink_metadata(crate::loader::entry_path(
+    if !nonempty_file(&crate::loader::entry_path(
         staging.path(),
         &manifest.metadata.entry,
-    ))
-    .is_ok_and(|metadata| metadata.is_file())
-    {
+    )) {
         return Err(PluginManagerError::UnsafeManifest(
             "plugin executable is missing".into(),
         ));
@@ -181,7 +181,7 @@ pub(crate) fn plugin_data_root(
 
 /// The directory of the currently selected version of a plugin, if the pointer
 /// and its directory are both present.
-pub(crate) fn selected_root(root: &Path, id: &str) -> Option<PathBuf> {
+pub fn selected_root(root: &Path, id: &str) -> Option<PathBuf> {
     validate_id(id).ok()?;
     let package_root = root.join(PACKAGES_DIRECTORY).join(id);
     if !plain_directory(&root.join(PACKAGES_DIRECTORY)) || !plain_directory(&package_root) {
@@ -303,6 +303,27 @@ pub fn valid_basename(value: &str) -> bool {
     bongocat_plugin_sdk::valid_key(value) && !matches!(value, "." | "..")
 }
 
+fn valid_key(value: &str) -> bool {
+    value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+/// Whether a string is copy a card can show: present, printable and bounded.
+///
+/// The center draws a plugin's name and description verbatim, so a manifest that
+/// carries control characters or an unbounded blurb is refused before it can
+/// become a card.
+fn valid_text(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= MAX_COPY_LENGTH
+        && !value.chars().any(char::is_control)
+}
+
+/// The longest name or description one locale may publish, in bytes.
+const MAX_COPY_LENGTH: usize = 1024;
+
 fn valid_version(value: &str) -> bool {
     value.len() <= 128 && cargo_packager_updater::semver::Version::parse(value).is_ok()
 }
@@ -339,6 +360,15 @@ pub(crate) fn validate(manifest: &PluginManifest) -> Result<(), PluginManagerErr
         || cargo_packager_updater::semver::VersionReq::parse(&metadata.app_versions).is_err()
         || metadata.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION
         || !valid_basename(&metadata.entry)
+        || !valid_text(&metadata.name)
+        || !valid_text(&metadata.description)
+        || !metadata.localizations.iter().all(|(tag, copy)| {
+            valid_key(tag)
+                && valid_text(&copy.name)
+                && valid_text(&copy.description)
+                && copy.name.len() <= MAX_COPY_LENGTH
+                && copy.description.len() <= MAX_COPY_LENGTH
+        })
     {
         return Err(PluginManagerError::UnsafeManifest(
             "installed manifest is invalid".into(),
@@ -375,6 +405,12 @@ mod tests {
         }
     }
 
+    /// A catalog digest is what makes a package the one the catalog offered, so
+    /// every install names the digest of the bytes it installs.
+    fn digest(bytes: &[u8]) -> String {
+        sha256_of(bytes)
+    }
+
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
@@ -394,7 +430,6 @@ mod tests {
     fn package(id: &str, version: &str) -> Vec<u8> {
         let manifest = PluginManifest {
             metadata: metadata(id, version),
-            sha256: None,
         };
         archive(&[
             (MANIFEST_FILE, &serde_json::to_vec(&manifest).unwrap()),
@@ -406,13 +441,12 @@ mod tests {
     fn installs_a_zip_and_rejects_a_bad_digest() {
         let directory = tempfile::tempdir().unwrap();
         let bytes = package("com.bongocat.pomodoro", "1.0.0");
-        let installed =
-            install_package(directory.path(), Some(&sha256_of(&bytes)), &bytes).unwrap();
+        let installed = install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
         assert_eq!(installed.version, "1.0.0");
         assert!(installed.root.join("plugin").is_file());
         assert!(installed.root.join(MANIFEST_FILE).is_file());
         assert_eq!(
-            install_package(directory.path(), Some(&"0".repeat(64)), &bytes)
+            install_package(directory.path(), &"0".repeat(64), &bytes)
                 .unwrap_err()
                 .to_string(),
             "plugin manifest is unsafe: package digest does not match the catalog"
@@ -422,18 +456,10 @@ mod tests {
     #[test]
     fn installing_a_newer_version_switches_the_pointer_and_keeps_the_old_one() {
         let directory = tempfile::tempdir().unwrap();
-        install_package(
-            directory.path(),
-            None,
-            &package("com.bongocat.pomodoro", "1.0.0"),
-        )
-        .unwrap();
-        install_package(
-            directory.path(),
-            None,
-            &package("com.bongocat.pomodoro", "1.1.0"),
-        )
-        .unwrap();
+        let previous = package("com.bongocat.pomodoro", "1.0.0");
+        install_package(directory.path(), &digest(&previous), &previous).unwrap();
+        let next = package("com.bongocat.pomodoro", "1.1.0");
+        install_package(directory.path(), &digest(&next), &next).unwrap();
         assert_eq!(
             selected_root(directory.path(), "com.bongocat.pomodoro")
                 .unwrap()
@@ -454,12 +480,8 @@ mod tests {
     #[test]
     fn uninstall_removes_the_package_but_keeps_plugin_data() {
         let directory = tempfile::tempdir().unwrap();
-        install_package(
-            directory.path(),
-            None,
-            &package("com.bongocat.pomodoro", "1.0.0"),
-        )
-        .unwrap();
+        let bytes = package("com.bongocat.pomodoro", "1.0.0");
+        install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
         let data = plugin_data_root(directory.path(), "com.bongocat.pomodoro", true).unwrap();
         fs::write(data.join("state.json"), b"{}").unwrap();
 
@@ -477,18 +499,17 @@ mod tests {
     fn a_partial_or_unsafe_archive_leaves_no_selected_version() {
         let directory = tempfile::tempdir().unwrap();
         let no_manifest = archive(&[("plugin", b"no manifest")]);
-        assert!(install_package(directory.path(), None, &no_manifest).is_err());
+        assert!(install_package(directory.path(), &digest(&no_manifest), &no_manifest).is_err());
         assert!(selected_root(directory.path(), "com.bongocat.pomodoro").is_none());
 
         let manifest = PluginManifest {
             metadata: metadata("com.bongocat.pomodoro", "1.0.0"),
-            sha256: None,
         };
         let escaping = archive(&[
             (MANIFEST_FILE, &serde_json::to_vec(&manifest).unwrap()),
             ("../escape", b"x"),
         ]);
-        assert!(install_package(directory.path(), None, &escaping).is_err());
+        assert!(install_package(directory.path(), &digest(&escaping), &escaping).is_err());
     }
 
     #[test]
@@ -508,7 +529,6 @@ mod tests {
         local.icon = PluginIcon::LocalImage("resources/icon.png".into());
         let manifest = serde_json::to_vec(&PluginManifest {
             metadata: local.clone(),
-            sha256: None,
         })
         .unwrap();
         let bytes = archive(&[
@@ -516,18 +536,12 @@ mod tests {
             ("plugin", b"binary"),
             ("resources/icon.png", b"png"),
         ]);
-        install_package(directory.path(), None, &bytes).unwrap();
+        install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
 
         for unsafe_path in ["../icon.png", "/icon.png", "resources\\icon.png"] {
             let mut invalid = local.clone();
             invalid.icon = PluginIcon::LocalImage(unsafe_path.into());
-            assert!(
-                validate(&PluginManifest {
-                    metadata: invalid,
-                    sha256: None,
-                })
-                .is_err()
-            );
+            assert!(validate(&PluginManifest { metadata: invalid }).is_err());
         }
     }
 
@@ -535,7 +549,6 @@ mod tests {
     fn a_manifest_with_a_removed_icon_fallback_is_rejected() {
         let mut manifest = serde_json::to_value(PluginManifest {
             metadata: metadata("com.bongocat.pomodoro", "1.0.0"),
-            sha256: None,
         })
         .unwrap();
         manifest["metadata"]["icon_fallback"] =
@@ -552,9 +565,8 @@ mod tests {
     fn build_metadata_is_preserved_in_the_selected_version() {
         let directory = tempfile::tempdir().unwrap();
         let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
-        manager
-            .install(&package("com.bongocat.pomodoro", "1.0.0+build.1"))
-            .unwrap();
+        let bytes = package("com.bongocat.pomodoro", "1.0.0+build.1");
+        manager.install(&bytes, &digest(&bytes)).unwrap();
         assert_eq!(
             manager
                 .installed_version("com.bongocat.pomodoro")
@@ -580,10 +592,10 @@ mod tests {
     fn invalid_replacements_leave_the_previous_package_selected() {
         let directory = tempfile::tempdir().unwrap();
         let id = "com.bongocat.pomodoro";
-        install_package(directory.path(), None, &package(id, "1.0.0")).unwrap();
+        let first = package(id, "1.0.0");
+        install_package(directory.path(), &digest(&first), &first).unwrap();
         let manifest = serde_json::to_vec(&PluginManifest {
             metadata: metadata(id, "1.1.0"),
-            sha256: None,
         })
         .unwrap();
         for bytes in [
@@ -605,7 +617,7 @@ mod tests {
                 ("assets//file", b"two"),
             ]),
         ] {
-            assert!(install_package(directory.path(), None, &bytes).is_err());
+            assert!(install_package(directory.path(), &digest(&bytes), &bytes).is_err());
             assert!(
                 selected_root(directory.path(), id)
                     .unwrap()
@@ -617,13 +629,9 @@ mod tests {
         writer.start_file(MANIFEST_FILE, options).unwrap();
         writer.write_all(&manifest).unwrap();
         writer.add_symlink("plugin", "outside", options).unwrap();
+        let symbolic_link = writer.finish().unwrap().into_inner();
         assert!(
-            install_package(
-                directory.path(),
-                None,
-                &writer.finish().unwrap().into_inner()
-            )
-            .is_err()
+            install_package(directory.path(), &digest(&symbolic_link), &symbolic_link).is_err()
         );
         assert!(
             selected_root(directory.path(), id)
@@ -637,19 +645,19 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let good = "com.bongocat.healthy";
         let bad = "com.bongocat.broken";
-        install_package(directory.path(), None, &package(good, "1.0.0")).unwrap();
-        let broken = install_package(directory.path(), None, &package(bad, "1.0.0")).unwrap();
+        let healthy = package(good, "1.0.0");
+        install_package(directory.path(), &digest(&healthy), &healthy).unwrap();
+        let broken = package(bad, "1.0.0");
+        let broken = install_package(directory.path(), &digest(&broken), &broken).unwrap();
         let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
         for content in [
             b"not JSON".to_vec(),
             serde_json::to_vec(&PluginManifest {
                 metadata: metadata(good, "1.0.0"),
-                sha256: None,
             })
             .unwrap(),
             serde_json::to_vec(&PluginManifest {
                 metadata: metadata(bad, "2.0.0"),
-                sha256: None,
             })
             .unwrap(),
         ] {
@@ -666,9 +674,8 @@ mod tests {
         let mut manager = PluginManager::new(directory.path().to_path_buf()).unwrap();
         assert_eq!(manager.discover_plugins().unwrap(), 0);
 
-        manager
-            .install(&package("com.bongocat.pomodoro", "1.0.0"))
-            .unwrap();
+        let bytes = package("com.bongocat.pomodoro", "1.0.0");
+        manager.install(&bytes, &digest(&bytes)).unwrap();
         assert_eq!(manager.discover_plugins().unwrap(), 1);
         assert_eq!(manager.list_plugins()[0].1, PluginState::Discovered);
         assert_eq!(

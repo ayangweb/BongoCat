@@ -29,8 +29,10 @@ a way to publish a list of choices rather than a single number.
 The plugin is named **Key Sounds** in English and **按键音效** in Simplified
 Chinese. The name matches the product's key-sound vocabulary without suggesting
 UI button feedback. Because "key" alone can suggest keyboard-only behavior, the
-description explicitly identifies keyboard keys, mouse buttons and their
-press/release edges, without implying gamepad, pointer movement or scroll sounds.
+description names both devices ("Keyboard and mouse sound effects" / "键盘和鼠标音效")
+without implying gamepad, pointer movement or scroll sounds. A description states
+the plugin's core function and nothing else: which devices it covers, not how it
+configures them, because the card's settings surface already shows that.
 
 The directory is `plugins/key-sounds`, the Cargo package and executable are
 `bongocat-key-sounds`, the plugin ID is `com.bongocat.key-sounds`, and the Rust owner
@@ -73,12 +75,11 @@ than falling back a second time.
 
 The counters still do not expose letters, symbols, text, pointer position or
 mouse-button identity, so the privacy argument is unchanged.
-`Capability::KeyboardActivityV1` and `HostMessage::KeyboardActivity` remain in
-the protocol: a plugin built against the older message keeps receiving it and
-keeps working. The registry picks the message by capability, never by protocol
-version, and a plugin that declared the newer capability is not sent the older
-message as well — it did not ask for two signals, and the duplicate would double
-every sound it plays.
+`input_activity_v1` is the only activity contract: the superseded
+`keyboard_activity_v1` capability and its single keyboard total were removed from
+the SDK once this message replaced them, and the registry picks the message by
+capability, never by protocol version — a plugin that declared no activity
+capability receives none.
 
 ### The runtime counts four edges, per device
 
@@ -95,10 +96,10 @@ without copying the model or the pressed set.
 ### A plugin may publish a list of choices
 
 `UiNode::Select { key, label, value, options }` carries its own
-`Vec<SelectOption { value, label, group }>`. The optional `group` is plugin-owned
-display metadata: options with the same non-empty group are shown under one
-stock `gpui-kit` section header, while an omitted group keeps the legacy flat
-list. The list travels with the node because the
+`Vec<SelectOption { value, label, group }>`. The `group` is plugin-owned display
+metadata: options that name the same group are shown under one stock `gpui-kit`
+section header, and an option without one stands as its own section. The list
+travels with the node because the
 options are the plugin's own vocabulary — which key sounds it carries, which
 of them a user may pick — and the host has no way to invent them. Validation
 requires `value` to be one of `options`, every value to be a valid key, and the
@@ -107,9 +108,8 @@ never publish a selection the list cannot show.
 
 The host does not infer categories from plugin ids or labels. It reuses the
 component's grouped delegate for filtering, row indexing, selection restoration
-and muted section headers. A list that mixes grouped and ungrouped options falls
-back to the flat delegate, which keeps older or partially upgraded plugins
-readable without inventing a host-local category. The key-sounds plugin groups
+and muted section headers, so a partial set of groups needs no separate flat
+delegate. The key-sounds plugin groups
 its embedded sets by the source soundpack brand; brand names are provenance
 metadata and therefore do not need translation. In particular, Thock's
 `Unknown` brand stays `Unknown` rather than being renamed. Within a brand the
@@ -223,18 +223,33 @@ oracle. `tools/tests/test_key_sounds_assets.py` checks that the catalog matches
 the redistributable subset of that registry snapshot, that the index, committed
 files and generated Rust table agree, and that no proprietary set is carried.
 
-## Compatibility
+## Format and versioning
 
-Every protocol addition is optional and defaults to the previous behavior: a
-plugin that declared only `keyboard_activity_v1` keeps receiving the older
-message and a view with no `Select` node is unaffected. The key-sounds
-configuration vocabulary still accepts the same keys, so the exchanged session
-payload is unchanged. The ID rename itself is deliberately not migrated: no ID
-alias or session re-keying is present while the plugin is unreleased. No config,
-state or catalog format changes and `schema_version` stays 1. The plugin's
-package version remains 1.0.0 throughout this unreleased PR; ADR-0091 requires
-a new version only for an update after the first release. Both plugins accept
-application versions `>=2.3.1` without an upper bound.
+Nothing in this ADR carries a compatibility path, because the plugin system is
+still unreleased and every package, manifest and session is rebuilt from the
+current sources:
+
+- The protocol describes exactly one shape per message. Fields a plugin or the
+  host could previously omit — a button's `icon`, a select's `preview`, its
+  options' `group`, `PluginOutput::errors`, a manifest's `localizations`, a
+  catalog's `sha256`/`homepage` — are part of the contract, so a frame that omits
+  one is refused instead of completed with a host default.
+- A plugin's English name and description live in the same `localizations` map as
+  every other language it serves. The host resolves a card from that map and has
+  no second copy to fall back to; an incomplete entry is an invalid manifest.
+- The session envelope is a complete v1 document whose schema is mandatory, and
+  `schema_version` stays 1.
+- The key-sounds configuration vocabulary is closed to the keys the plugin
+  publishes (`volume`, `mouse_enabled`, `keyboard_pack`, `mouse_pack`). No retired
+  key is accepted or migrated, and the ID rename provides no alias or session
+  re-keying.
+- A package is only ever installed against the digest of the signed catalog entry
+  that offers it; there is no install path for an archive the catalog does not
+  vouch for.
+
+The plugin's package version remains 1.0.0 throughout this unreleased PR;
+ADR-0091 requires a new version only for an update after the first release. Both
+plugins accept application versions `>=2.3.1` without an upper bound.
 
 ## Validation
 

@@ -247,9 +247,13 @@ const SIMPLIFIED_CHINESE: Copy = Copy {
     output_unavailable: "没有可用的音频输出设备。",
 };
 
-/// The copy for a catalog tag, falling back to English.
+/// The copy for the catalog tag the host sends.
+///
+/// The host delivers the tag this plugin's manifest declares a translation for,
+/// so the plugin compares against that one tag instead of resolving tags it does
+/// not serve.
 fn copy_for(locale: &str) -> &'static Copy {
-    if bongocat_plugin_sdk::plugin_locale(locale) == "zh-CN" {
+    if locale == "zh-CN" {
         &SIMPLIFIED_CHINESE
     } else {
         &ENGLISH
@@ -313,8 +317,7 @@ impl DecodedPack {
     /// that exists but has no recording for this direction is silent; it does
     /// not fall back a second time.
     ///
-    /// Mouse edges and the legacy keyboard message have no key group and keep
-    /// the device-level lists.
+    /// Mouse edges have no key group and keep the device-level lists.
     fn keyboard_sounds(&self, action: Action, group: KeyGroup) -> &[SamplesBuffer] {
         let Some(group) = self.key_groups.get(group.name()) else {
             return self.sounds(action);
@@ -643,8 +646,7 @@ impl KeySounds {
         // carries: an id this build does not know is accepted here and resolved
         // to the device's default set when playback asks for it. Refusing it
         // would turn a set dropped by an update into a plugin that will not
-        // start. Retired per-action keys are still accepted and ignored so an
-        // existing session remains readable.
+        // start.
         if let Some(key) = ["keyboard_pack", "mouse_pack"].into_iter().find(|key| {
             config
                 .get(*key)
@@ -882,21 +884,11 @@ impl KeySounds {
 
 /// Every configuration key this plugin accepts.
 ///
-/// The list is closed so a typo is refused rather than stored. Retired keys from
-/// this plugin's unreleased development builds remain accepted and ignored, so
-/// an existing session still starts.
+/// The list is closed so a typo is refused rather than stored.
 fn is_known_key(key: &str) -> bool {
     matches!(
         key,
-        "volume"
-            | "cooldown_ms"
-            | "mouse_enabled"
-            | "keyboard_pack"
-            | "mouse_pack"
-            | "keyboard_down_pack"
-            | "keyboard_up_pack"
-            | "mouse_down_pack"
-            | "mouse_up_pack"
+        "volume" | "mouse_enabled" | "keyboard_pack" | "mouse_pack"
     )
 }
 
@@ -916,26 +908,6 @@ impl Plugin for KeySounds {
                 elapsed_ms,
                 activity,
             } => self.play_edges(elapsed_ms, activity),
-            // A host that predates the four counters reports one keyboard total.
-            // It is read as "the keyboard was pressed", which is everything it
-            // says: the release of a keystroke is not something it can report.
-            HostMessage::KeyboardActivity { elapsed_ms } => {
-                // This compatibility message is an edge notification rather
-                // than a cumulative snapshot, so it must remain playable even
-                // before the newer activity contract has established a baseline.
-                if self.activity.is_none() {
-                    self.activity = Some(InputActivity::default());
-                }
-                let activity = InputActivity {
-                    keyboard_down: self
-                        .activity
-                        .unwrap_or_default()
-                        .keyboard_down
-                        .saturating_add(1),
-                    ..self.activity.unwrap_or_default()
-                };
-                self.play_edges(elapsed_ms, activity);
-            }
             HostMessage::Tick { .. } => self.playback.idle(),
             HostMessage::Preview { key, value } => self.preview(&key, &value)?,
             HostMessage::Action { .. } => return Err("Unknown action".into()),
@@ -1336,6 +1308,12 @@ mod tests {
             ("volume".to_owned(), ConfigValue::Integer(101)),
             ("mouse_enabled".to_owned(), ConfigValue::Text("yes".into())),
             ("secret".to_owned(), ConfigValue::Boolean(true)),
+            // A key this plugin does not declare is a typo, not a preference.
+            ("cooldown_ms".to_owned(), ConfigValue::Integer(0)),
+            (
+                "keyboard_down_pack".to_owned(),
+                ConfigValue::Text("alpaca".into()),
+            ),
         ] {
             assert!(
                 plugin
@@ -1355,36 +1333,14 @@ mod tests {
         assert_eq!(plugin.volume, 80);
         assert!(plugin.mouse_enabled);
 
-        // Keys written by earlier unreleased builds are accepted and ignored, so
-        // upgrading does not reject an existing session.
         plugin
-            .configure(&Configuration::from([
-                ("cooldown_ms".into(), ConfigValue::Integer(0)),
-                (
-                    "keyboard_pack".into(),
-                    ConfigValue::Text("skcm-blue".into()),
-                ),
-                (
-                    "keyboard_down_pack".into(),
-                    ConfigValue::Text("alpaca".into()),
-                ),
-                ("keyboard_up_pack".into(), ConfigValue::Text("auto".into())),
-                (
-                    "mouse_down_pack".into(),
-                    ConfigValue::Text("orochi-v2".into()),
-                ),
-                ("mouse_up_pack".into(), ConfigValue::Text("auto".into())),
-            ]))
+            .configure(&Configuration::from([(
+                "keyboard_pack".into(),
+                ConfigValue::Text("skcm-blue".into()),
+            )]))
             .unwrap();
         assert_eq!(plugin.selection.keyboard.id, "skcm-blue");
         assert_eq!(plugin.selection.pack(Action::KeyboardUp).id, "skcm-blue");
-        let published = plugin.output().config;
-        assert!(!published.contains_key("cooldown_ms"));
-        assert!(
-            !published
-                .keys()
-                .any(|key| key.ends_with("_down_pack") || key.ends_with("_up_pack"))
-        );
     }
 
     #[test]
@@ -1799,13 +1755,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(integer_label(&localized, "volume"), "音量");
-        assert!(
-            !localized
-                .settings
-                .nodes
-                .iter()
-                .any(|node| matches!(node, UiNode::Integer { key, .. } if key == "cooldown_ms"))
-        );
         assert_eq!(select_label(&localized, "mouse_pack"), "鼠标音效");
         assert_eq!(
             select_option_group(&localized, "mouse_pack", "pixabay-unknown-unknown"),
@@ -1820,24 +1769,11 @@ mod tests {
             PackCategory::Mouse.default_pack().brand
         );
         assert_eq!(plugin.volume, DEFAULT_VOLUME);
-        let chinese = localized;
 
-        for locale in ["zh_CN", "ZH-cn"] {
-            let localized = plugin
-                .handle(HostMessage::Locale {
-                    locale: locale.into(),
-                })
-                .unwrap();
-            assert_eq!(localized.settings, chinese.settings, "{locale}");
-            assert_eq!(localized.config, english.config, "{locale}");
-        }
-
-        // A language this plugin does not carry reads English rather than the
-        // raw tag the host happened to send.
-        for locale in [
-            "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh", "ar-SA", "vi-VN",
-            "pt-BR", "ko-KR", "fr-FR", "de-DE", "",
-        ] {
+        // A language this plugin does not carry reads English: the host only ever
+        // sends the two tags the manifest declares, so nothing here has to resolve
+        // a tag the plugin does not serve.
+        for locale in ["en-US", "zh-TW", "ar-SA", "fr-FR", ""] {
             let fallback = plugin
                 .handle(HostMessage::Locale {
                     locale: locale.into(),
@@ -1981,7 +1917,8 @@ mod tests {
         assert!(
             plugin
                 .preview_choice("keyboard_down_pack", "skcm-blue")
-                .is_err()
+                .is_err(),
+            "only the keys this plugin publishes are previewable"
         );
         assert!(plugin.preview_choice("volume", "skcm-blue").is_err());
         assert!(plugin.preview_choice("mouse_pack", "skcm-blue").is_err());
@@ -2130,25 +2067,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// A plugin that never heard of the four counters still gets its sound: the
-    /// older message is read as "the keyboard was pressed".
-    #[test]
-    fn the_older_keyboard_activity_message_still_plays_a_press() {
-        let mut plugin = KeySounds::default();
-        plugin
-            .handle(HostMessage::KeyboardActivity { elapsed_ms: 0 })
-            .unwrap();
-        assert_eq!(
-            plugin
-                .playback
-                .last_played
-                .keys()
-                .copied()
-                .collect::<Vec<_>>(),
-            vec![Action::KeyboardDown]
-        );
     }
 
     /// A reset returns the process to a fresh plugin, and the sound it plays

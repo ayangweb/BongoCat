@@ -2,7 +2,7 @@
   "metadata": {
     "id": "com.bongocat.input-source",
     "name": "Input Source",
-    "description": "Show the current input source icon and name, always or briefly after switching",
+    "description": "Shows the current input source",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
@@ -12,9 +12,8 @@
     "localizations": {
       "zh-CN": {
         "name": "输入法状态",
-        "description": "显示当前输入法的图标和名称，支持始终显示或切换后短暂显示"
+        "description": "显示当前输入法"
       }
     }
-  },
-  "sha256": null
+  }
 }

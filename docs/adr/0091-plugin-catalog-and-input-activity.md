@@ -17,12 +17,13 @@ Catalog selection is per plugin ID, not the single newest release across all IDs
 An upgrade preserves plugin config/state, replaces registry metadata and restarts
 an enabled process. A refused package must retain the previous selected version.
 
-> Amended by ADR-0093: the single keyboard-down counter below is superseded by
+> Amended by ADR-0093: the single keyboard-down counter below is replaced by
 > four per-device counters plus a bounded physical special-key subset
-> (`input_activity_v1`), the temporary MP3 evaluation asset is removed, and the
-> plugin now embeds its own sound sets. Letters, symbols, text, pointer position
-> and mouse-button identity still never cross the boundary; the privacy
-> argument, the coalescing rule and the independent-process boundary are
+> (`input_activity_v1`); the superseded `keyboard_activity_v1` capability and
+> message were removed from the SDK, the temporary MP3 evaluation asset is
+> removed, and the plugin now embeds its own sound sets. Letters, symbols, text,
+> pointer position and mouse-button identity still never cross the boundary; the
+> privacy argument, the coalescing rule and the independent-process boundary are
 > unchanged.
 
 Issue #90 is implemented by an independent key-sounds process. The generic
@@ -88,8 +89,10 @@ files before building, then inserts the latest bilingual entry into the existing
 product GitHub Release body after the immutable plugin ZIPs and catalog publish;
 rerunning the workflow replaces only its marked block, so notes are not duplicated.
 Config/state and enabled status use a bounded, atomic v1 session envelope outside
-the version directory. Missing optional session fields default safely; disabled
-and uninstalled plugins do not restart automatically. Graceful shutdown preserves
+the version directory. The envelope carries a mandatory `schema_version: 1`; a
+session that omits it, claims another one or carries an unknown field is refused
+rather than completed, and a plugin with no session starts from defaults.
+Disabled and uninstalled plugins do not restart automatically. Graceful shutdown preserves
 the enabled flag while stopping and joining the process.
 
 Replacement stops preserve that flag even if extraction or the new process's

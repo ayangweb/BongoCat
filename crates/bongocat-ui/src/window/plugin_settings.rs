@@ -107,26 +107,22 @@ const PLUGIN_SETTINGS_PANEL_WIDTH: Pixels = px(440.0);
 pub(crate) struct PluginSettingsSelectChoice {
     value: SharedString,
     label: SharedString,
-    /// The optional category row this choice belongs under.
-    group: Option<SharedString>,
+    /// The category row this choice belongs under.
+    ///
+    /// A plugin publishes it with the option, so the panel never has to invent
+    /// a category for a plugin that does not name one.
+    group: SharedString,
     preview: Option<PreviewCallback>,
 }
 
 impl PluginSettingsSelectChoice {
-    fn new(value: &str, label: &str) -> Self {
+    fn new(value: &str, label: &str, group: &str) -> Self {
         Self {
             value: SharedString::from(value.to_owned()),
             label: SharedString::from(label.to_owned()),
-            group: None,
+            group: SharedString::from(group.to_owned()),
             preview: None,
         }
-    }
-
-    fn with_group(mut self, group: Option<&str>) -> Self {
-        self.group = group
-            .filter(|group| !group.is_empty())
-            .map(SharedString::from);
-        self
     }
 }
 
@@ -165,20 +161,15 @@ impl SearchableListItem for PluginSettingsSelectChoice {
 }
 
 /// Delegate filtering, indexing and header styling to the stock component.
-/// Older plugins retain a flat list without a synthetic empty heading.
 #[derive(Clone)]
-pub(crate) enum PluginSettingsSelectGroups {
-    Flat(SearchableVec<PluginSettingsSelectChoice>),
-    Grouped(SearchableVec<SearchableGroup<PluginSettingsSelectChoice>>),
+pub(crate) struct PluginSettingsSelectGroups {
+    groups: SearchableVec<SearchableGroup<PluginSettingsSelectChoice>>,
 }
 
 impl PluginSettingsSelectGroups {
     fn new(choices: Vec<PluginSettingsSelectChoice>) -> Self {
-        // Keep partial metadata readable without inventing a host-owned group.
-        if choices.iter().any(|choice| choice.group.is_none()) {
-            Self::Flat(SearchableVec::new(choices))
-        } else {
-            Self::Grouped(SearchableVec::new(plugin_select_groups(choices)))
+        Self {
+            groups: SearchableVec::new(plugin_select_groups(choices)),
         }
     }
 }
@@ -187,24 +178,15 @@ impl SearchableListDelegate for PluginSettingsSelectGroups {
     type Item = PluginSettingsSelectChoice;
 
     fn sections_count(&self, cx: &App) -> usize {
-        match self {
-            Self::Flat(items) => items.sections_count(cx),
-            Self::Grouped(groups) => groups.sections_count(cx),
-        }
+        self.groups.sections_count(cx)
     }
 
     fn items_count(&self, section: usize) -> usize {
-        match self {
-            Self::Flat(items) => items.items_count(section),
-            Self::Grouped(groups) => groups.items_count(section),
-        }
+        self.groups.items_count(section)
     }
 
     fn item(&self, ix: IndexPath) -> Option<&Self::Item> {
-        match self {
-            Self::Flat(items) => items.item(ix),
-            Self::Grouped(groups) => groups.item(ix),
-        }
+        self.groups.item(ix)
     }
 
     fn position<V>(&self, value: &V) -> Option<IndexPath>
@@ -212,42 +194,34 @@ impl SearchableListDelegate for PluginSettingsSelectGroups {
         Self::Item: SearchableListItem<Value = V>,
         V: PartialEq,
     {
-        match self {
-            Self::Flat(items) => items.position(value),
-            Self::Grouped(groups) => groups.position(value),
-        }
+        self.groups.position(value)
     }
 
     fn perform_search(&mut self, query: &str, window: &mut Window, cx: &mut App) -> Task<()> {
-        match self {
-            Self::Flat(items) => items.perform_search(query, window, cx),
-            Self::Grouped(groups) => groups.perform_search(query, window, cx),
-        }
+        self.groups.perform_search(query, window, cx)
     }
 
     #[allow(deprecated)]
     fn section(&self, section: usize) -> Option<AnyElement> {
-        match self {
-            Self::Flat(_) => None,
-            Self::Grouped(groups) => groups.section(section),
-        }
+        self.groups.section(section)
     }
 }
 
-/// Build the component's grouped data from the plugin's flat option list.
+/// Build the component's grouped data from the plugin's option list.
 ///
-/// A plugin publishes its preferred order; choices that name the same category
-/// share a section. Lists with no groups (or only a partial set of groups) use
-/// the stock flat list so older and malformed plugin output remains readable.
+/// The plugin publishes its preferred order and names each option's category;
+/// choices that name the same category share one section.
 fn plugin_select_groups(
     choices: Vec<PluginSettingsSelectChoice>,
 ) -> Vec<SearchableGroup<PluginSettingsSelectChoice>> {
     let mut groups: Vec<SearchableGroup<PluginSettingsSelectChoice>> = Vec::new();
     for choice in choices {
-        let title = choice.group.clone().unwrap_or_default();
-        match groups.iter_mut().find(|group| group.title == title) {
+        match groups.iter_mut().find(|group| group.title == choice.group) {
             Some(group) => group.items.push(choice),
-            None => groups.push(SearchableGroup::new(title).item(choice)),
+            None => {
+                let title = choice.group.clone();
+                groups.push(SearchableGroup::new(title).item(choice));
+            }
         }
     }
     groups
@@ -999,8 +973,11 @@ fn sync_plugin_selects(
         let mut choices: Vec<PluginSettingsSelectChoice> = options
             .iter()
             .map(|option| {
-                PluginSettingsSelectChoice::new(&option.value, &option.label)
-                    .with_group(option.group.as_deref())
+                // An option without a category is its own section, so the list
+                // still reads as one plugin-authored order rather than a
+                // heading the host invented.
+                let group = option.group.as_deref().unwrap_or(&option.label);
+                PluginSettingsSelectChoice::new(&option.value, &option.label, group)
             })
             .collect();
         let selected = SharedString::from(value.clone());
@@ -1411,8 +1388,7 @@ mod tests {
             let choices = ["first", "second"]
                 .into_iter()
                 .map(|value| {
-                    let mut choice = PluginSettingsSelectChoice::new(value, value);
-                    choice.group = Some(choice.label.clone());
+                    let mut choice = PluginSettingsSelectChoice::new(value, value, value);
                     choice.preview = Some(callback.clone());
                     choice
                 })
@@ -1482,10 +1458,16 @@ mod tests {
             state.update(cx, |state, cx| {
                 state.set_items(
                     PluginSettingsSelectGroups::new(vec![
-                        PluginSettingsSelectChoice::new("second", "Second localized")
-                            .with_group(Some("New category")),
-                        PluginSettingsSelectChoice::new("first", "First localized")
-                            .with_group(Some("Another category")),
+                        PluginSettingsSelectChoice::new(
+                            "second",
+                            "Second localized",
+                            "New category",
+                        ),
+                        PluginSettingsSelectChoice::new(
+                            "first",
+                            "First localized",
+                            "Another category",
+                        ),
                     ]),
                     window,
                     cx,
@@ -1499,20 +1481,11 @@ mod tests {
 
     #[gpui_kit::test]
     #[allow(deprecated)]
-    fn select_groups_keep_the_plugins_categories_and_flat_legacy_lists(cx: &mut TestAppContext) {
-        let grouped = vec![
-            PluginSettingsSelectChoice::new("auto", "Follow").with_group(Some("Follow")),
-            PluginSettingsSelectChoice::new("blue", "SKCM Blue").with_group(Some("Keyboard")),
-            PluginSettingsSelectChoice::new("navy", "Box Navy").with_group(Some("Keyboard")),
-        ];
-        let mut grouped = PluginSettingsSelectGroups::new(grouped);
-        let legacy = PluginSettingsSelectGroups::new(vec![
-            PluginSettingsSelectChoice::new("auto", "Follow"),
-            PluginSettingsSelectChoice::new("blue", "SKCM Blue"),
-        ]);
-        let mixed = PluginSettingsSelectGroups::new(vec![
-            PluginSettingsSelectChoice::new("auto", "Follow"),
-            PluginSettingsSelectChoice::new("blue", "SKCM Blue").with_group(Some("Keyboard")),
+    fn select_groups_keep_the_plugins_categories(cx: &mut TestAppContext) {
+        let mut grouped = PluginSettingsSelectGroups::new(vec![
+            PluginSettingsSelectChoice::new("auto", "Follow", "Follow"),
+            PluginSettingsSelectChoice::new("blue", "SKCM Blue", "Keyboard"),
+            PluginSettingsSelectChoice::new("navy", "Box Navy", "Keyboard"),
         ]);
 
         let visual = cx.add_empty_window();
@@ -1524,11 +1497,6 @@ mod tests {
                 SearchableListDelegate::position(&grouped, &SharedString::from("navy")),
                 Some(IndexPath::default().section(1).row(1))
             );
-            // A plugin that has not adopted groups keeps its flat dropdown.
-            assert_eq!(SearchableListDelegate::sections_count(&legacy, cx), 1);
-            assert!(SearchableListDelegate::section(&legacy, 0).is_none());
-            assert_eq!(SearchableListDelegate::sections_count(&mixed, cx), 1);
-            assert!(SearchableListDelegate::section(&mixed, 0).is_none());
             _ = grouped.perform_search("navy", window, cx);
             assert_eq!(grouped.sections_count(cx), 1);
             assert_eq!(grouped.items_count(0), 1);

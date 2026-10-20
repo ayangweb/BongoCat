@@ -530,7 +530,7 @@ fn rounded_coverage(px: f32, py: f32, rect: HudRect, radius: f32) -> f32 {
 mod tests {
     use super::*;
     use crate::HudFont;
-    use bongocat_plugin_sdk::{Anchor, UiNode};
+    use bongocat_plugin_sdk::{ActionIcon, Anchor, UiNode};
 
     fn renderer() -> HudRenderer {
         HudRenderer::new(crate::load_platform_font().expect("platform font"))
@@ -543,7 +543,7 @@ mod tests {
                 UiNode::Text {
                     text: "05:00".into(),
                 },
-                UiNode::button("toggle", "Start"),
+                UiNode::button("toggle", "Start", ActionIcon::Play),
             ],
         }
     }

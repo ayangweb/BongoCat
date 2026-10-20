@@ -253,6 +253,11 @@ pub(crate) struct PluginCardView {
     pub(crate) name: String,
     pub(crate) description: String,
     /// The plugin's own name and description per locale, and the fallback above.
+    ///
+    /// The card carries the plugin's own map rather than a resolved pair because
+    /// the language on screen is a property of the window: a user switching
+    /// language repaints from the same cards instead of asking every plugin to
+    /// republish metadata.
     pub(crate) localizations: BTreeMap<String, PluginCopy>,
     pub(crate) icon_url: Option<String>,
     pub(crate) enabled: bool,
@@ -926,7 +931,8 @@ mod tests {
     use crate::window::*;
     use bongocat_plugin_sdk::{PluginCopy, UiNode};
     use bongocat_plugin_service::{
-        PluginCommand, PluginService, PluginServiceClient, PluginServiceEndpoint, plugin_directory,
+        PluginCommand, PluginService, PluginServiceClient, PluginServiceEndpoint, PluginSource,
+        plugin_directory,
     };
     use gpui_kit::{TestAppContext, VisualTestContext, http_client, test::TestWindowExt as _};
     use std::{future::Future, io::Write as _, pin::Pin, sync::Arc};
@@ -976,8 +982,8 @@ mod tests {
 
     const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
-    /// A plugin store holding the checked-in pomodoro package, installed the same
-    /// way a download is.
+    /// A plugin store holding the checked-in pomodoro package, installed from a
+    /// Development catalog the same way a downloaded package is.
     fn store_with_pomodoro() -> Option<(PluginService, tempfile::TempDir)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -1004,9 +1010,56 @@ mod tests {
         archive.write_all(&std::fs::read(binary).ok()?).ok()?;
         let bytes = archive.finish().ok()?.into_inner();
 
+        // Installing is a catalog operation, so the package is published as the
+        // Development catalog's single entry and installed from it.
+        let catalog = tempfile::tempdir().ok()?;
+        let manifest = bongocat_plugin_manager::install::inspect_package(&bytes).ok()?;
+        std::fs::write(
+            catalog.path().join(format!(
+                "{}-{}.zip",
+                manifest.metadata.id, manifest.metadata.version
+            )),
+            &bytes,
+        )
+        .ok()?;
+        let icon = catalog.path().join(format!("{}.png", manifest.metadata.id));
+        std::fs::copy(root.join("resources/icon.png"), &icon).ok()?;
+        std::fs::write(
+            catalog.path().join("catalog.json"),
+            serde_json::to_vec(&bongocat_plugin_manager::Catalog {
+                plugins: vec![bongocat_plugin_manager::CatalogEntry {
+                    id: manifest.metadata.id,
+                    name: manifest.metadata.name,
+                    description: manifest.metadata.description,
+                    localizations: manifest.metadata.localizations,
+                    version: manifest.metadata.version,
+                    app_versions: manifest.metadata.app_versions,
+                    protocol_version: manifest.metadata.protocol_version,
+                    icon: manifest.metadata.icon,
+                    icon_url: icon.display().to_string(),
+                    downloads: Default::default(),
+                    sha256: Some(bongocat_plugin_manager::sha256_of(&bytes)),
+                    homepage: None,
+                }],
+            })
+            .ok()?,
+        )
+        .ok()?;
+
         let store = tempfile::tempdir().ok()?;
-        let (service, _handles) = PluginService::start(store.path(), 4).ok()?;
-        service.client().install_blocking(bytes).ok()?;
+        // The package is installed against the digest its catalog entry
+        // advertises, which is the only way a package is installed at all.
+        let mut manager =
+            bongocat_plugin_manager::PluginManager::new(plugin_directory(store.path())).ok()?;
+        manager
+            .install(&bytes, &bongocat_plugin_manager::sha256_of(&bytes))
+            .ok()?;
+        let source = PluginSource::Development {
+            catalog: catalog.path().join("catalog.json"),
+            packages: catalog.path().to_owned(),
+        };
+        let (service, _handles) =
+            PluginService::start_with_source(store.path(), 4, source, None).ok()?;
         Some((service, store))
     }
 
@@ -1017,7 +1070,15 @@ mod tests {
         };
         let host = PluginHost::new(service.client());
         assert!(host.snapshot().loading);
-        host.refresh();
+        // Discovery is the service's own background job; reading before it
+        // finishes would report the center as still loading.
+        for _ in 0..200 {
+            host.refresh();
+            if !host.snapshot().loading {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         let state = host.snapshot();
         assert!(!state.loading);
         assert!(host.take_failure().is_none());
@@ -1386,17 +1447,17 @@ mod tests {
         service.shutdown().unwrap();
     }
 
-    /// The center hands the plugin's own panels to the plugin's current locale,
-    /// which is what makes the plugin's own labels follow a language change.
+    /// A started plugin is told the tag the host is showing when its process
+    /// starts, which is what makes its own labels carry the language on screen.
     #[test]
-    fn telling_the_service_about_a_locale_relabels_the_running_plugin() {
+    fn a_plugin_started_while_the_host_shows_chinese_publishes_chinese_labels() {
         let Some((service, _store)) = store_with_pomodoro() else {
             return;
         };
         let host = PluginHost::new(service.client());
         host.refresh();
-        host.set_enabled(PLUGIN_ID, true);
         service.client().set_locale_blocking("zh-CN").unwrap();
+        host.set_enabled(PLUGIN_ID, true);
         host.refresh();
         let state = host.snapshot();
         let labels = state.cards[0]
@@ -1411,12 +1472,15 @@ mod tests {
             labels.contains(&"开始") && labels.contains(&"重新计时"),
             "the plugin's own control reads Simplified Chinese: {labels:?}"
         );
+        // Only Simplified Chinese and English are served; the plugin follows the
+        // application's resolved language like the rest of the product.
         for locale in ["zh-TW", "fr-FR"] {
             service.client().set_locale_blocking(locale).unwrap();
             host.refresh();
             let state = host.snapshot();
             let card = &state.cards[0];
-            assert_eq!(card.copy(locale).0, "Pomodoro");
+            assert_eq!(card.copy("zh-CN").0, "番茄钟");
+            assert_eq!(card.copy("en-US").0, "Pomodoro");
             let labels = card
                 .actions
                 .iter()
@@ -1505,22 +1569,13 @@ mod tests {
             name: "A plugin with a longer title".into(),
             description: "A description that wraps at narrow widths without covering the controls."
                 .into(),
-            localizations: BTreeMap::from([
-                (
-                    "zh-CN".to_owned(),
-                    PluginCopy {
-                        name: "一个插件".into(),
-                        description: "由插件自己书写的描述".into(),
-                    },
-                ),
-                (
-                    "zh-TW".to_owned(),
-                    PluginCopy {
-                        name: "一個外掛".into(),
-                        description: "由外掛自己書寫的描述".into(),
-                    },
-                ),
-            ]),
+            localizations: BTreeMap::from([(
+                "zh-CN".to_owned(),
+                PluginCopy {
+                    name: "一个插件".into(),
+                    description: "由插件自己书写的描述".into(),
+                },
+            )]),
             icon_url: None,
             enabled: true,
             failed: false,
@@ -1536,13 +1591,13 @@ mod tests {
                 UiNode::Button {
                     id: "first".into(),
                     label: "Start or pause".into(),
-                    icon: Some(bongocat_plugin_sdk::ActionIcon::Play),
+                    icon: bongocat_plugin_sdk::ActionIcon::Play,
                     loading: false,
                 },
                 UiNode::Button {
                     id: "second".into(),
                     label: "Restart the session".into(),
-                    icon: Some(bongocat_plugin_sdk::ActionIcon::Restart),
+                    icon: bongocat_plugin_sdk::ActionIcon::Restart,
                     loading: false,
                 },
             ],
@@ -1562,7 +1617,7 @@ mod tests {
                 UiNode::Button {
                     id: "preview".into(),
                     label: "Preview sound".into(),
-                    icon: Some(bongocat_plugin_sdk::ActionIcon::Volume),
+                    icon: bongocat_plugin_sdk::ActionIcon::Volume,
                     loading: false,
                 },
                 UiNode::Select {
@@ -1818,7 +1873,7 @@ mod tests {
             card.actions.push(UiNode::Button {
                 id: "third".into(),
                 label: "Reset the timer".into(),
-                icon: Some(bongocat_plugin_sdk::ActionIcon::Restart),
+                icon: bongocat_plugin_sdk::ActionIcon::Restart,
                 loading: false,
             });
             let (_, visual) = card_page(cx, vec![card], width);
@@ -1860,13 +1915,18 @@ mod tests {
         use bongocat_plugin_sdk::ActionIcon;
         use gpui_kit::assets::IconName;
         for (icon, expected) in [
-            (Some(ActionIcon::Play), IconName::Play),
-            (Some(ActionIcon::Pause), IconName::Pause),
-            (Some(ActionIcon::Restart), IconName::RotateCcw),
-            (Some(ActionIcon::Volume), IconName::Volume2),
-            (None, IconName::MousePointerClick),
+            (ActionIcon::Play, IconName::Play),
+            (ActionIcon::Pause, IconName::Pause),
+            (ActionIcon::Restart, IconName::RefreshCw),
+            (ActionIcon::Volume, IconName::AudioLines),
         ] {
             assert_eq!(super::super::plugins_page::action_icon(icon), expected);
+            // The glyph must be artwork the bundled assets ship, or the button
+            // would draw nothing on a machine without that font.
+            assert!(
+                gpui_kit::assets::IconNamed::path(expected).as_ref() != "",
+                "{expected:?} resolves to bundled artwork"
+            );
         }
         let (_, visual) = card_page(cx, vec![sample_card()], 720.);
         visual.update(|window, _| {
@@ -1987,7 +2047,7 @@ mod tests {
         card.actions = vec![UiNode::Button {
             id: "preview".into(),
             label: "Preview".into(),
-            icon: Some(bongocat_plugin_sdk::ActionIcon::Volume),
+            icon: bongocat_plugin_sdk::ActionIcon::Volume,
             loading: true,
         }];
         card.settings = Vec::new();

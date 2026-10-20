@@ -42,6 +42,7 @@ thiserror.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+bongocat-plugin-manager.workspace = true
 tempfile.workspace = true
 
 [build-dependencies]

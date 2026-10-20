@@ -2,7 +2,7 @@
   "metadata": {
     "id": "com.bongocat.key-sounds",
     "name": "Key Sounds",
-    "description": "Play customizable sounds when keyboard keys or mouse buttons are pressed and released",
+    "description": "Keyboard and mouse sound effects",
     "version": "1.0.0",
     "app_versions": ">=2.3.1",
     "protocol_version": 1,
@@ -12,9 +12,8 @@
     "localizations": {
       "zh-CN": {
         "name": "按键音效",
-        "description": "键盘、鼠标按键按下或弹起时播放音效，支持分别设置"
+        "description": "键盘和鼠标音效"
       }
     }
-  },
-  "sha256": null
+  }
 }

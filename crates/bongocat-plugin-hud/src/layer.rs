@@ -511,7 +511,7 @@ pub fn latest_viewport_channel() -> (HudViewportReporter, HudViewportReader) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_plugin_sdk::{Anchor, UiNode};
+    use bongocat_plugin_sdk::{ActionIcon, Anchor, UiNode};
 
     fn view() -> PluginView {
         PluginView {
@@ -520,7 +520,7 @@ mod tests {
                 UiNode::Text {
                     text: "05:00".into(),
                 },
-                UiNode::button("toggle", "Start"),
+                UiNode::button("toggle", "Start", ActionIcon::Play),
             ],
         }
     }

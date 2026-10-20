@@ -66,7 +66,10 @@ Rust 2024 edition application
   窗口不影响插件继续运行、继续 tick 和继续更新模型窗口。
 - 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
   action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
-- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板。插件中心身份图标固定为
+- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板。协议只有一种当前形状：
+  `UiNode::Button` 必然携带 `icon` 与 `loading`，`UiNode::Select` 必然携带 `preview` 且每个选项
+  必然携带 `group`，`PluginOutput::errors` 与清单的 `localizations` 必然存在；主程序不补默认值、
+  不做旧帧兼容。插件中心身份图标固定为
   清单声明的本地 PNG，由目录单独投影 `icon_url`：Development 指向构建产物中的本地文件，
   Production 指向 GitHub Release 中与插件版本同名的独立 PNG 资源；两者都复用目录的代理顺序。
   卡片不使用字体或 Emoji 回退，也不依赖插件是否已安装。主程序按 anchor 渲染到模型窗口，
@@ -99,13 +102,15 @@ Rust 2024 edition application
   “跟随”试听设备当前音效，没有弹起录音的选项保持静音，试听不修改配置或正常输入的冷却时间。
 - 插件运行时错误通过 `PluginOutput.errors` 发布稳定 ID 与插件本地化文案；设置窗口将其、插件加载故障、中心操作失败和模型窗口交互失败统一转换为全局 `Notification`，并按插件与错误 ID 去重。`UiNode::Text` 只表示普通状态，不得作为错误占位或页面错误条直接展示。
 - 插件名称、描述与界面文案由插件自身拥有：清单通过 `localizations` 提供按语言标签的
-  name／description，`localized_views_v1` capability 声明插件会本地化自己发布的视图，主程序用
-  应用配置解析后的语言经 `HostMessage::Locale` 告知插件，启动时在打开窗口前初始化，语言修改
-  成功持久化后同步，不依赖设置窗口渲染；之后启用或重启的插件重放当前语言。插件中心自身的
-  框架文案仍取自 `bongocat-i18n` 目录；未声明 capability 的旧插件不接收该消息。
+  name／description（英文同样在该映射内，是唯一的文案来源），`localized_views_v1` capability
+  声明插件会本地化自己发布的视图，主程序用应用配置解析后的语言经 `HostMessage::Locale` 告知
+  插件，启动时在打开窗口前初始化，语言修改成功持久化后同步，不依赖设置窗口渲染；之后启用或
+  重启的插件在启动时收到当前语言。插件中心自身的框架文案仍取自 `bongocat-i18n` 目录；未声明
+  capability 的插件不接收该消息。
 - 插件统一仅支持简体中文（`zh-CN`）与英文，自动跟随应用语言，不提供独立语言配置；其他应用
-  语言统一回退英文。清单缺少完整中文名称或描述时，整组文案和发布的视图均回退英文，不逐字段
-  拼接中英文；插件自身的翻译文案集必须完整。不改变主程序支持的语言范围。
+  语言统一回退英文。清单没有完整中文名称或描述时，整组文案和发布的视图均回退英文，不逐字段
+  拼接中英文；语言条目缺少 name 或 description，或带有未知字段，属于无效清单，主程序不做补全。
+  不改变主程序支持的语言范围。
 - 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
   画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。只有非 Loading 的 Button
   与 Toggle 可交互，分别发送 Action 与布尔配置修改；Integer、Select 在该窗口只作展示。
@@ -1071,12 +1076,18 @@ DirectComposition 对最终 surface 的显示转换不同，因此同一组 enco
 现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的 presentation alpha，二者都不应
 因为设置变化替换 HWND/NSPanel。
 
-指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
-开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
-窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
-`opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
-runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
-穿透强制为开，因此不可见的 overlay 不会吞掉本该落到下层窗口的点击。
+指针悬停动作是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.pointer_hover_action` 决定指针
+进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后发生什么：
+
+- `off` 不做任何事，指针链路不被读取；
+- `hide` 把窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
+  `opacity_percent`，并把穿透恢复为 `overlay.click_through`；
+- `reposition_random` 把窗口**临时挪开**到当前所在显示器上的一个随机位置，保持可见，既不淡出也不
+  改变指针路由；指针离开它原来所在的那块矩形之后，窗口搬回原处。
+
+三个动作都不隐藏或销毁窗口，runtime 的 overlay visibility 不受影响，frame source 继续按
+`overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间穿透强制为开，因此不可见的 overlay 不会
+吞掉本该落到下层窗口的点击。
 
 淡入淡出复刻旧版 CSS `transition-opacity-300` 的 `300 ms`，但按「从过渡起点起算的绝对经过时间」
 求值，而不是按帧累加：同样的时间点在不同帧率下得到同一个 alpha，60 FPS 与 240 FPS 的采样结果
@@ -1089,10 +1100,28 @@ runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.ma
 平台采样与窗口矩形的坐标空间不同时必须在 owner 内换算，不允许把平台坐标泄漏给 runtime 或 renderer。
 圆角窗口的透明角落仍算在窗口矩形内，与旧版一致。
 
+换位是**位移而不是搬家**：挪开时记住窗口原来的矩形，之后只要指针不再位于那块矩形内就把窗口搬回去。
+判据是指针要离开**原矩形**、而不是要离开挪开后的窗口——挪开的用意本来就是「指针留在原地，窗口让开」，
+所以挪开后的窗口那里通常没有指针；盯住原矩形等于在问「用户是不是已经去别处了」。指针追着模型跑到
+新位置同样算离开原矩形，此时窗口先搬回原处（位移必须先释放，不会连续挪第二次）。
+
+目标位置与返回时机都由平台无关的 `reposition` 模块计算，平台 owner 只负责读窗口矩形、枚举显示器和
+应用新原点。三条不变量保证它不会变成循环、不会把模型推出桌面、也不会把模型留在用户没放的地方：
+触发是边沿式的（一次进入只触发一次，指针不动就不会重复挪动）；同一时刻只有一个原矩形，位移未释放
+前不会再次挪动；目标始终落在窗口当前所在显示器内且尺寸不变，因此放置约束永远不需要把它拉回来。
+位移一定会被释放——指针离开原矩形、动作被改成 `off` 或 `hide`、或指针链路失去可信度，都会让窗口
+搬回原处。随机取位优先选择不含指针的位置，并排除窗口当前所在的位置；显示器与窗口同尺寸时无处可去，
+保持原地，且不会因此留下一个待释放的位移。
+
+换位只有随机取位一种，没有「移到屏幕另一侧」：镜像对「居中」是不动点，接近中心时位移也趋近 0，
+而窗口有几百像素宽，指针落在窗口靠中间的位置时新矩形照样盖着它——恰好在最需要它的时候失效。要修
+就得逐级兜底到「跳到屏幕边缘」，那时它既不比随机可预测、又比随机突兀。均匀取位没有这个盲区。
+
 指针采样缺失、或平台输入服务不在 `Running` 状态时一律视为「不在窗口内」。这条降级规则保证指针
-链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
-`opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
-延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
+链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态；对换位而言它同时意味着
+「没有可信指针 = 指针已不在原矩形」，因此一个已经挪开的窗口会被搬回原处，而不是因为采样断掉就永久
+停在别处。隐藏与 `opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的
+presentation alpha；动作与延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
 
 「按住修饰键以恢复交互」是这两个临时状态之上的一个开关，而不是第三个状态机。
 `overlay.hold_modifier_to_interact` 设置后，平台 owner 在每次 frame tick 内把它与 runtime snapshot

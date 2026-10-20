@@ -149,7 +149,6 @@ fn locale_changes_and_reset_preserve_system_name_and_locale_contract() {
     for (locale, label) in [
         ("zh-CN", "显示方式"),
         ("en-US", "Display mode"),
-        ("de-DE", "Display mode"),
         ("zh-TW", "Display mode"),
     ] {
         let output = plugin

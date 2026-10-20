@@ -135,7 +135,9 @@ impl InputSourceIndicator {
     }
 
     fn output(&self) -> PluginOutput {
-        let copy = if bongocat_plugin_sdk::plugin_locale(&self.locale) == "zh-CN" {
+        // The host sends the tag this plugin's manifest declares a translation
+        // for, so the plugin only has to pick between the copies it carries.
+        let copy = if self.locale == "zh-CN" {
             &CHINESE
         } else {
             &ENGLISH
@@ -254,7 +256,7 @@ impl Plugin for InputSourceIndicator {
             HostMessage::Action { .. } | HostMessage::Preview { .. } => {
                 return Err("Unknown action".into());
             }
-            HostMessage::KeyboardActivity { .. } | HostMessage::InputActivity { .. } => {}
+            HostMessage::InputActivity { .. } => {}
         }
         Ok(self.output())
     }

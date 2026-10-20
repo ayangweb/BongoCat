@@ -31,6 +31,18 @@ fn pomodoro_package() -> Option<Vec<u8>> {
     Some(zip.finish().unwrap().into_inner())
 }
 
+/// Install the package into a service store the way the product does: through
+/// the manager, against the digest its catalog entry advertises.
+fn install_into(store: &std::path::Path, bytes: &[u8]) {
+    let mut manager = bongocat_plugin_manager::PluginManager::new(
+        bongocat_plugin_service::plugin_directory(store),
+    )
+    .unwrap();
+    manager
+        .install(bytes, &bongocat_plugin_manager::sha256_of(bytes))
+        .unwrap();
+}
+
 fn assert_start_label(client: &PluginServiceClient, expected: &str) {
     let center = client.read_center_blocking().unwrap();
     let actions = serde_json::to_value(&center.cards[0].actions).unwrap();
@@ -55,10 +67,10 @@ fn plugins_follow_application_language_before_windows_open_and_after_restart() {
         .set_language(bongocat_config::Language::ChineseSimplified)
         .unwrap();
     let plugin_store = tempdir().unwrap();
+    install_into(plugin_store.path(), &package);
     let (plugins, _) = PluginService::start(plugin_store.path(), 4).unwrap();
     let plugin_client = plugins.client();
     application.attach_plugin_service(plugin_client.clone());
-    plugin_client.install_blocking(package).unwrap();
     plugin_client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
     assert_start_label(&plugin_client, "开始");
 
@@ -67,6 +79,8 @@ fn plugins_follow_application_language_before_windows_open_and_after_restart() {
     let initial = client.read_snapshot_blocking().unwrap();
     let mut current = initial.clone();
     let mut stale_revision = None;
+    // Plugins serve Simplified Chinese and English only, so every other
+    // application language reads English.
     for (language, label) in [
         (SettingsLanguage::English, "Start"),
         (SettingsLanguage::ChineseTraditional, "Start"),

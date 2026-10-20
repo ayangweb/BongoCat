@@ -35,10 +35,15 @@ pub enum PluginManagerError {
     #[error("plugin package is not a readable ZIP archive")]
     Archive(#[from] zip::result::ZipError),
 }
+/// A plugin package's manifest: what the package says about itself.
+///
+/// The digest is not part of it. A package's identity is the digest the signed
+/// catalog advertises, so a manifest cannot claim one — a claim the reader would
+/// have to ignore, or worse trust.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginManifest {
     pub metadata: PluginMetadata,
-    pub sha256: Option<String>,
 }
 
 pub struct PluginManager {
@@ -62,16 +67,17 @@ impl PluginManager {
     pub fn install(
         &mut self,
         bytes: &[u8],
+        expected_sha256: &str,
     ) -> Result<install::InstalledPackage, PluginManagerError> {
-        self.install_verified(bytes, None)
+        self.install_verified(bytes, expected_sha256)
     }
     /// Install a package archive after checking it against a catalog digest.
     pub fn install_verified(
         &mut self,
         bytes: &[u8],
-        expected_sha256: Option<&str>,
+        expected_sha256: &str,
     ) -> Result<install::InstalledPackage, PluginManagerError> {
-        if expected_sha256.is_some_and(|digest| sha256_of(bytes) != digest.to_ascii_lowercase()) {
+        if sha256_of(bytes) != expected_sha256.to_ascii_lowercase() {
             return Err(PluginManagerError::UnsafeManifest(
                 "package digest does not match the catalog".into(),
             ));
@@ -150,8 +156,12 @@ impl PluginManager {
     }
     /// Tell every running plugin that localizes its own views which catalog tag
     /// the host is showing.
-    pub fn set_locale(&mut self, locale: &str) {
-        self.registry.set_locale(locale);
+    ///
+    /// The tag is applied even when one plugin refuses it; that plugin's card
+    /// reports the failure and every other process keeps publishing the
+    /// language the host is showing.
+    pub fn set_locale(&mut self, locale: &str) -> Result<(), PluginManagerError> {
+        self.registry.set_locale(locale).map_err(Into::into)
     }
     /// Remove a plugin's executable package. Its data is kept (see [`Self::reset`]).
     pub fn uninstall(&mut self, id: &str) -> Result<bool, PluginManagerError> {
@@ -338,13 +348,7 @@ mod tests {
             capabilities: vec![],
             localizations: Default::default(),
         };
-        assert!(
-            install::validate(&PluginManifest {
-                metadata,
-                sha256: None
-            })
-            .is_err()
-        );
+        assert!(install::validate(&PluginManifest { metadata }).is_err());
     }
 }
 

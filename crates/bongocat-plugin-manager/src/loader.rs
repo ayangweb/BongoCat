@@ -159,17 +159,16 @@ impl Drop for Process {
     }
 }
 
-/// A manifest names a base name; Windows packages may append `.exe`.
+/// The file a manifest's `entry` names inside its package.
+///
+/// The manifest names the executable without a platform suffix, and a Windows
+/// package always carries the `.exe` the toolchain writes, so the suffix is the
+/// platform's fact rather than something a package may omit.
 pub(crate) fn entry_path(root: &Path, entry: &str) -> std::path::PathBuf {
-    let path = root.join(entry);
     #[cfg(target_os = "windows")]
-    if !path.is_file() {
-        let with_extension = root.join(format!("{entry}.exe"));
-        if with_extension.is_file() {
-            return with_extension;
-        }
-    }
-    path
+    return root.join(format!("{entry}.exe"));
+    #[cfg(not(target_os = "windows"))]
+    root.join(entry)
 }
 
 #[cfg(all(test, unix))]

@@ -106,7 +106,7 @@ fn assert_button(
         })
         .expect("the card action must cross the process boundary");
     assert_eq!(label, expected_label);
-    assert_eq!(*icon, Some(expected_icon));
+    assert_eq!(*icon, expected_icon);
 }
 
 #[test]

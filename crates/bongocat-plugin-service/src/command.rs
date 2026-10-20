@@ -46,6 +46,20 @@ pub struct PluginCard {
     pub interaction_failure: Option<PluginInteractionFailure>,
 }
 
+impl PluginCard {
+    /// The name and description to show for `locale`.
+    ///
+    /// Missing or incomplete translations fall back as a pair, never field by
+    /// field, so a card cannot mix languages.
+    pub fn copy(&self, locale: &str) -> (&str, &str) {
+        bongocat_plugin_sdk::localized_copy(
+            &self.localizations,
+            locale,
+            (self.name.as_str(), self.description.as_str()),
+        )
+    }
+}
+
 /// A model-window operation has no request reply for a settings window to consume.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PluginInteractionFailure {
@@ -137,16 +151,6 @@ pub enum PluginCommand {
     SetEnabled {
         id: String,
         enabled: bool,
-        reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
-    },
-    /// Install a package archive the user chose.
-    ///
-    /// The bytes travel with the command rather than a path: the window has
-    /// already read the file the user picked, and the service is what validates
-    /// and unpacks it, so a package the user chose and a package the product
-    /// downloaded cannot diverge in how they are checked.
-    Install {
-        bytes: Vec<u8>,
         reply: PluginReply<Result<PluginCenterSnapshot, PluginCommandError>>,
     },
     /// Install/update one entry from the current verified catalog.
@@ -248,14 +252,6 @@ impl PluginServiceClient {
             reply,
         })
         .await
-    }
-
-    pub async fn install(
-        &self,
-        bytes: Vec<u8>,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::Install { bytes, reply })
-            .await
     }
 
     pub async fn install_available(
@@ -367,13 +363,6 @@ impl PluginServiceClient {
             enabled,
             reply,
         })
-    }
-
-    pub fn install_blocking(
-        &self,
-        bytes: Vec<u8>,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request_blocking(|reply| PluginCommand::Install { bytes, reply })
     }
 
     pub fn uninstall_blocking(&self, id: &str) -> Result<PluginCenterSnapshot, PluginCommandError> {

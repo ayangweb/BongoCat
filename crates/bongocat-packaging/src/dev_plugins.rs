@@ -80,13 +80,6 @@ pub(super) fn release_manifests(
             })
             .ok_or("plugin directory is not a workspace package")?;
         let bytes = fs::read(source.join(MANIFEST_FILE))?;
-        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-        if value
-            .as_object()
-            .is_none_or(|map| map.keys().any(|key| key != "metadata" && key != "sha256"))
-        {
-            return failure("unknown plugin manifest fields");
-        }
         let manifest: PluginManifest = serde_json::from_slice(&bytes)?;
         let info = &manifest.metadata;
         Version::parse(&info.version)?;
@@ -128,30 +121,11 @@ fn prepare_into(
 ) -> Result<Vec<PathBuf>> {
     fs::create_dir_all(output)?;
     let mut packages = Vec::new();
-    let sources = if target.is_some() {
-        release_manifests(workspace)?
-    } else {
-        let mut sources = Vec::new();
-        for entry in fs::read_dir(workspace.join("plugins"))? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir() && entry.path().join(MANIFEST_FILE).is_file() {
-                let bytes = fs::read(entry.path().join(MANIFEST_FILE))?;
-                sources.push((
-                    entry.path(),
-                    serde_json::from_slice::<PluginManifest>(&bytes)?,
-                    bytes,
-                ));
-            }
-        }
-        sources.sort_by(|a, b| a.1.metadata.id.cmp(&b.1.metadata.id));
-        sources
-    };
+    // Development and release packages are one shape: both come from the
+    // workspace metadata, so a local package cannot be built from a manifest the
+    // release path would refuse.
+    let sources = release_manifests(workspace)?;
     for (source, manifest, bytes) in &sources {
-        for component in [&manifest.metadata.id, &manifest.metadata.entry] {
-            if !bongocat_plugin_manager::install::valid_basename(component) {
-                return failure("local plugin id and entry must be safe basenames");
-            }
-        }
         let mut command = Command::new("cargo");
         command
             .current_dir(workspace)
@@ -172,11 +146,15 @@ fn prepare_into(
             .ok_or("Cargo did not report the plugin executable")?;
         let package = package_into(output, manifest, bytes, source, &executable)?;
         if target.is_some() {
+            // A release package that this host cannot install is refused before
+            // it is published, so the archive a release uploads is one the
+            // product's own installer accepts.
             let store = tempfile::tempdir()?;
+            let bytes = fs::read(&package)?;
             bongocat_plugin_manager::install::install_package(
                 store.path(),
-                None,
-                &fs::read(&package)?,
+                &bongocat_plugin_manager::sha256_of(&bytes),
+                &bytes,
             )?;
         }
         packages.push(package);
@@ -390,7 +368,10 @@ mod tests {
         // download takes.
         let store = tempfile::tempdir().unwrap();
         let mut manager = PluginManager::new(store.path().to_path_buf()).unwrap();
-        manager.install(&fs::read(&package).unwrap()).unwrap();
+        let bytes = fs::read(&package).unwrap();
+        manager
+            .install(&bytes, &bongocat_plugin_manager::sha256_of(&bytes))
+            .unwrap();
         assert_eq!(manager.list_plugins().len(), 1);
         let metadata = &manager.list_plugins()[0].0;
         assert_eq!(metadata.name, "Pomodoro");
@@ -503,7 +484,10 @@ mod tests {
 
         let store = tempfile::tempdir().unwrap();
         let mut manager = PluginManager::new(store.path().into()).unwrap();
-        manager.install(&available[0].read(&stop).unwrap()).unwrap();
+        let bytes = available[0].read(&stop).unwrap();
+        manager
+            .install(&bytes, &bongocat_plugin_manager::sha256_of(&bytes))
+            .unwrap();
         assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.0"));
         let data = manager.data_root(&id, true).unwrap();
         assert!(data.ends_with("data/com.bongocat.key-sounds"));
@@ -519,7 +503,10 @@ mod tests {
             &executable,
         )
         .unwrap();
-        manager.install(&fs::read(package).unwrap()).unwrap();
+        let bytes = fs::read(package).unwrap();
+        manager
+            .install(&bytes, &bongocat_plugin_manager::sha256_of(&bytes))
+            .unwrap();
         assert_eq!(manager.installed_version(&id).as_deref(), Some("1.0.1"));
         assert!(data.join("marker").is_file());
         assert!(manager.reset(&id).unwrap());

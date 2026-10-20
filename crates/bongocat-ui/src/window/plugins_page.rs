@@ -110,15 +110,14 @@ pub(super) fn content(
 ///
 /// The protocol's icon set is closed and the plugin owns it, so this is a
 /// translation table rather than a guess: the host never derives an icon from an
-/// action id or a translated label, and a button the plugin published without
-/// asking for a glyph keeps the neutral action one.
-pub(super) fn action_icon(icon: Option<ActionIcon>) -> IconName {
+/// action id or a translated label. Only artwork the bundled component assets
+/// ship is used, so a button never depends on a font glyph for its meaning.
+pub(super) fn action_icon(icon: ActionIcon) -> IconName {
     match icon {
-        Some(ActionIcon::Play) => IconName::Play,
-        Some(ActionIcon::Pause) => IconName::Pause,
-        Some(ActionIcon::Restart) => IconName::RotateCcw,
-        Some(ActionIcon::Volume) => IconName::Volume2,
-        None => IconName::MousePointerClick,
+        ActionIcon::Play => IconName::Play,
+        ActionIcon::Pause => IconName::Pause,
+        ActionIcon::Restart => IconName::RefreshCw,
+        ActionIcon::Volume => IconName::AudioLines,
     }
 }
 

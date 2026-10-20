@@ -171,14 +171,19 @@ pub fn collect_interactive(
 }
 
 /// The id a node can be activated by, if it is interactive.
+///
+/// Only buttons and toggles are: a text row, a number, a choice and a status are
+/// what a panel displays, and the settings panel is where they are edited. A
+/// button the plugin reports as carrying out its action is not interactive
+/// either — the action it asked for is already in flight.
 pub fn interactive_id(node: &UiNode) -> Option<&str> {
     match node {
         UiNode::Button {
             id, loading: false, ..
         } => Some(id),
         UiNode::Toggle { key, .. } => Some(key),
-        UiNode::Button { loading: true, .. }
-        | UiNode::Integer { .. }
+        UiNode::Button { loading: true, .. } => None,
+        UiNode::Integer { .. }
         | UiNode::Select { .. }
         | UiNode::IconText { .. }
         | UiNode::Text { .. } => None,
@@ -210,6 +215,7 @@ pub(crate) fn placed_nodes<'a>(
 mod tests {
     use super::*;
     use crate::HudFont;
+    use bongocat_plugin_sdk::ActionIcon;
 
     fn font() -> HudFont {
         crate::load_platform_font().expect("the platform ships a usable text face")
@@ -252,7 +258,7 @@ mod tests {
                 UiNode::Text {
                     text: "05:00".into(),
                 },
-                UiNode::button("toggle", "Start"),
+                UiNode::button("toggle", "Start", ActionIcon::Play),
             ],
         };
         let viewport = HudRect::new(0.0, 0.0, 300.0, 300.0);

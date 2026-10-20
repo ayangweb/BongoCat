@@ -52,10 +52,41 @@ fn plugin_package_with_manifest(edit: impl FnOnce(&mut serde_json::Value)) -> Op
     archive.finish().ok().map(|cursor| cursor.into_inner())
 }
 
+/// A plugin that serves no Chinese copy is shown and driven in English.
+///
+/// Translation is the plugin's own declaration: it either carries a complete
+/// entry for a language or it does not carry that language at all, so the host
+/// never completes a half translation.
 #[test]
-fn an_incomplete_translation_falls_back_to_english_for_both_card_and_controls() {
+fn a_plugin_without_chinese_copy_reads_english_on_its_card_and_controls() {
+    let Some(bytes) = plugin_package_with_manifest(|manifest| {
+        manifest["metadata"]["localizations"] = serde_json::json!({});
+    }) else {
+        return;
+    };
+    let store = tempfile::tempdir().unwrap();
+    install_into(store.path(), &bytes);
+    let (service, _) = PluginService::start(store.path(), 4).unwrap();
+    let client = service.client();
+    client.set_locale_blocking("zh-CN").unwrap();
+    let center = client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
+    let card = &center.cards[0];
+    // The manifest's own name and description are the English copy, so the map
+    // carries no second entry for it and the card falls back to that pair.
+    assert!(card.localizations.is_empty());
+    assert_eq!(card.copy("zh-CN"), ("Pomodoro", "A focus timer"));
+    assert!(card.actions.iter().any(|node| matches!(node,
+        bongocat_plugin_sdk::UiNode::Button { id, label, .. }
+            if id == "toggle" && label == "Start"
+    )));
+    service.shutdown().unwrap();
+}
+
+/// A translation entry that omits half of its copy makes the package invalid
+/// rather than a card the host has to finish in two languages.
+#[test]
+fn a_partial_translation_is_refused_at_install() {
     for localizations in [
-        serde_json::json!({}),
         serde_json::json!({"zh-CN": {"name": "番茄钟"}}),
         serde_json::json!({"zh-CN": {"name": " ", "description": "专注计时器"}}),
     ] {
@@ -65,37 +96,34 @@ fn an_incomplete_translation_falls_back_to_english_for_both_card_and_controls() 
             return;
         };
         let store = tempfile::tempdir().unwrap();
-        let (service, _) = PluginService::start(store.path(), 4).unwrap();
-        let client = service.client();
-        client.set_locale_blocking("zh-CN").unwrap();
-        client.install_blocking(bytes).unwrap();
-        let center = client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
-        let card = &center.cards[0];
-        assert_eq!(
-            bongocat_plugin_sdk::localized_copy(
-                &card.localizations,
-                "zh-CN",
-                (&card.name, &card.description),
-            ),
-            ("Pomodoro", "A focus timer you can pause and restart")
+        let mut manager =
+            bongocat_plugin_manager::PluginManager::new(plugin_directory(store.path())).unwrap();
+        assert!(
+            manager
+                .install(&bytes, &bongocat_plugin_manager::sha256_of(&bytes))
+                .is_err()
         );
-        assert!(card.actions.iter().any(|node| matches!(node,
-            bongocat_plugin_sdk::UiNode::Button { id, label, .. }
-                if id == "toggle" && label == "Start"
-        )));
-        service.shutdown().unwrap();
+        assert_eq!(manager.installed_version(PLUGIN_ID), None);
     }
 }
 
-/// Start a service on a private store and install the pomodoro package into it.
+/// Install one package into a store before the tested service opens it.
+///
+/// The digest is what makes a package the one its catalog offered, so the store
+/// is filled through the manager's install with that digest.
+fn install_into(store: &std::path::Path, bytes: &[u8]) {
+    let mut manager = bongocat_plugin_manager::PluginManager::new(plugin_directory(store)).unwrap();
+    manager
+        .install(bytes, &bongocat_plugin_manager::sha256_of(bytes))
+        .expect("the package installs against its digest");
+}
+
+/// Start a service on a private store that already has the pomodoro installed.
 fn service_with_pomodoro() -> Option<(PluginService, tempfile::TempDir)> {
     let bytes = plugin_package()?;
     let store = tempfile::tempdir().ok()?;
+    install_into(store.path(), &bytes);
     let (service, _handles) = PluginService::start(store.path(), 4).expect("plugin service starts");
-    service
-        .client()
-        .install_blocking(bytes)
-        .expect("the package installs");
     Some((service, store))
 }
 
@@ -214,9 +242,9 @@ fn the_composed_layer_matches_the_window_that_reported_itself() {
         return;
     };
     let store = tempfile::tempdir().unwrap();
+    install_into(store.path(), &bytes);
     let (service, handles) = PluginService::start(store.path(), 4).unwrap();
     let client = service.client();
-    client.install_blocking(bytes).unwrap();
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
 
     // Before a window reports a size there is nothing to compose against.
@@ -285,9 +313,9 @@ fn a_panel_that_is_not_changing_is_not_republished() {
         return;
     };
     let store = tempfile::tempdir().unwrap();
+    install_into(store.path(), &bytes);
     let (service, handles) = PluginService::start(store.path(), 4).unwrap();
     let client = service.client();
-    client.install_blocking(bytes).unwrap();
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
     handles
         .viewport_reporter
@@ -479,7 +507,7 @@ fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
         PluginService::start_with_source(store.path(), 4, source.clone(), None).unwrap();
     let client = service.client();
     settled(&client);
-    client.install_blocking(bytes).unwrap();
+    client.install_available_blocking(PLUGIN_ID).unwrap();
     client.set_enabled_blocking(PLUGIN_ID, true).unwrap();
     service.shutdown().unwrap();
     std::fs::write(

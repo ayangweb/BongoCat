@@ -33,11 +33,6 @@ pub struct CatalogEntry {
     pub name: String,
     pub description: String,
     /// Per-locale name and description, keyed by locale tag.
-    ///
-    /// Optional, so a catalog published before local names existed keeps
-    /// verifying and reading: a signed manifest that omits the field is served
-    /// exactly as it was, and only a republished catalog can add copy.
-    #[serde(default)]
     pub localizations: BTreeMap<String, bongocat_plugin_sdk::PluginCopy>,
     pub version: String,
     pub app_versions: String,
@@ -50,11 +45,13 @@ pub struct CatalogEntry {
     /// Production uses an HTTPS URL; Development uses an absolute file path.
     pub icon_url: String,
     /// Per-platform download paths relative to the catalog URL.
+    ///
+    /// An empty map is a catalog assembled locally without downloads; a
+    /// Production entry without one is rejected by the source that reads it.
     #[serde(default)]
     pub downloads: BTreeMap<String, String>,
-    #[serde(default)]
+    /// The digest the package must match before it is installed.
     pub sha256: Option<String>,
-    #[serde(default)]
     pub homepage: Option<String>,
 }
 
@@ -113,6 +110,11 @@ fn catalog_sources(official: &str) -> Vec<(Option<&'static str>, String)> {
     sources
 }
 
+/// Turn a catalog's release-relative asset names into absolute URLs.
+///
+/// The catalog is published beside the assets it names, so every entry carries a
+/// relative path and `official` is the release it was read from. A proxied read
+/// names the same absolute URLs behind that proxy.
 fn resolve_downloads(
     mut entry: CatalogEntry,
     proxy: Option<&'static str>,
@@ -121,28 +123,15 @@ fn resolve_downloads(
     let base = official
         .strip_suffix(&format!("/{CATALOG_NAME}"))
         .unwrap_or(official);
+    let absolute = |value: &str| format!("{base}/{}", value.trim_start_matches('/'));
+    let proxied = |value: String| match proxy {
+        Some(prefix) => format!("{}/{value}", prefix.trim_end_matches('/')),
+        None => value,
+    };
     for value in entry.downloads.values_mut() {
-        if value.starts_with("https://") {
-            continue;
-        }
-        let relative = value.trim_start_matches('/');
-        *value = format!("{base}/{relative}");
+        *value = proxied(absolute(value));
     }
-    if !entry.icon_url.starts_with("https://") {
-        let relative = entry.icon_url.trim_start_matches('/');
-        entry.icon_url = format!("{base}/{relative}");
-    }
-    if let Some(prefix) = proxy {
-        let prefix = format!("{}/", prefix.trim_end_matches('/'));
-        for value in entry.downloads.values_mut() {
-            if value.starts_with("https://") {
-                *value = format!("{prefix}{value}");
-            }
-        }
-        if entry.icon_url.starts_with("https://") {
-            entry.icon_url = format!("{prefix}{}", entry.icon_url);
-        }
-    }
+    entry.icon_url = proxied(absolute(&entry.icon_url));
     entry
 }
 
@@ -336,7 +325,8 @@ mod signed_tests {
         tampered["catalog"]["plugins"] = serde_json::json!([{
             "id": "org.test.a", "name": "A", "description": "", "version": "1.0.0", "app_versions": ">=2", "protocol_version": 1,
             "icon": { "type": "emoji", "value": "A" },
-            "icon_url": "https://example.com/a.png", "downloads": {}
+            "icon_url": "https://example.com/a.png", "downloads": {},
+            "sha256": null, "homepage": null, "localizations": {}
         }]);
         bytes = serde_json::to_vec(&tampered).unwrap();
         assert_eq!(

@@ -1,8 +1,7 @@
 //! Process-backed plugin registry. A failed child only removes that entry.
 use crate::loader::Process;
 use bongocat_plugin_sdk::{Configuration, HostMessage, PluginMetadata, PluginOutput, UiNode};
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::{collections::BTreeMap, io, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -34,22 +33,23 @@ struct Entry {
     data_file: PathBuf,
     enabled: bool,
 }
+/// The session envelope stored beside the packages: a plugin's configuration,
+/// its own state bytes and the user's enable request.
+///
+/// It is a complete v1 document, and a session is either absent — a plugin that
+/// has never run — or exactly this shape. A file missing its schema, or claiming
+/// another one, is refused by the reader rather than completed here.
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SavedSession {
-    #[serde(default = "session_schema")]
     schema_version: u32,
-    #[serde(default)]
     config: Configuration,
-    #[serde(default)]
     state: Vec<u8>,
-    #[serde(default)]
     enabled: bool,
 }
-fn session_schema() -> u32 {
-    1
-}
-impl Default for SavedSession {
-    fn default() -> Self {
+
+impl SavedSession {
+    fn empty() -> Self {
         Self {
             schema_version: 1,
             config: Configuration::new(),
@@ -117,7 +117,7 @@ impl PluginRegistry {
                 }
                 saved
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => SavedSession::default(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => SavedSession::empty(),
             Err(error) => return Err(error.into()),
             _ => return Err(std::io::Error::other("saved plugin data exceeds limit").into()),
         };
@@ -193,16 +193,16 @@ impl PluginRegistry {
                 config: entry.last_output.config.clone(),
                 state: entry.last_output.state.clone(),
             })?;
-            if let Some(locale) = locale
-                && entry
-                    .metadata
-                    .capabilities
-                    .contains(&bongocat_plugin_sdk::Capability::LocalizedViewsV1)
-            {
-                output = process.exchange(HostMessage::Locale {
-                    locale: entry.metadata.view_locale(&locale).to_owned(),
-                })?;
-            }
+            // A plugin started while the host already shows a language has to
+            // publish in it, because the host only announces changes from here
+            // on. The message goes through the same capability-gated delivery
+            // every running plugin uses.
+            show_locale(
+                &mut process,
+                &entry.metadata,
+                &mut output,
+                locale.as_deref(),
+            )?;
             persist_output(entry, &output, true)?;
             Ok((process, output))
         })();
@@ -329,22 +329,45 @@ impl PluginRegistry {
     /// Show a newly resolved catalog tag to every plugin that declares it can
     /// localize its own views.
     ///
-    /// Plugins that were never told about `localized_views_v1` are skipped
-    /// rather than sent a message they cannot parse: the capability is the
-    /// contract, and an installed plugin built before the message existed keeps
-    /// running exactly as it did.
+    /// Plugins that never declared `localized_views_v1` are skipped rather than
+    /// sent a message they cannot parse: the capability is the contract.
     ///
-    /// The tag is remembered even when no plugin can use it, so a plugin
-    /// started later receives it on its own `Start`.
-    pub fn set_locale(&mut self, locale: &str) {
+    /// The tag is remembered before it is delivered, so a plugin started later
+    /// receives it when its process starts. A plugin that advertises the
+    /// capability and still refuses the exchange turns its own card into a
+    /// failure; the tag itself is applied and the caller is told so, which is
+    /// what lets the application stop re-announcing a language it believes it
+    /// already sent.
+    pub fn set_locale(&mut self, locale: &str) -> Result<(), RegistryError> {
         let locale = bongocat_plugin_sdk::plugin_locale(locale);
         if self.locale.as_deref() == Some(locale) {
-            return;
+            return Ok(());
         }
         self.locale = Some(locale.to_owned());
-        for entry in self.entries.values_mut() {
-            deliver_locale(entry, Some(locale));
+        let mut failure = None;
+        for (id, entry) in &mut self.entries {
+            if !localizes(entry) {
+                continue;
+            }
+            let Some(mut process) = entry.process.take() else {
+                continue;
+            };
+            let mut output = entry.last_output.clone();
+            match show_locale(&mut process, &entry.metadata, &mut output, Some(locale)) {
+                Ok(()) => {
+                    entry.last_output = output;
+                    entry.process = Some(process);
+                }
+                Err(error) => {
+                    entry.state = PluginState::Failed;
+                    failure.get_or_insert(RegistryError::Process(io::Error::new(
+                        error.kind(),
+                        format!("{} refused its localized views", id),
+                    )));
+                }
+            }
         }
+        failure.map_or(Ok(()), Err)
     }
 
     pub fn shutdown(&mut self) -> Result<(), RegistryError> {
@@ -384,13 +407,9 @@ impl PluginRegistry {
 
     /// Hand every running plugin the device edges counted since the last poll.
     ///
-    /// Which message a plugin gets is the capability it declared, not the
-    /// protocol version: one that asked for `input_activity_v1` is told the edges
-    /// of both devices and both directions, and one that only ever asked for
-    /// `keyboard_activity_v1` keeps receiving the single keyboard total it was
-    /// built against. A plugin that declared the newer capability is never sent
-    /// the older message as well, because it did not ask for two signals and the
-    /// duplicate would double every sound it plays.
+    /// The capability a plugin declared is what entitles it to the message, not
+    /// the protocol version: a plugin that never asked for input activity is not
+    /// running one at all, and is left alone.
     pub fn input_activity(
         &mut self,
         elapsed_ms: u64,
@@ -440,56 +459,61 @@ impl PluginRegistry {
 
 /// The activity message one plugin's declared capabilities entitle it to.
 ///
-/// The capability is the gate, not the protocol version, and the newer one wins
-/// rather than adding to the older: a plugin that asked for both signals did not
-/// ask for two, and sending it the keyboard total as well would double every
-/// sound it plays. A plugin that declared neither is not running an activity
-/// plugin at all, so there is nothing to send it.
+/// The capability is the gate, not the protocol version: a plugin that declared
+/// none is not running an activity plugin at all, so there is nothing to send it.
 fn activity_message(
     capabilities: &[bongocat_plugin_sdk::Capability],
     elapsed_ms: u64,
     activity: bongocat_plugin_sdk::InputActivity,
 ) -> Option<HostMessage> {
-    use bongocat_plugin_sdk::Capability;
-    if capabilities.contains(&Capability::InputActivityV1) {
-        Some(HostMessage::InputActivity {
+    capabilities
+        .contains(&bongocat_plugin_sdk::Capability::InputActivityV1)
+        .then_some(HostMessage::InputActivity {
             elapsed_ms,
             activity,
         })
-    } else if capabilities.contains(&Capability::KeyboardActivityV1) {
-        Some(HostMessage::KeyboardActivity { elapsed_ms })
-    } else {
-        None
-    }
 }
 
 /// Hand the host's current catalog tag to one running plugin.
 ///
-/// A plugin that never declared [`Capability::LocalizedViewsV1`], or that is not
-/// running, is skipped: the capability is the contract that says the plugin
-/// understands the message, so an installed plugin built before it existed is
-/// never sent a frame it would fail to parse.
+/// A plugin that never declared [`Capability::LocalizedViewsV1`] is skipped: the
+/// capability is the contract that says the plugin understands the message, so a
+/// plugin that does not localize its views is never sent a frame it would fail to
+/// parse.
 ///
 /// A plugin that declared the capability and then refuses the exchange is a
 /// fault like any other failed tick — the process is dropped and the card shows
 /// as failed — because a plugin that cannot answer a message it advertised is
 /// not one the host can keep driving.
-fn deliver_locale(entry: &mut Entry, locale: Option<&str>) {
-    let Some(locale) = locale else {
-        return;
-    };
-    if !entry
+/// Whether a plugin declared that it localizes the views it publishes.
+fn localizes(entry: &Entry) -> bool {
+    entry
         .metadata
         .capabilities
         .contains(&bongocat_plugin_sdk::Capability::LocalizedViewsV1)
+}
+
+/// Send the tag the host is showing to one process, if its manifest declares that
+/// it localizes its views.
+fn show_locale(
+    process: &mut Process,
+    metadata: &PluginMetadata,
+    output: &mut PluginOutput,
+    locale: Option<&str>,
+) -> std::io::Result<()> {
+    let Some(locale) = locale else {
+        return Ok(());
+    };
+    if !metadata
+        .capabilities
+        .contains(&bongocat_plugin_sdk::Capability::LocalizedViewsV1)
     {
-        return;
+        return Ok(());
     }
-    if entry.process.is_some() {
-        let _ = entry.required_exchange(HostMessage::Locale {
-            locale: entry.metadata.view_locale(locale).to_owned(),
-        });
-    }
+    *output = process.exchange(HostMessage::Locale {
+        locale: metadata.view_locale(locale).to_owned(),
+    })?;
+    Ok(())
 }
 
 impl Entry {
@@ -594,7 +618,7 @@ mod tests {
             )]
             .into(),
             enabled: true,
-            ..Default::default()
+            ..SavedSession::empty()
         };
         let bytes = serde_json::to_vec(&saved).unwrap();
         assert!(bytes.len() > bongocat_plugin_sdk::MAX_MESSAGE_BYTES);
@@ -614,7 +638,35 @@ mod tests {
             bongocat_plugin_sdk::ConfigValue::Boolean(true),
         );
         std::fs::write(&file, serde_json::to_vec(&saved).unwrap()).unwrap();
-        assert!(PluginRegistry::new().register(metadata, root).is_err());
+        assert!(
+            PluginRegistry::new()
+                .register(metadata.clone(), root.clone())
+                .is_err()
+        );
+
+        // A session is a complete v1 document: one that omits its schema, names
+        // another one, or carries a field the envelope does not define is
+        // refused instead of being completed with defaults.
+        let value = serde_json::to_value(SavedSession::empty()).unwrap();
+        for edit in [
+            |value: &mut serde_json::Value| {
+                value.as_object_mut().unwrap().remove("schema_version");
+            },
+            |value: &mut serde_json::Value| value["schema_version"] = 2.into(),
+            |value: &mut serde_json::Value| {
+                value["enabled_by"] = "unknown field".into();
+            },
+        ] {
+            let mut document = value.clone();
+            edit(&mut document);
+            std::fs::write(&file, serde_json::to_vec(&document).unwrap()).unwrap();
+            assert!(
+                PluginRegistry::new()
+                    .register(metadata.clone(), root.clone())
+                    .is_err(),
+                "{document} was accepted"
+            );
+        }
     }
 
     #[test]
@@ -725,7 +777,7 @@ mod tests {
         ctrl_left_up: 1,
     };
 
-    /// A plugin is sent the activity contract it asked for, and only that one.
+    /// Only a plugin that declared the activity capability is fed activity.
     #[test]
     fn the_declared_capability_picks_the_activity_message() {
         let message = |capabilities: &[Capability]| activity_message(capabilities, 500, ACTIVITY);
@@ -737,21 +789,7 @@ mod tests {
                 activity,
             }) if activity == ACTIVITY
         ));
-        assert!(matches!(
-            message(&[Capability::KeyboardActivityV1]),
-            Some(HostMessage::KeyboardActivity { elapsed_ms: 500 })
-        ));
-        // The newer capability supersedes the older one rather than joining it:
-        // a plugin that declared both is still sent one message, or it would
-        // play every sound twice.
-        assert!(matches!(
-            message(&[Capability::KeyboardActivityV1, Capability::InputActivityV1,]),
-            Some(HostMessage::InputActivity {
-                elapsed_ms: 500,
-                activity,
-            }) if activity == ACTIVITY
-        ));
-        // A plugin that asked for neither is not an activity plugin at all.
+        // A plugin that did not ask for activity is not an activity plugin at all.
         assert!(message(&[]).is_none());
         assert!(message(&[Capability::ModelUi]).is_none());
     }
