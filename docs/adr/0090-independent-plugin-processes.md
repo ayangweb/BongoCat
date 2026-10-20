@@ -65,12 +65,23 @@ Those hit rectangles are in the window's device pixels, because that is the
 space a native window reports a pointer position in on both backends; a
 rectangle relative to the composed bitmap would sit `origin` away from where the
 panel is drawn and no click would ever resolve.
- A panel's palette and metrics come from the gpui-kit theme the settings window
-uses — the same `secondary`/`border`/`foreground` tones, `Theme::radius` and the
-medium `Button` height and padding. The panel cannot itself be a gpui-kit
-`Button`: it is rasterized into one bitmap for the overlay quad and no GPUI
-element reaches that path, so the shared tokens are what keep the two surfaces
-consistent. Panel text is drawn with a platform face chosen for glyph coverage
+ A panel retains the medium GPUI Kit button height, padding and radius, but
+uses a dedicated translucent dark overlay palette. Adjacent action buttons share
+one horizontal row with the existing six-pixel gap. Play/pause actions use soft
+white with dark text; other actions use a charcoal-gray surface with white text.
+Both have a one-pixel outline and centered labels without inline glyphs; semantic action icons still select
+the palette, without inspecting plugin IDs or translated labels.
+Clock-shaped primary values are horizontally centered in the panel above the
+action row; ordinary text retains its left alignment.
+The panel cannot itself be a gpui-kit `Button`: it is rasterized into one bitmap
+for the overlay quad and no GPUI element reaches that path. Custom HUD drawing
+is intentional here, not a replacement for settings-window components.
+Native adapters convert the live pointer into device coordinates and apply a
+shared rounded hover highlight only when the hovered target changes. Leaving,
+losing input or enabling click-through restores the untouched published texture;
+hover never changes hit targets or sends plugin actions. Both platforms still
+require actual pointer/DPI visual acceptance.
+Panel text is drawn with a platform face chosen for glyph coverage
 of what a plugin may publish, and a character the face lacks is skipped rather
 than rasterized as the font's missing-glyph box.
 The adapter is shared host code, not a per-plugin rule. Host owns

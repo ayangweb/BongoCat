@@ -157,10 +157,6 @@ pub(crate) const DEFAULT_PANEL_FILL: [f32; 4] = [0.078, 0.078, 0.078, 0.82];
 /// theme, so a panel button and a settings-window button share one tone.
 pub(crate) const DEFAULT_BUTTON_FILL: [f32; 4] = [0.271, 0.271, 0.271, 0.95];
 
-/// A button's label color: gpui-kit's `secondary.foreground` for the dark
-/// theme, which is the same near-white [`DEFAULT_TEXT_COLOR`] uses.
-pub(crate) const DEFAULT_BUTTON_TEXT_COLOR: [f32; 4] = [0.98, 0.98, 0.98, 1.0];
-
 /// The default panel border: gpui-kit's `border` token for the dark theme,
 /// which is what separates a card from the surface behind it. The tone is the
 /// token's; the alpha is held back so a one-pixel outline does not read as a

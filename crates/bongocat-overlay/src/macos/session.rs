@@ -546,6 +546,21 @@ impl ProductOverlaySession {
         // read fresh every frame, so releasing the key restores both settings on
         // the next one without either of them being touched.
         let held = options.hold_modifier_pressed(pressed_modifiers);
+        let point = cursor
+            .filter(|_| input_running && (!options.click_through || held))
+            .and_then(|sample| appkit_pointer_position(sample.pointer, mtm))
+            .map(|position| {
+                let scale = self.overlay.panel.backingScaleFactor();
+                (
+                    ((position.x - f64::from(bounds.x)) * scale) as f32,
+                    (((f64::from(bounds.y) + f64::from(bounds.height)) - position.y) * scale)
+                        as f32,
+                )
+            });
+        if self.hud_layer.update_pointer(point) {
+            upload_plugin_layer(&mut self.overlay, self.hud_layer.layer());
+        }
+
         // A right-button resize drag keeps the overlay visible: the hover hide
         // fades the window out and starts passing pointer events through, which
         // would end the drag.

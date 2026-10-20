@@ -108,6 +108,8 @@ impl PluginLayerChange {
 pub struct OverlayPluginLayer {
     layer: Option<HudLayer>,
     targets: OverlayPluginTargets,
+    hovered: Option<HudTarget>,
+    base_pixels: Vec<u8>,
 }
 
 impl OverlayPluginLayer {
@@ -143,8 +145,50 @@ impl OverlayPluginLayer {
             targets_replaced: targets != self.targets,
         };
         self.targets = targets;
+        self.base_pixels = layer.pixels.clone();
+        self.hovered = None;
         self.layer = Some(layer);
         change
+    }
+
+    /// Repaint only on hover transitions, always from the unmodified texture.
+    pub(crate) fn update_pointer(&mut self, point: Option<(f32, f32)>) -> bool {
+        let Some(layer) = &mut self.layer else {
+            return false;
+        };
+        let hovered = point.and_then(|(x, y)| layer.target_at(x, y)).cloned();
+        if hovered == self.hovered {
+            return false;
+        }
+        layer.pixels.clone_from(&self.base_pixels);
+        if let Some(target) = &hovered {
+            let x0 = (target.rect.x - layer.origin_x).max(0.0) as u32;
+            let y0 = (target.rect.y - layer.origin_y).max(0.0) as u32;
+            let x1 =
+                ((target.rect.right() - layer.origin_x).ceil().max(0.0) as u32).min(layer.width);
+            let y1 =
+                ((target.rect.bottom() - layer.origin_y).ceil().max(0.0) as u32).min(layer.height);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let px = x as f32 + layer.origin_x + 0.5;
+                    let py = y as f32 + layer.origin_y + 0.5;
+                    let radius = (bongocat_plugin_hud::CORNER_RADIUS * target.rect.height
+                        / bongocat_plugin_hud::BUTTON_HEIGHT)
+                        .min(target.rect.width / 2.0);
+                    let cx = px.clamp(target.rect.x + radius, target.rect.right() - radius);
+                    let cy = py.clamp(target.rect.y + radius, target.rect.bottom() - radius);
+                    if target.rect.contains(px, py) && (px - cx).hypot(py - cy) <= radius {
+                        let index = ((y * layer.width + x) * 4) as usize;
+                        let alpha = layer.pixels[index + 3];
+                        for channel in &mut layer.pixels[index..index + 3] {
+                            *channel = (*channel).saturating_add(12).min(alpha);
+                        }
+                    }
+                }
+            }
+        }
+        self.hovered = hovered;
+        true
     }
 
     /// The layer to draw, or `None` when no plugin draws anything.
@@ -164,6 +208,8 @@ impl OverlayPluginLayer {
             targets_replaced: !self.targets.is_empty(),
         };
         self.layer = None;
+        self.base_pixels.clear();
+        self.hovered = None;
         self.targets = OverlayPluginTargets::default();
         change
     }
@@ -205,6 +251,21 @@ mod tests {
                 rect,
             }],
         }
+    }
+
+    #[test]
+    fn hover_is_reversible_and_does_not_accumulate_or_change_targets() {
+        let mut layer = layer_with(HudRect::new(10.0, 10.0, 80.0, 32.0));
+        layer.pixels = [20, 30, 40, 255].repeat(200 * 100);
+        let original = layer.clone();
+        let mut state = OverlayPluginLayer::default();
+        state.refresh(Some(layer), 350, 350);
+        assert!(state.update_pointer(Some((30.0, 25.0))));
+        assert_ne!(state.layer().unwrap().pixels, original.pixels);
+        assert_eq!(state.layer().unwrap().targets, original.targets);
+        assert!(!state.update_pointer(Some((31.0, 25.0))));
+        assert!(state.update_pointer(None));
+        assert_eq!(state.layer().unwrap().pixels, original.pixels);
     }
 
     #[test]

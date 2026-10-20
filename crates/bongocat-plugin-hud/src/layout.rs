@@ -1,6 +1,6 @@
 //! Laying a plugin's view tree out.
 //!
-//! The layout is a small, deterministic column model: a panel stacks its nodes
+//! The layout is a small, deterministic row/column model: a panel stacks its content and groups adjacent buttons horizontally
 //! with a fixed gap and pads its content, text measures from the font, and a
 //! button is sized from its label. It is deliberately not a flexbox — a plugin's
 //! panel is a label, a count and a couple of buttons — and every rule here is
@@ -20,17 +20,18 @@ pub struct PlacedNode<'a> {
 
 /// The size a view's content occupies, in logical pixels.
 pub fn measure_view(view: &PluginView, font: &HudFont) -> (f32, f32) {
-    let mut width: f32 = 0.0;
-    let mut height: f32 = 0.0;
-    for (index, node) in view.nodes.iter().enumerate() {
-        let (node_width, node_height) = measure_node(node, font);
-        if index > 0 {
-            height += PANEL_GAP;
-        }
-        width = width.max(node_width);
-        height += node_height;
-    }
-    (width, height)
+    let panel = HudRect::new(0.0, 0.0, f32::MAX, f32::MAX);
+    let nodes = placed_nodes(view, panel, font);
+    (
+        nodes
+            .iter()
+            .map(|n| n.rect.right() - PANEL_PADDING)
+            .fold(0.0, f32::max),
+        nodes
+            .iter()
+            .map(|n| n.rect.bottom() - PANEL_PADDING)
+            .fold(0.0, f32::max),
+    )
 }
 
 /// The size one node occupies, in logical pixels.
@@ -154,19 +155,13 @@ pub fn collect_interactive(
     font: &HudFont,
     interactive: &mut Vec<InteractiveNode>,
 ) {
-    let mut y = panel.y + PANEL_PADDING;
-    let x = panel.x + PANEL_PADDING;
-    let available = (panel.width - PANEL_PADDING * 2.0).max(0.0);
-    for node in &view.nodes {
-        let (node_width, node_height) = measure_node(node, font);
-        let rect = HudRect::new(x, y, node_width.min(available).max(0.0), node_height);
-        if let Some(id) = interactive_id(node) {
+    for placed in placed_nodes(view, panel, font) {
+        if let Some(id) = interactive_id(placed.node) {
             interactive.push(InteractiveNode {
                 id: id.to_owned(),
-                rect,
+                rect: placed.rect,
             });
         }
-        y += node_height + PANEL_GAP;
     }
 }
 
@@ -200,13 +195,28 @@ pub(crate) fn placed_nodes<'a>(
     let mut y = panel.y + PANEL_PADDING;
     let x = panel.x + PANEL_PADDING;
     let available = (panel.width - PANEL_PADDING * 2.0).max(0.0);
-    for node in &view.nodes {
-        let (node_width, node_height) = measure_node(node, font);
-        placed.push(PlacedNode {
-            node,
-            rect: HudRect::new(x, y, node_width.min(available).max(0.0), node_height),
-        });
-        y += node_height + PANEL_GAP;
+    let mut index = 0;
+    while index < view.nodes.len() {
+        let start = index;
+        let buttons = matches!(view.nodes[index], UiNode::Button { .. });
+        index += 1;
+        if buttons {
+            while index < view.nodes.len() && matches!(view.nodes[index], UiNode::Button { .. }) {
+                index += 1;
+            }
+        }
+        let mut row_x = x;
+        let mut row_height: f32 = 0.0;
+        for node in &view.nodes[start..index] {
+            let (width, height) = measure_node(node, font);
+            placed.push(PlacedNode {
+                node,
+                rect: HudRect::new(row_x, y, width.min(available).max(0.0), height),
+            });
+            row_x += width + PANEL_GAP;
+            row_height = row_height.max(height);
+        }
+        y += row_height + PANEL_GAP;
     }
     placed
 }
@@ -219,6 +229,35 @@ mod tests {
 
     fn font() -> HudFont {
         crate::load_platform_font().expect("the platform ships a usable text face")
+    }
+
+    #[test]
+    fn adjacent_buttons_share_a_row_and_hit_test_matches_paint() {
+        let font = font();
+        let view = PluginView {
+            anchor: Anchor::TopRight,
+            nodes: vec![
+                UiNode::Text {
+                    text: "25:00".into(),
+                },
+                UiNode::button("toggle", "Start", ActionIcon::Play),
+                UiNode::button("restart", "Restart", ActionIcon::Restart),
+            ],
+        };
+        let layout = crate::layout(&view, HudRect::new(0.0, 0.0, 800.0, 600.0), &font);
+        let a = &layout.interactive[0];
+        let b = &layout.interactive[1];
+        assert_eq!(a.rect.y, b.rect.y);
+        assert_eq!(b.rect.x - a.rect.right(), PANEL_GAP);
+        assert!(b.rect.right() <= layout.panel.right() - PANEL_PADDING + 0.01);
+        for target in &layout.interactive {
+            assert_eq!(
+                crate::hit_test(&layout, target.rect.x + 15.0, target.rect.y + 15.0)
+                    .unwrap()
+                    .id,
+                target.id
+            );
+        }
     }
 
     #[test]

@@ -8,9 +8,8 @@
 
 use crate::layout::{placed_nodes, text_size};
 use crate::{
-    BUTTON_PADDING, CORNER_RADIUS, DEFAULT_BUTTON_FILL, DEFAULT_BUTTON_TEXT_COLOR,
-    DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL, DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE,
-    PlacedNode,
+    BUTTON_PADDING, CORNER_RADIUS, DEFAULT_BUTTON_FILL, DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL,
+    DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE, PlacedNode,
 };
 use bongocat_plugin_sdk::{PluginView, StatusIcon, UiNode};
 
@@ -180,17 +179,49 @@ impl HudRenderer {
             }
             UiNode::Text { text } => {
                 let size = text_size(text) * scale;
-                canvas.draw_text(&self.font, text, rect.x, rect.y, size, DEFAULT_TEXT_COLOR);
+                let x = if text_size(text) == crate::VALUE_SIZE {
+                    (offset.width * scale - self.font.measure_text(text, size)) / 2.0
+                } else {
+                    rect.x
+                };
+                canvas.draw_text(&self.font, text, x, rect.y, size, DEFAULT_TEXT_COLOR);
             }
-            UiNode::Button { label, .. } => {
-                canvas.fill_rounded_rect(rect, CORNER_RADIUS * scale, DEFAULT_BUTTON_FILL);
+            UiNode::Button {
+                label,
+                icon,
+                loading,
+                ..
+            } => {
+                let primary = matches!(
+                    icon,
+                    bongocat_plugin_sdk::ActionIcon::Play | bongocat_plugin_sdk::ActionIcon::Pause
+                );
+                let fill = if primary {
+                    [0.97, 0.975, 0.98, 0.98]
+                } else {
+                    [0.19, 0.195, 0.20, 0.98]
+                };
+                let border = if primary {
+                    [1.0, 1.0, 1.0, 0.65]
+                } else {
+                    [0.38, 0.39, 0.40, 0.65]
+                };
+                canvas.fill_rounded_rect(rect, CORNER_RADIUS * scale, fill);
+                canvas.stroke_rounded_rect(rect, CORNER_RADIUS * scale, border, scale);
+                let color = if *loading {
+                    [0.65, 0.7, 0.72, 1.0]
+                } else if primary {
+                    [0.13, 0.15, 0.18, 1.0]
+                } else {
+                    [1.0, 1.0, 1.0, 1.0]
+                };
                 canvas.draw_text(
                     &self.font,
                     label,
-                    rect.x + BUTTON_PADDING * scale,
-                    rect.y + (rect.height - self.font.line_height(LABEL_SIZE * scale)) / 2.0,
+                    rect.x + (rect.width - self.font.measure_text(label, LABEL_SIZE * scale)) / 2.0,
+                    centered_text_y(&self.font, label, LABEL_SIZE * scale, rect),
                     LABEL_SIZE * scale,
-                    DEFAULT_BUTTON_TEXT_COLOR,
+                    color,
                 );
             }
             UiNode::Toggle { label, value, .. } => {

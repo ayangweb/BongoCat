@@ -740,6 +740,20 @@ impl ProductOverlaySession {
         // read fresh every frame, so releasing the key restores both settings on
         // the next one without either of them being touched.
         let held = options.hold_modifier_pressed(pressed_modifiers);
+        let point = cursor
+            .filter(|_| input_running && (!options.click_through || held))
+            .map(|sample| {
+                (
+                    (sample.pointer.x - f64::from(bounds.x)) as f32,
+                    (sample.pointer.y - f64::from(bounds.y)) as f32,
+                )
+            });
+        if self.hud_layer.update_pointer(point) {
+            // SAFETY: the renderer and immediate context stay on their owner thread.
+            unsafe { upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer()) }
+                .map_err(windows_error("upload the hovered plugin layer"))?;
+        }
+
         // A right-button resize drag keeps the overlay visible: the hover hide
         // fades the window out and starts passing pointer events through, which
         // would end the drag the window itself is running.
