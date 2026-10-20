@@ -8,7 +8,7 @@
 
 use crate::{
     BUTTON_HEIGHT, BUTTON_PADDING, HudFont, HudRect, InteractiveNode, LABEL_SIZE, PANEL_GAP,
-    PANEL_PADDING, VALUE_SIZE,
+    PANEL_PADDING, STATUS_PANEL_PADDING, VALUE_SIZE,
 };
 use bongocat_plugin_sdk::{Anchor, PluginView, UiNode};
 
@@ -22,14 +22,15 @@ pub struct PlacedNode<'a> {
 pub fn measure_view(view: &PluginView, font: &HudFont) -> (f32, f32) {
     let panel = HudRect::new(0.0, 0.0, f32::MAX, f32::MAX);
     let nodes = placed_nodes(view, panel, font);
+    let padding = panel_padding(view);
     (
         nodes
             .iter()
-            .map(|n| n.rect.right() - PANEL_PADDING)
+            .map(|n| n.rect.right() - padding)
             .fold(0.0, f32::max),
         nodes
             .iter()
-            .map(|n| n.rect.bottom() - PANEL_PADDING)
+            .map(|n| n.rect.bottom() - padding)
             .fold(0.0, f32::max),
     )
 }
@@ -38,8 +39,8 @@ pub fn measure_view(view: &PluginView, font: &HudFont) -> (f32, f32) {
 pub fn measure_node(node: &UiNode, font: &HudFont) -> (f32, f32) {
     match node {
         UiNode::IconText { text, .. } => (
-            24.0 + PANEL_GAP + font.measure_text(text, LABEL_SIZE),
-            24.0_f32.max(font.line_height(LABEL_SIZE)),
+            LABEL_SIZE + PANEL_GAP + font.measure_text(text, LABEL_SIZE),
+            LABEL_SIZE.max(font.line_height(LABEL_SIZE)),
         ),
         UiNode::Text { text } => {
             let size = text_size(text);
@@ -123,10 +124,14 @@ fn looks_like_time(text: &str) -> bool {
         && seconds.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-/// The panel rectangle for an anchor inside a viewport.
-pub fn anchored_rect(anchor: Anchor, viewport: HudRect, content: (f32, f32)) -> HudRect {
-    let width = content.0 + PANEL_PADDING * 2.0;
-    let height = content.1 + PANEL_PADDING * 2.0;
+pub(crate) fn anchored_rect_with_padding(
+    anchor: Anchor,
+    viewport: HudRect,
+    content: (f32, f32),
+    padding: f32,
+) -> HudRect {
+    let width = content.0 + padding * 2.0;
+    let height = content.1 + padding * 2.0;
     let margin = PANEL_GAP;
     let (x, y) = match anchor {
         Anchor::TopLeft => (viewport.x + margin, viewport.y + margin),
@@ -138,6 +143,15 @@ pub fn anchored_rect(anchor: Anchor, viewport: HudRect, content: (f32, f32)) -> 
         ),
     };
     HudRect::new(x, y, width, height)
+}
+
+/// A single status stays compact; stacked plugin controls keep the panel padding.
+pub(crate) fn panel_padding(view: &PluginView) -> f32 {
+    if matches!(view.nodes.as_slice(), [UiNode::IconText { .. }]) {
+        STATUS_PANEL_PADDING
+    } else {
+        PANEL_PADDING
+    }
 }
 
 /// Lay a view out and return the panel rectangle and its interactive nodes.
@@ -192,9 +206,10 @@ pub(crate) fn placed_nodes<'a>(
     font: &HudFont,
 ) -> Vec<PlacedNode<'a>> {
     let mut placed = Vec::with_capacity(view.nodes.len());
-    let mut y = panel.y + PANEL_PADDING;
-    let x = panel.x + PANEL_PADDING;
-    let available = (panel.width - PANEL_PADDING * 2.0).max(0.0);
+    let padding = panel_padding(view);
+    let mut y = panel.y + padding;
+    let x = panel.x + padding;
+    let available = (panel.width - padding * 2.0).max(0.0);
     let mut index = 0;
     while index < view.nodes.len() {
         let start = index;
@@ -229,6 +244,43 @@ mod tests {
 
     fn font() -> HudFont {
         crate::load_platform_font().expect("the platform ships a usable text face")
+    }
+
+    #[test]
+    fn status_icon_uses_the_label_size_without_an_oversized_row() {
+        let font = font();
+        let node = UiNode::IconText {
+            icon: bongocat_plugin_sdk::StatusIcon::Badge("EN".into()),
+            text: "Input Source".into(),
+        };
+        let (width, height) = measure_node(&node, &font);
+        assert_eq!(
+            width,
+            LABEL_SIZE + PANEL_GAP + font.measure_text("Input Source", LABEL_SIZE)
+        );
+        assert_eq!(height, LABEL_SIZE.max(font.line_height(LABEL_SIZE)));
+    }
+
+    #[test]
+    fn a_single_status_uses_compact_panel_padding() {
+        let font = font();
+        let view = PluginView {
+            anchor: Anchor::BottomRight,
+            nodes: vec![UiNode::IconText {
+                icon: bongocat_plugin_sdk::StatusIcon::Badge("EN".into()),
+                text: "Input Source".into(),
+            }],
+        };
+        let layout = crate::layout(&view, HudRect::new(0.0, 0.0, 800.0, 600.0), &font);
+        let (content_width, content_height) = measure_view(&view, &font);
+        assert_eq!(
+            layout.panel.width,
+            content_width + STATUS_PANEL_PADDING * 2.0
+        );
+        assert_eq!(
+            layout.panel.height,
+            content_height + STATUS_PANEL_PADDING * 2.0
+        );
     }
 
     #[test]
@@ -277,10 +329,14 @@ mod tests {
             content.0 + PANEL_PADDING * 2.0,
             content.1 + PANEL_PADDING * 2.0,
         );
-        let top_left = anchored_rect(Anchor::TopLeft, viewport, content);
-        let top_right = anchored_rect(Anchor::TopRight, viewport, content);
-        let bottom_left = anchored_rect(Anchor::BottomLeft, viewport, content);
-        let bottom_right = anchored_rect(Anchor::BottomRight, viewport, content);
+        let top_left =
+            anchored_rect_with_padding(Anchor::TopLeft, viewport, content, PANEL_PADDING);
+        let top_right =
+            anchored_rect_with_padding(Anchor::TopRight, viewport, content, PANEL_PADDING);
+        let bottom_left =
+            anchored_rect_with_padding(Anchor::BottomLeft, viewport, content, PANEL_PADDING);
+        let bottom_right =
+            anchored_rect_with_padding(Anchor::BottomRight, viewport, content, PANEL_PADDING);
         assert_eq!(top_left.x, viewport.x + PANEL_GAP);
         assert_eq!(top_right.right(), viewport.right() - PANEL_GAP);
         assert_eq!(bottom_left.bottom(), viewport.bottom() - PANEL_GAP);

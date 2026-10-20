@@ -35,8 +35,8 @@ fn icon_text_rasterizes_at_desktop_scales_without_an_interaction_target() {
             );
             assert!(bitmap.origin.right() <= 800.0 && bitmap.origin.bottom() <= 600.0);
             if matches!(icon, StatusIcon::Rgba(_)) {
-                let x = (crate::PANEL_PADDING * scale + 2.0) as usize;
-                let y = (crate::PANEL_PADDING * scale + 2.0) as usize;
+                let x = ((crate::STATUS_PANEL_PADDING + crate::LABEL_SIZE / 2.0) * scale) as usize;
+                let y = ((crate::STATUS_PANEL_PADDING + crate::LABEL_SIZE / 2.0) * scale) as usize;
                 let pixel = &bitmap.pixels[(y * bitmap.width as usize + x) * 4..][..4];
                 if icon.is_template() {
                     assert!(

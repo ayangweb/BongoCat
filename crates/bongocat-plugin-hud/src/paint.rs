@@ -142,7 +142,7 @@ impl HudRenderer {
         let rect = bitmap_rect(placed.rect, offset, scale);
         match placed.node {
             UiNode::IconText { icon, text } => {
-                let side = 24.0 * scale;
+                let side = LABEL_SIZE * scale;
                 let icon_rect = centered_icon_rect(rect, side);
                 match icon {
                     StatusIcon::Rgba(pixels) if icon.validate() => {
@@ -161,7 +161,7 @@ impl HudRenderer {
                             &self.font,
                             badge,
                             rect.x + (side - width) / 2.0,
-                            rect.y + (side - self.font.line_height(size)) / 2.0,
+                            centered_text_y(&self.font, badge, size, icon_rect),
                             size,
                             DEFAULT_TEXT_COLOR,
                         );
@@ -609,15 +609,15 @@ mod tests {
     fn icon_is_centered_in_a_taller_text_row() {
         let row = HudRect::new(0.0, 0.0, 120.0, 32.0);
         assert_eq!(
-            centered_icon_rect(row, 24.0),
-            HudRect::new(0.0, 4.0, 24.0, 24.0)
+            centered_icon_rect(row, LABEL_SIZE),
+            HudRect::new(0.0, 8.5, 15.0, 15.0)
         );
     }
 
     #[test]
     fn icon_and_chinese_label_share_the_same_visible_vertical_center() {
         let font = crate::load_platform_font().expect("platform font");
-        let row = HudRect::new(0.0, 0.0, 180.0, 24.0);
+        let row = HudRect::new(0.0, 0.0, 180.0, LABEL_SIZE);
         let label = "微信输入法";
         let size = LABEL_SIZE;
         let y = centered_text_y(&font, label, size, row);
@@ -630,7 +630,7 @@ mod tests {
             ink_bottom = ink_bottom.max(y + ascent - metrics.ymin as f32);
         }
         let text_center = (ink_top + ink_bottom) / 2.0;
-        let icon = centered_icon_rect(row, 24.0);
+        let icon = centered_icon_rect(row, LABEL_SIZE);
         let icon_center = icon.y + icon.height / 2.0;
         assert!((text_center - icon_center).abs() < 0.01);
     }

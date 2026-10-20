@@ -173,6 +173,11 @@ pub const CORNER_RADIUS: f32 = 6.0;
 
 /// The padding inside a panel, in logical pixels.
 pub const PANEL_PADDING: f32 = 10.0;
+/// The padding around a single inline status, in logical pixels.
+///
+/// A status is one icon and one label, not a card of stacked controls, so it
+/// keeps the label prominent without carrying a full panel's breathing room.
+pub(crate) const STATUS_PANEL_PADDING: f32 = 6.0;
 /// The gap between a panel's rows, in logical pixels.
 pub const PANEL_GAP: f32 = 6.0;
 /// The text size a plugin's labels are drawn at, in logical pixels.
@@ -215,7 +220,12 @@ pub fn layout(view: &PluginView, viewport: HudRect, font: &HudFont) -> HudLayout
         return HudLayout::default();
     }
     let size = layout::measure_view(view, font);
-    let panel = layout::anchored_rect(view.anchor, viewport, size);
+    let panel = layout::anchored_rect_with_padding(
+        view.anchor,
+        viewport,
+        size,
+        layout::panel_padding(view),
+    );
     let mut interactive = Vec::new();
     layout::collect_interactive(view, panel, font, &mut interactive);
     HudLayout { panel, interactive }
