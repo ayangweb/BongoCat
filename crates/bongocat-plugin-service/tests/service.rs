@@ -93,7 +93,7 @@ fn a_plugin_without_chinese_copy_reads_english_on_its_card_and_controls() {
 #[test]
 fn a_partial_translation_is_refused_at_install() {
     for localizations in [
-        serde_json::json!({"zh-CN": {"name": "番茄钟"}}),
+        serde_json::json!({"zh-CN": {"name": "番茄时钟"}}),
         serde_json::json!({"zh-CN": {"name": " ", "description": "专注计时器"}}),
     ] {
         let Some(bytes) = plugin_package_with_manifest(|manifest| {

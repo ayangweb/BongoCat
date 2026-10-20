@@ -877,7 +877,7 @@ mod tests {
                 (
                     "zh-CN".to_owned(),
                     PluginCopy {
-                        name: "番茄钟".into(),
+                        name: "番茄时钟".into(),
                         description: "专注计时器".into(),
                     },
                 ),
@@ -898,7 +898,7 @@ mod tests {
         for locale in ["zh-CN", "zh_cn", "ZH-cn"] {
             assert_eq!(plugin_locale(locale), "zh-CN");
             assert_eq!(metadata.view_locale(locale), "zh-CN");
-            assert_eq!(metadata.localized_copy(locale), ("番茄钟", "专注计时器"));
+            assert_eq!(metadata.localized_copy(locale), ("番茄时钟", "专注计时器"));
         }
         for locale in [
             "en-US",
@@ -928,7 +928,7 @@ mod tests {
     fn an_incomplete_translation_falls_back_for_the_entire_plugin() {
         for copy in [
             PluginCopy {
-                name: "番茄钟".into(),
+                name: "番茄时钟".into(),
                 description: " ".into(),
             },
             PluginCopy {
@@ -954,10 +954,10 @@ mod tests {
     #[test]
     fn a_partial_locale_entry_is_not_a_valid_manifest() {
         let mut manifest = serde_json::to_value(localized_metadata()).unwrap();
-        manifest["localizations"]["zh-CN"] = serde_json::json!({ "name": "番茄钟" });
+        manifest["localizations"]["zh-CN"] = serde_json::json!({ "name": "番茄时钟" });
         assert!(serde_json::from_value::<PluginMetadata>(manifest.clone()).is_err());
         manifest["localizations"]["zh-CN"] = serde_json::json!({
-            "name": "番茄钟",
+            "name": "番茄时钟",
             "description": "专注计时器",
             "extra": "not part of the contract",
         });
@@ -982,7 +982,7 @@ mod tests {
         let bytes = serde_json::to_vec(&metadata).unwrap();
         let decoded: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(decoded["name"], "Pomodoro");
-        assert_eq!(decoded["localizations"]["zh-CN"]["name"], "番茄钟");
+        assert_eq!(decoded["localizations"]["zh-CN"]["name"], "番茄时钟");
         assert_eq!(
             serde_json::from_slice::<PluginMetadata>(&bytes).unwrap(),
             metadata

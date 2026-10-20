@@ -1442,7 +1442,7 @@ mod tests {
         let state = host.snapshot();
         let card = &state.cards[0];
         assert_eq!(card.copy("en-US").0, "Pomodoro");
-        assert_eq!(card.copy("zh-CN").0, "番茄钟");
+        assert_eq!(card.copy("zh-CN").0, "番茄时钟");
         assert_eq!(card.copy("zh-TW").0, "Pomodoro");
         service.shutdown().unwrap();
     }
@@ -1479,7 +1479,7 @@ mod tests {
             host.refresh();
             let state = host.snapshot();
             let card = &state.cards[0];
-            assert_eq!(card.copy("zh-CN").0, "番茄钟");
+            assert_eq!(card.copy("zh-CN").0, "番茄时钟");
             assert_eq!(card.copy("en-US").0, "Pomodoro");
             let labels = card
                 .actions
