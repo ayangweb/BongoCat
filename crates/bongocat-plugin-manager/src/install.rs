@@ -454,6 +454,19 @@ mod tests {
         sha256_of(bytes)
     }
 
+    /// The archive name of the executable, spelled the way the installer looks
+    /// for it on this host.
+    ///
+    /// `metadata.entry` names the plugin, not its file: the loader resolves
+    /// `plugin.exe` on Windows and `plugin` elsewhere. A fixture that wrote the
+    /// bare entry produced a package whose executable the installer could not
+    /// find as soon as the suite ran on Windows.
+    fn entry_name() -> String {
+        crate::loader::entry_path(Path::new(""), "plugin")
+            .to_string_lossy()
+            .into_owned()
+    }
+
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
@@ -476,7 +489,7 @@ mod tests {
         };
         archive(&[
             (MANIFEST_FILE, &serde_json::to_vec(&manifest).unwrap()),
-            ("plugin", b"binary"),
+            (entry_name().as_str(), b"binary"),
         ])
     }
 
@@ -486,7 +499,7 @@ mod tests {
         let bytes = package("com.bongocat.pomodoro", "1.0.0");
         let installed = install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
         assert_eq!(installed.version, "1.0.0");
-        assert!(installed.root.join("plugin").is_file());
+        assert!(installed.root.join(entry_name()).is_file());
         assert!(installed.root.join(MANIFEST_FILE).is_file());
         assert_eq!(
             install_package(directory.path(), &"0".repeat(64), &bytes)
@@ -515,7 +528,8 @@ mod tests {
             directory
                 .path()
                 .join(PACKAGES_DIRECTORY)
-                .join("com.bongocat.pomodoro/1.0.0/plugin")
+                .join("com.bongocat.pomodoro/1.0.0")
+                .join(entry_name())
                 .is_file()
         );
     }
@@ -616,7 +630,7 @@ mod tests {
         let manifest = serde_json::to_vec(&PluginManifest { metadata: local }).unwrap();
         let bytes = archive(&[
             (MANIFEST_FILE, &manifest),
-            ("plugin", b"binary"),
+            (entry_name().as_str(), b"binary"),
             ("resources/icon.png", b"png"),
         ]);
         let installed = install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
@@ -634,7 +648,7 @@ mod tests {
         .unwrap();
         let bytes = archive(&[
             (MANIFEST_FILE, &manifest),
-            ("plugin", b"binary"),
+            (entry_name().as_str(), b"binary"),
             ("resources/icon.png", b"png"),
         ]);
         install_package(directory.path(), &digest(&bytes), &bytes).unwrap();
@@ -655,7 +669,7 @@ mod tests {
         manifest["metadata"]["icon_fallback"] =
             serde_json::json!({ "type": "emoji", "value": "🍅" });
         let bytes = serde_json::to_vec(&manifest).unwrap();
-        let archive = archive(&[(MANIFEST_FILE, &bytes), ("plugin", b"binary")]);
+        let archive = archive(&[(MANIFEST_FILE, &bytes), (entry_name().as_str(), b"binary")]);
         assert!(matches!(
             inspect_package(&archive),
             Err(PluginManagerError::Manifest(_))
@@ -703,17 +717,19 @@ mod tests {
             archive(&[(MANIFEST_FILE, &manifest)]),
             archive(&[
                 (MANIFEST_FILE, &manifest),
-                ("plugin", b"binary"),
-                ("PLUGIN", b"other"),
+                (entry_name().as_str(), b"binary"),
+                // The same entry in another case: the installer compares names
+                // case-insensitively, so this is a duplicate, not a second file.
+                (entry_name().to_uppercase().as_str(), b"other"),
             ]),
             archive(&[
                 (MANIFEST_FILE, &manifest),
-                ("plugin", b"binary"),
+                (entry_name().as_str(), b"binary"),
                 ("..\\outside", b"other"),
             ]),
             archive(&[
                 (MANIFEST_FILE, &manifest),
-                ("plugin", b"binary"),
+                (entry_name().as_str(), b"binary"),
                 ("assets/file", b"one"),
                 ("assets//file", b"two"),
             ]),
