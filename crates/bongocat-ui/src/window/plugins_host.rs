@@ -688,17 +688,6 @@ impl PluginHost {
         }
     }
 
-    /// Scan the package store again, for the page's retry affordance.
-    pub(crate) fn rescan(&self) {
-        *self
-            .discovery_failure_reported
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        self.apply_command(PluginInFlight::Refresh, PluginFailure::Refresh, |client| {
-            client.refresh_blocking()
-        });
-    }
-
     pub(crate) fn install_available(&self, id: &str) -> bool {
         let update = self
             .snapshot()
@@ -1102,22 +1091,6 @@ mod tests {
             })
         );
         assert!(!host.snapshot().loading);
-    }
-
-    #[test]
-    fn an_explicit_refresh_failure_is_not_repeated_by_polling() {
-        let host = PluginHost::default();
-        host.begin(PluginInFlight::Refresh);
-        host.rescan();
-        assert_eq!(
-            host.take_failure(),
-            Some(PluginFailureReport {
-                failure: PluginFailure::Refresh,
-                code: PluginCommandError::ServiceUnavailable,
-            })
-        );
-        host.refresh();
-        assert!(host.take_failure().is_none());
     }
 
     #[test]
@@ -1905,6 +1878,7 @@ mod tests {
                         .try_find("plugin-update-badge-com.example.card")
                         .is_some()
                 );
+                assert!(window.try_find("plugin-refresh").is_none());
                 assert!(window.try_find("plugin-update-all").is_some());
             });
         }
@@ -2015,8 +1989,8 @@ mod tests {
         let (_, visual) = card_page(cx, vec![up_to_date, catalog_only], 800.);
         visual.update(|window, _| {
             assert!(
-                window.try_find("plugin-refresh").is_some(),
-                "the header keeps the button that still does something"
+                window.try_find("plugin-refresh").is_none(),
+                "the center does not expose a manual refresh control"
             );
             assert!(
                 window.try_find("plugin-update-all").is_none(),
@@ -2035,6 +2009,7 @@ mod tests {
         stale.id = "com.example.stale".into();
         let (_, visual) = card_page(cx, vec![up_to_date, stale], 800.);
         visual.update(|window, _| {
+            assert!(window.try_find("plugin-refresh").is_none());
             assert!(window.try_find("plugin-update-all").is_some());
         });
     }

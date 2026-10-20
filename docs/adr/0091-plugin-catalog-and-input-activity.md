@@ -8,7 +8,7 @@ Date: 2026-10-15
 Discovery is not installation. Development discovers ZIP manifests in the fixed
 workspace `target/plugins` directory; Production discovers the signed GitHub
 release catalog. Both expose available and installed versions in the same center,
-with explicit install/update/uninstall controls. Startup and retry refresh the
+with explicit install/update/uninstall controls. Startup refreshes the
 catalog without reinstalling removed packages. Catalog IO runs separately from
 the plugin tick/action owner. Production requires a signed catalog and a package
 digest bound to that catalog; there is no unsigned or local-file fallback.

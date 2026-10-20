@@ -32,26 +32,7 @@ pub(super) fn content(
     let state: PluginHubState = view.plugin_host.snapshot();
     let locale = language.catalog_locale();
     let handle = cx.entity();
-    let refresh_view = handle.clone();
     let update_view = handle.clone();
-    let refresh = Button::new("plugin-refresh")
-        .text()
-        .label(bongocat_i18n::text(
-            locale,
-            if state.loading || state.refreshing() {
-                "plugins.refreshing"
-            } else {
-                "plugins.refresh"
-            },
-        ))
-        .disabled(
-            state.loading || state.refreshing() || state.updating_all() || state.package_busy(),
-        )
-        .on_click(move |_, _, cx| {
-            refresh_view.update(cx, |view, cx| {
-                view.refresh_plugin_catalog(cx);
-            });
-        });
     let update_all = Button::new("plugin-update-all")
         .primary()
         .label(bongocat_i18n::text(locale, "plugins.update_all"))
@@ -70,11 +51,13 @@ pub(super) fn content(
         .items_center()
         .justify_end()
         .gap_3()
-        .child(refresh)
         .children(state.has_updates().then_some(update_all));
-    let mut column = div().flex().flex_col().gap_4().w_full().child(tools);
-    // A refresh with cards already on screen only spins the button that started
-    // it: what the user is reading is not replaced by a status line.
+    let mut column = div()
+        .flex()
+        .flex_col()
+        .gap_4()
+        .w_full()
+        .children(state.has_updates().then_some(tools));
     if state.loading && state.cards.is_empty() {
         column = column.child(
             div()
@@ -490,16 +473,6 @@ impl SettingsView {
             },
             cx,
         );
-        cx.notify();
-    }
-
-    pub(super) fn refresh_plugin_catalog(&mut self, cx: &mut Context<Self>) {
-        let state = self.plugin_host.snapshot();
-        if state.loading || state.refreshing() || state.package_busy() || state.updating_all() {
-            return;
-        }
-        self.plugin_host.begin(PluginInFlight::Refresh);
-        self.update_plugin_host(|host| host.rescan(), cx);
         cx.notify();
     }
 

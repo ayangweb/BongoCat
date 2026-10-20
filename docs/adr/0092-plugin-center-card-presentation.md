@@ -37,7 +37,7 @@ The per-action placeholder the key-sounds plugin published ("Playing /
 正在播放", a second text node beside the preview control) is removed rather than
 kept next to the button: the button the user pressed is the thing that shows the
 action is still running. The page's own first-load state stays a page state — the
-refresh control spins and the empty catalog says it is discovering — because that
+empty catalog says it is discovering — because that
 is what ADR-0054's real loading state means, not an action in flight. The default
 hub state is now `loading()`, so a window that has read nothing yet draws as
 discovering instead of as an empty catalog.
@@ -185,8 +185,8 @@ and reopening with a fresh entity, runtime continuity and normal shutdown.
 
 ## Update affordances
 
-The page header carries only the two catalog actions: a borderless text
-`Refresh` control and a primary `Update all` control. The subtitle sentence and
+The page header carries only a primary `Update all` control; there is no manual
+refresh control or empty toolbar when no updates are available. The subtitle sentence and
 its container are removed rather than kept beside the actions. An installed card
 whose catalog offers a newer version carries a compact outlined `Tag` beside its
 installed version; the update itself remains the existing refresh-icon button.

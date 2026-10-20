@@ -75,8 +75,6 @@ impl SettingsView {
         for key in [
             "navigation.plugins.empty",
             "plugins.loading",
-            "plugins.refresh",
-            "plugins.refreshing",
             "plugins.update_all",
             "plugins.update_all_success",
             "plugins.update_available",
