@@ -7,10 +7,10 @@
 //! pure, so a layout can be asserted without a GPU or a window.
 
 use crate::{
-    BUTTON_HEIGHT, BUTTON_PADDING, HudFont, HudRect, InteractiveNode, LABEL_SIZE, PANEL_GAP,
-    PANEL_PADDING, STATUS_PANEL_PADDING, VALUE_SIZE,
+    BADGE_PADDING, BUTTON_HEIGHT, BUTTON_PADDING, HudFont, HudRect, InteractiveNode, LABEL_SIZE,
+    PANEL_GAP, PANEL_PADDING, STATUS_PANEL_PADDING, VALUE_SIZE,
 };
-use bongocat_plugin_sdk::{Anchor, PluginView, UiNode};
+use bongocat_plugin_sdk::{Anchor, PluginView, StatusIcon, UiNode};
 
 /// One node of a laid-out view: its rectangle and the node it came from.
 pub struct PlacedNode<'a> {
@@ -38,8 +38,8 @@ pub fn measure_view(view: &PluginView, font: &HudFont) -> (f32, f32) {
 /// The size one node occupies, in logical pixels.
 pub fn measure_node(node: &UiNode, font: &HudFont) -> (f32, f32) {
     match node {
-        UiNode::IconText { text, .. } => (
-            LABEL_SIZE + PANEL_GAP + font.measure_text(text, LABEL_SIZE),
+        UiNode::IconText { icon, text } => (
+            status_icon_width(icon, font) + PANEL_GAP + font.measure_text(text, LABEL_SIZE),
             LABEL_SIZE.max(font.line_height(LABEL_SIZE)),
         ),
         UiNode::Text { text } => {
@@ -76,6 +76,37 @@ pub fn measure_node(node: &UiNode, font: &HudFont) -> (f32, f32) {
                 font.line_height(LABEL_SIZE),
             )
         }
+    }
+}
+
+/// The text size a status badge is drawn at.
+///
+/// One character is a glyph that fills the slot; a longer label is a code, so it
+/// is set slightly smaller to keep the same optical weight beside the artwork.
+pub(crate) fn badge_size(badge: &str) -> f32 {
+    LABEL_SIZE * if badge.chars().count() > 1 { 0.75 } else { 1.0 }
+}
+
+/// The width of the slot a status icon occupies, in logical pixels.
+///
+/// Artwork is drawn at a fixed height and keeps its own aspect ratio, so its slot
+/// is square. A badge is text: it keeps the square while its label fits inside it,
+/// and takes the width the label needs — plus a little air — when it does not.
+/// Squeezing a three-letter language code into the square is what drew it across
+/// the label beside it.
+pub(crate) fn status_icon_width(icon: &StatusIcon, font: &HudFont) -> f32 {
+    match icon {
+        StatusIcon::Badge(badge) => {
+            let width = font.measure_text(badge, badge_size(badge));
+            // A sub-pixel overshoot is rounding, not an overflow: the label still
+            // sits inside the square and keeps it.
+            if width <= LABEL_SIZE + 0.5 {
+                LABEL_SIZE
+            } else {
+                width + BADGE_PADDING * 2.0
+            }
+        }
+        StatusIcon::Rgba(_) => LABEL_SIZE,
     }
 }
 
@@ -259,6 +290,47 @@ mod tests {
             LABEL_SIZE + PANEL_GAP + font.measure_text("Input Source", LABEL_SIZE)
         );
         assert_eq!(height, LABEL_SIZE.max(font.line_height(LABEL_SIZE)));
+    }
+
+    #[test]
+    fn a_short_badge_keeps_the_square_slot_artwork_uses() {
+        let font = font();
+
+        for badge in ["中", "EN"] {
+            assert_eq!(
+                status_icon_width(&StatusIcon::Badge(badge.into()), &font),
+                LABEL_SIZE,
+                "{badge} fits the square"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wide_badge_takes_the_width_it_needs_without_growing_the_row() {
+        let font = font();
+        let icon = StatusIcon::Badge("ENG".into());
+        let node = UiNode::IconText {
+            icon: icon.clone(),
+            text: "美式键盘".into(),
+        };
+
+        let (width, height) = measure_node(&node, &font);
+        let slot = status_icon_width(&icon, &font);
+
+        assert!(
+            slot > LABEL_SIZE,
+            "a three-letter code is wider than the square"
+        );
+        assert_eq!(
+            width,
+            slot + PANEL_GAP + font.measure_text("美式键盘", LABEL_SIZE),
+            "the label starts after the slot the badge needs"
+        );
+        assert_eq!(
+            height,
+            LABEL_SIZE.max(font.line_height(LABEL_SIZE)),
+            "the slot keeps the fixed icon height"
+        );
     }
 
     #[test]

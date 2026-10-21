@@ -6,10 +6,11 @@
 //! differ in almost everything, but they agree on a texture, which is what lets
 //! one rasterizer serve both.
 
-use crate::layout::{placed_nodes, text_size};
+use crate::layout::{badge_size, placed_nodes, status_icon_width, text_size};
 use crate::{
-    BUTTON_PADDING, CORNER_RADIUS, DEFAULT_BUTTON_FILL, DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL,
-    DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE, PlacedNode,
+    BADGE_FILL, BADGE_TEXT_COLOR, BUTTON_PADDING, CORNER_RADIUS, DEFAULT_BUTTON_FILL,
+    DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL, DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE,
+    PlacedNode,
 };
 use bongocat_plugin_sdk::{PluginView, StatusIcon, UiNode};
 
@@ -142,8 +143,12 @@ impl HudRenderer {
         let rect = bitmap_rect(placed.rect, offset, scale);
         match placed.node {
             UiNode::IconText { icon, text } => {
-                let side = LABEL_SIZE * scale;
-                let icon_rect = centered_icon_rect(rect, side);
+                // The slot keeps the icon's fixed height and takes the width the
+                // icon needs: square for artwork, as wide as its label for a badge.
+                // The label starts after the slot, so a wide badge cannot draw
+                // across it.
+                let slot = status_icon_width(icon, &self.font) * scale;
+                let icon_rect = icon_slot_rect(rect, slot, LABEL_SIZE * scale);
                 match icon {
                     StatusIcon::Rgba(pixels) if icon.validate() => {
                         canvas.draw_icon(pixels, icon_rect, icon.is_template());
@@ -151,19 +156,18 @@ impl HudRenderer {
                     StatusIcon::Badge(badge) => {
                         canvas.fill_rounded_rect(
                             icon_rect,
-                            CORNER_RADIUS * scale,
-                            DEFAULT_BUTTON_FILL,
+                            crate::BADGE_RADIUS * scale,
+                            BADGE_FILL,
                         );
-                        let size =
-                            LABEL_SIZE * scale * if badge.chars().count() > 1 { 0.75 } else { 1.0 };
+                        let size = badge_size(badge) * scale;
                         let width = self.font.measure_text(badge, size);
                         canvas.draw_text(
                             &self.font,
                             badge,
-                            rect.x + (side - width) / 2.0,
+                            icon_rect.x + (icon_rect.width - width) / 2.0,
                             centered_text_y(&self.font, badge, size, icon_rect),
                             size,
-                            DEFAULT_TEXT_COLOR,
+                            BADGE_TEXT_COLOR,
                         );
                     }
                     _ => {}
@@ -171,7 +175,7 @@ impl HudRenderer {
                 canvas.draw_text(
                     &self.font,
                     text,
-                    rect.x + side + crate::PANEL_GAP * scale,
+                    rect.x + slot + crate::PANEL_GAP * scale,
                     centered_text_y(&self.font, text, LABEL_SIZE * scale, rect),
                     LABEL_SIZE * scale,
                     DEFAULT_TEXT_COLOR,
@@ -290,8 +294,8 @@ fn bitmap_rect(rect: HudRect, offset: HudRect, scale: f32) -> HudRect {
     )
 }
 
-fn centered_icon_rect(row: HudRect, side: f32) -> HudRect {
-    HudRect::new(row.x, row.y + (row.height - side) / 2.0, side, side)
+fn icon_slot_rect(row: HudRect, width: f32, height: f32) -> HudRect {
+    HudRect::new(row.x, row.y + (row.height - height) / 2.0, width, height)
 }
 
 fn centered_text_y(font: &HudFont, text: &str, size: f32, row: HudRect) -> f32 {
@@ -606,10 +610,51 @@ mod tests {
     }
 
     #[test]
+    fn a_badge_is_drawn_as_dark_ink_on_a_light_cap() {
+        // A badge stands in for an icon, so it is drawn like artwork: a light cap
+        // with dark ink, not the secondary button tone the panel's controls use.
+        let bitmap = renderer()
+            .rasterize(
+                &PluginView {
+                    anchor: Anchor::BottomRight,
+                    nodes: vec![UiNode::IconText {
+                        icon: StatusIcon::Badge("ENG".into()),
+                        text: "美式键盘".into(),
+                    }],
+                },
+                400,
+                120,
+                2.0,
+            )
+            .unwrap();
+        // The bitmap is the panel itself, so the panel's padding is the chip's
+        // offset inside it.
+        let scale = 2.0;
+        let left = (crate::STATUS_PANEL_PADDING * scale) as usize;
+        let top = (crate::STATUS_PANEL_PADDING * scale) as usize;
+        let height = (LABEL_SIZE * scale) as usize;
+        let at = |x: usize, y: usize| {
+            let index = (y * bitmap.width as usize + x) * 4;
+            &bitmap.pixels[index..index + 4]
+        };
+
+        // Just inside the cap's left edge at half height, left of the ink.
+        let cap = at(left + 2, top + height / 2);
+        assert!(cap[0] > 200 && cap[3] > 200, "the cap is light: {cap:?}");
+
+        let darkest = (left..left + 40)
+            .flat_map(|x| (top..top + height).map(move |y| (x, y)))
+            .map(|(x, y)| at(x, y)[0])
+            .min()
+            .unwrap_or(u8::MAX);
+        assert!(darkest < 60, "the ink is dark, darkest was {darkest}");
+    }
+
+    #[test]
     fn icon_is_centered_in_a_taller_text_row() {
         let row = HudRect::new(0.0, 0.0, 120.0, 32.0);
         assert_eq!(
-            centered_icon_rect(row, LABEL_SIZE),
+            icon_slot_rect(row, LABEL_SIZE, LABEL_SIZE),
             HudRect::new(0.0, 8.5, 15.0, 15.0)
         );
     }
@@ -630,7 +675,7 @@ mod tests {
             ink_bottom = ink_bottom.max(y + ascent - metrics.ymin as f32);
         }
         let text_center = (ink_top + ink_bottom) / 2.0;
-        let icon = centered_icon_rect(row, LABEL_SIZE);
+        let icon = icon_slot_rect(row, LABEL_SIZE, LABEL_SIZE);
         let icon_center = icon.y + icon.height / 2.0;
         assert!((text_center - icon_center).abs() < 0.01);
     }

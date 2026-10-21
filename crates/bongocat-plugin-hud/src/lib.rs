@@ -157,6 +157,23 @@ pub(crate) const DEFAULT_PANEL_FILL: [f32; 4] = [0.078, 0.078, 0.078, 0.82];
 /// theme, so a panel button and a settings-window button share one tone.
 pub(crate) const DEFAULT_BUTTON_FILL: [f32; 4] = [0.271, 0.271, 0.271, 0.95];
 
+/// The fill of a status badge.
+///
+/// A badge is a language code standing in for an icon, not a control: it is drawn
+/// as a light key cap with dark text, so it reads as artwork beside the label
+/// instead of as something a user can press.
+pub(crate) const BADGE_FILL: [f32; 4] = [0.97, 0.97, 0.97, 0.96];
+
+/// The text on a status badge: dark ink on the light cap.
+pub(crate) const BADGE_TEXT_COLOR: [f32; 4] = [0.09, 0.09, 0.09, 1.0];
+
+/// The corner radius of a status badge, in logical pixels.
+///
+/// The badge is half the height of a button, so it takes half the button's radius:
+/// a code drawn on a nearly round chip reads as a pill, and this is meant to read
+/// as a key cap.
+pub(crate) const BADGE_RADIUS: f32 = 3.0;
+
 /// The default panel border: gpui-kit's `border` token for the dark theme,
 /// which is what separates a card from the surface behind it. The tone is the
 /// token's; the alpha is held back so a one-pixel outline does not read as a
@@ -180,6 +197,9 @@ pub const PANEL_PADDING: f32 = 10.0;
 pub(crate) const STATUS_PANEL_PADDING: f32 = 6.0;
 /// The gap between a panel's rows, in logical pixels.
 pub const PANEL_GAP: f32 = 6.0;
+/// The air on each side of a status badge whose label is wider than the square
+/// slot that artwork uses, in logical pixels.
+pub(crate) const BADGE_PADDING: f32 = 3.0;
 /// The text size a plugin's labels are drawn at, in logical pixels.
 pub const LABEL_SIZE: f32 = 15.0;
 /// The text size a plugin's primary value is drawn at, in logical pixels.
