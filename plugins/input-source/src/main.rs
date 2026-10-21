@@ -124,11 +124,22 @@ impl InputSourceIndicator {
 
     fn status(&self) -> Option<UiNode> {
         let source = self.source.as_ref()?;
+        // The source's own artwork comes first, then the label the system shows in
+        // its place, and only then a badge derived from the name: the first two
+        // are what the operating system draws, the last is a stand-in for a source
+        // that offered neither.
         let icon = source
             .icon_rgba
             .as_ref()
             .filter(|pixels| pixels.len() == 4096)
             .map(|pixels| StatusIcon::Rgba(pixels.clone()))
+            .or_else(|| {
+                source
+                    .label
+                    .as_ref()
+                    .map(|label| StatusIcon::Badge(label.clone()))
+                    .filter(StatusIcon::validate)
+            })
             .unwrap_or_else(|| StatusIcon::Badge(source.name.trim().chars().take(2).collect()));
         Some(UiNode::IconText {
             icon,

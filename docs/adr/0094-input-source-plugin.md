@@ -53,6 +53,11 @@ name. This is a keyboard-layout/source indicator: TSF profiles sharing an HKL an
 internal ASCII/native conversion toggles are not claimed as distinct input
 sources. No hook, injection, COM thread impersonation or blocking SendMessage is
 added. Missing native icons use a clearly rendered language badge on either OS.
+ADR-0096 replaces the Windows half of this paragraph: the handle decides the
+language, the session's active profile decides the input method, that method is
+named and drawn from its own registration, and the conversion mode is read through
+a bounded message to the focused thread's IME window. Its identity follows a switch
+on the next snapshot rather than at process start.
 
 The plugin owns always-on versus switch-only policy, a bounded display duration,
 localization, and an injectable monotonic tick timeline. New, reset, or missing-mode
@@ -68,7 +73,9 @@ The SDK adds a generic bounded icon/text display node gated by the declared
 `icon_text_v1` capability. The process boundary rejects undeclared nodes; an
 older host cannot accept a manifest declaring this extension. Inline pixels are fixed
 32x32 straight RGBA8; a short badge is the fallback. The shared HUD paints both
-at device scale without adding a framework or exposing native handles.
+at device scale without adding a framework or exposing native handles, in a slot
+whose height is fixed and whose width follows its content: square for artwork, as
+wide as its label for a badge.
 Single neutral-color glyphs on transparency are treated as templates and tinted
 with each surface's foreground color; multi-tone and colored icons keep their
 artwork. Settings reuse GPUI's content-addressed image cache so repainting does

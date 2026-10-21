@@ -5,6 +5,7 @@ fn source(id: &str) -> Result<InputSource, InputSourceError> {
         id: id.into(),
         name: format!("Source {id}"),
         icon_rgba: None,
+        label: None,
     })
 }
 
@@ -24,6 +25,7 @@ fn settings_omit_source_preview_and_default_to_always_show() {
             id: "test".into(),
             name: "Source test".into(),
             icon_rgba,
+            label: None,
         }));
         let output = plugin.output();
         assert_eq!(output.config["mode"], ConfigValue::Text("always".into()));
@@ -178,6 +180,7 @@ fn native_icons_badges_long_names_and_published_frames_are_bounded() {
             id: "test".into(),
             name: "输\n入法".repeat(1000),
             icon_rgba: icon,
+            label: None,
         }));
         let output = plugin.output();
         assert!(output.validate());
@@ -190,8 +193,47 @@ fn native_icons_badges_long_names_and_published_frames_are_bounded() {
         id: "bad".into(),
         name: " \n ".into(),
         icon_rgba: None,
+        label: None,
     }));
     assert!(plugin.output().model.nodes.is_empty());
+}
+
+#[test]
+fn a_system_label_is_drawn_when_the_source_has_no_icon() {
+    let mut plugin = InputSourceIndicator::default();
+    plugin.observe(Ok(InputSource {
+        id: "layout".into(),
+        name: "美式键盘".into(),
+        icon_rgba: None,
+        label: Some("ENG".into()),
+    }));
+
+    let output = plugin.output();
+
+    assert!(matches!(
+        &output.model.nodes[0],
+        UiNode::IconText { icon: StatusIcon::Badge(label), text } if label == "ENG" && text == "美式键盘"
+    ));
+}
+
+#[test]
+fn an_unusable_label_falls_back_to_the_name_badge() {
+    let mut plugin = InputSourceIndicator::default();
+    for label in [None, Some(String::new()), Some("TOOLONG".into())] {
+        plugin.observe(Ok(InputSource {
+            id: "layout".into(),
+            name: "美式键盘".into(),
+            icon_rgba: None,
+            label,
+        }));
+
+        let output = plugin.output();
+
+        assert!(matches!(
+            &output.model.nodes[0],
+            UiNode::IconText { icon: StatusIcon::Badge(label), .. } if label == "美式"
+        ));
+    }
 }
 
 #[test]

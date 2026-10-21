@@ -9,6 +9,11 @@ pub struct InputSource {
     pub name: String,
     /// Optional 32x32 straight RGBA8. A caller must use a badge if unavailable.
     pub icon_rgba: Option<Vec<u8>>,
+    /// The short label the system itself shows for a source that has no icon of
+    /// its own, such as the three-letter language code beside a keyboard layout.
+    /// It is not a stand-in chosen by the plugin: it is the same label the system
+    /// puts there, and it is used only when no icon was available.
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, thiserror::Error, PartialEq, Eq)]

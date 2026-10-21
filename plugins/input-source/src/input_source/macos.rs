@@ -180,6 +180,9 @@ fn read_source(cached: Option<&InputSource>) -> Result<InputSource, InputSourceE
             id,
             name,
             icon_rgba,
+            // macOS names the source itself and draws its own artwork; there is no
+            // separate system label to report.
+            label: None,
         })
     }
 }
