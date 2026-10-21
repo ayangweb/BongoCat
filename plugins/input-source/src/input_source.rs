@@ -1,3 +1,5 @@
+#![allow(unsafe_code)]
+
 //! Read-only input source observation. Native objects never leave this adapter.
 
 /// A source identity includes its input mode where the operating system exposes it.

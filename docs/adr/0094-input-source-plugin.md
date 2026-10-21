@@ -31,7 +31,7 @@ Select, Integer and Toggle nodes remain the configuration primitives.
 ## Decision
 
 Ship `plugins/input-source`, ID `com.bongocat.input-source`, as an independent
-trusted native plugin. A platform-owned monitor returns only source identity,
+trusted native plugin. A plugin-owned platform monitor returns only source identity,
 localized name, and an optional bounded icon. No pressed keys, composition text,
 caret position or application identity leaves the platform boundary. There is
 no switching API and no accessibility or input-monitoring permission request.
@@ -84,3 +84,19 @@ the new plugin.
 - Windows native behavior, third-party TSF coverage, Retina/DPI and manual
   switching remain platform acceptance gates, not inferred from compilation.
 - No signed catalog publication or production installation in this task.
+
+## Plugin ownership audit (2026-10-21)
+
+Input source queries, native observation and icon extraction live under
+`plugins/input-source/src/input_source/`, compiled only by the plugin. The plugin
+depends on the SDK and narrowly enabled existing system bindings, not the application
+platform crate. Unsafe is denied in business code and allowed only in the native
+adapter. The obsolete Swift-link workaround and platform public API are removed.
+The desktop observer smoke is retained as a plugin example running on the main thread.
+
+Bindings reuse the already selected stable objc2 0.6.5 / objc2 framework 0.3.2
+(objc2: MIT; framework bindings: Zlib OR Apache-2.0 OR MIT) and windows 0.62.2 (MIT OR Apache-2.0); `cargo info` verified the runtime
+and Windows versions. Their types remain private to the plugin adapter, and
+replacing the bindings does not change the SDK or host API. Workspace-wide
+`cargo update` also refreshes compatible transitive lock entries as required by
+the dependency policy; no direct application dependency was upgraded.

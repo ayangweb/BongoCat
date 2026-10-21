@@ -1,11 +1,13 @@
 //! A read-only input source indicator. Policy belongs here, not in the host.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
-use bongocat_platform::{InputSource, InputSourceError, InputSourceMonitor};
+mod input_source;
+
 use bongocat_plugin_sdk::{
     Anchor, ConfigValue, Configuration, HostMessage, Plugin, PluginOutput, PluginView,
     SelectOption, StatusIcon, UiNode,
 };
+use input_source::{InputSource, InputSourceError, InputSourceMonitor};
 
 struct Copy {
     mode: &'static str,

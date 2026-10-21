@@ -1,5 +1,7 @@
 //! Run on a logged-in desktop; optionally switch input sources during sampling.
-use bongocat_platform::InputSourceMonitor;
+#[path = "../src/input_source.rs"]
+mod input_source;
+use input_source::InputSourceMonitor;
 use std::time::{Duration, Instant};
 
 fn main() {

@@ -32,7 +32,7 @@ The macOS adapter resolves an icon in this order:
 3. The localized-name badge in the plugin, unchanged.
 
 The private framework is a platform adapter concern only and stays inside
-`bongocat-platform/src/input_source/macos.rs`; no private type or handle leaves
+`plugins/input-source/src/input_source/macos.rs`; no private type or handle leaves
 the adapter. The framework is loaded with `dlopen(RTLD_LOCAL)` and deliberately
 never unloaded, because its class and image cache outlive the call and a
 `dlclose` could invalidate artwork still in use. A missing framework, class,
