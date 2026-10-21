@@ -302,3 +302,26 @@ switch remain open. Windows real-audio and DPI checks remain a separate platform
 gate. Publishing the plugin to the signed
 catalog remains a release gate, as does the final attribution and
 redistribution-list review before any public release.
+
+## Plugin ownership audit (2026-10-21)
+
+All set selection, Thock group mapping/fallback, decoding, rate limiting,
+preview ownership, device lifecycle, volume and localized controls remain in
+`plugins/key-sounds`; neither host audio nor runtime selects or plays a pack.
+Runtime retains only bounded physical-key activity counters, shared with the
+SDK as a generic best-effort input signal. The sound-oriented helper names and
+comments there are replaced with input-activity terminology; message shape and
+privacy bounds are unchanged. Moving capture into each plugin would duplicate
+platform producers and their permission/lifecycle costs, not move sound policy.
+
+The plugin separates view construction from configuration and playback policy;
+tests split into assets/groups, configuration/activity and views/preview modules.
+The generated catalog is an ordered index with one bounded module per pack.
+The asset generator emits this layout, and provenance tests inspect those modules.
+No recordings, IDs, configuration or playback behavior change.
+
+SDK protocol tests are also extracted so the touched shared protocol source stays
+under 1000 lines. During validation the existing catalog lifecycle integration
+tests exceeded their five-second budget under parallel load; the isolated suite
+passed with one test thread. Full validation is rerun with `RUST_TEST_THREADS=1`
+without weakening the tests or changing their deadlines.

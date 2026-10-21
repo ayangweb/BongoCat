@@ -8,11 +8,8 @@
 
 use super::*;
 
-/// Physical keys with a Thock sound group that this plugin can address.
-///
-/// Thock maps Backspace to `del`, not `backspace`; the left and right Shift
-/// keys and left Control likewise keep their own groups.
-const KEY_SOUND_GROUPS: [(&str, u16); 8] = [
+/// Bounded physical-key categories exposed by the generic input activity contract.
+const INPUT_ACTIVITY_KEYS: [(&str, u16); 8] = [
     ("space", 0x2c),
     ("enter", 0x28),
     ("enter", 0x58),
@@ -23,7 +20,7 @@ const KEY_SOUND_GROUPS: [(&str, u16); 8] = [
     ("ctrl_left", 0xe0),
 ];
 
-fn count_key_sound_group(diagnostics: &mut InputDiagnostics, key: &str, release: bool) {
+fn count_key_activity(diagnostics: &mut InputDiagnostics, key: &str, release: bool) {
     let count = match (key, release) {
         ("space", false) => &mut diagnostics.space_activity,
         ("space", true) => &mut diagnostics.space_release,
@@ -44,11 +41,11 @@ fn count_key_sound_group(diagnostics: &mut InputDiagnostics, key: &str, release:
     *count = count.saturating_add(1);
 }
 
-fn key_sound_group(control: InputControl) -> Option<&'static str> {
+fn activity_key(control: InputControl) -> Option<&'static str> {
     let InputControl::Key(key) = control else {
         return None;
     };
-    KEY_SOUND_GROUPS
+    INPUT_ACTIVITY_KEYS
         .iter()
         .find_map(|(name, usage)| (*usage == key.hid_usage()).then_some(*name))
 }
@@ -187,8 +184,8 @@ impl InputState {
                                 if matches!(control, InputControl::Key(_)) {
                                     self.diagnostics.keyboard_activity =
                                         self.diagnostics.keyboard_activity.saturating_add(1);
-                                    if let Some(group) = key_sound_group(control) {
-                                        count_key_sound_group(&mut self.diagnostics, group, false);
+                                    if let Some(group) = activity_key(control) {
+                                        count_key_activity(&mut self.diagnostics, group, false);
                                     }
                                 } else if matches!(control, InputControl::Mouse(_)) {
                                     self.diagnostics.mouse_activity =
@@ -222,12 +219,8 @@ impl InputState {
                                     InputControl::Key(_) => {
                                         self.diagnostics.keyboard_release =
                                             self.diagnostics.keyboard_release.saturating_add(1);
-                                        if let Some(group) = key_sound_group(control) {
-                                            count_key_sound_group(
-                                                &mut self.diagnostics,
-                                                group,
-                                                true,
-                                            );
+                                        if let Some(group) = activity_key(control) {
+                                            count_key_activity(&mut self.diagnostics, group, true);
                                         }
                                     }
                                     InputControl::Mouse(_) => {

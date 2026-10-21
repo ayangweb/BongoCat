@@ -65,7 +65,26 @@ class KeySoundsAssetTests(unittest.TestCase):
         cls.index = json.loads(read(INDEX))
         cls.packs = cls.index["packs"]
         cls.registry = json.loads(read(REGISTRY_MANIFEST))
-        cls.source = read(RUST_SOURCE)
+        cls.source = "\n".join(
+            read(path).replace("pub(super) const ASSET: PackAsset = PackAsset {", "    PackAsset {")
+            for path in sorted((RUST_SOURCE.parent / "packs").glob("pack_*.rs"))
+        )
+
+    def test_plugin_sources_are_bounded_and_do_not_depend_on_app_crates(self):
+        for path in (PLUGIN / "src").rglob("*.rs"):
+            self.assertLessEqual(len(read(path).splitlines()), 1000, str(path))
+        manifest = read(PLUGIN / "Cargo.toml")
+        self.assertNotIn("bongocat-platform", manifest)
+        self.assertNotIn("bongocat-audio", manifest)
+        self.assertNotIn("bongocat-runtime", manifest)
+
+    def test_catalog_module_order_matches_the_provenance_index(self):
+        modules = re.findall(r"(?m)^    (pack_\d+)::ASSET,$", read(RUST_SOURCE))
+        self.assertEqual(modules, [f"pack_{i:02}" for i in range(len(self.packs))])
+        self.assertEqual(
+            set(modules),
+            {path.stem for path in (RUST_SOURCE.parent / "packs").glob("pack_*.rs")},
+        )
 
     def test_the_catalog_is_thocks_redistributable_registry(self):
         """Every playable registry entry is listed and no refused one is."""
@@ -158,16 +177,16 @@ class KeySoundsAssetTests(unittest.TestCase):
         )
     def test_the_rust_table_is_generated_from_the_index(self):
         """Every set, category and file in the index is in the compiled table."""
-        ids = re.findall(r'(?m)^        id: "([^"]+)",$', self.source)
+        ids = re.findall(r'(?m)^    id: "([^"]+)",$', self.source)
         self.assertEqual(
             ids,
             [pack["id"] for pack in self.packs],
             "src/packs.rs lists sets in a different order than index.json",
         )
         self.assertEqual(len(ids), len(set(ids)), "a set is embedded twice")
-        brands = re.findall(r'(?m)^        brand: "([^"]+)",$', self.source)
+        brands = re.findall(r'(?m)^    brand: "([^"]+)",$', self.source)
         self.assertEqual(brands, [pack["brand"] for pack in self.packs])
-        labels = re.findall(r'(?m)^        label: "([^"]+)",$', self.source)
+        labels = re.findall(r'(?m)^    label: "([^"]+)",$', self.source)
         self.assertEqual(labels, [pack["label"] for pack in self.packs])
         for pack in self.packs:
             category = pack["category"]
