@@ -163,3 +163,14 @@ Run the actual separately built pomodoro binary. Both platform adapters need
 real UI/interaction/DPI validation; macOS compilation cannot prove Windows behavior.
 Production catalog publication/signing is external release work: an unavailable
 catalog must be a retryable error, never a fabricated ecosystem or unsigned fallback.
+
+## Plugin ownership audit (2026-10-21)
+
+The three shipped plugins were reviewed as independent process entry points.
+Pomodoro owns countdown state, persistence shape, actions, configuration and
+copy. Key Sounds owns pack assets, decoding, playback and selection policy.
+Input Source owns OS queries, observation, icon extraction and display policy.
+The host owns only the versioned process protocol, plugin lifecycle/storage,
+input activity aggregation, and generic HUD/settings rendering. A regression
+contract now checks plugin manifests, dependencies, source-file size and the
+absence of the input-source adapter from the application platform crate.
