@@ -20,6 +20,7 @@ pub(crate) mod input;
 pub(crate) mod model;
 pub(crate) mod random_behavior;
 pub(crate) mod renderer;
+mod typing_meow;
 
 use audio::{motion_audio_path, prepare_model_audio, stop_motion_audio};
 use axes::GamepadAxisValues;
@@ -63,6 +64,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     let mut active_motions = Vec::new();
     let mut active_expression = None;
     let mut input_state = InputState::default();
+    let mut typing_meow = typing_meow::TypingMeow::default();
     let mut input_bindings = InputBindings::default();
     let mut cursor_smoother = CursorSmoother::default();
     let mut normalized_cursor = NormalizedCursorPosition::default();
@@ -387,6 +389,16 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                     }
                     WorkerCommand::Product(RuntimeCommand::ApplyInput(envelope)) => {
                         let envelope = Arc::unwrap_or_clone(envelope);
+                        let keyboard_down = matches!(
+                            &envelope.event,
+                            InputEvent::Edge {
+                                control: InputControl::Key(_),
+                                edge: InputEdge::Down,
+                                source: InputSource::Capture,
+                                ..
+                            }
+                        );
+                        let captured_down_before = input_state.diagnostics.captured_down;
                         let input_reset = matches!(envelope.event, InputEvent::Reset { .. });
                         let connected = match &envelope.event {
                             InputEvent::GamepadConnected { connection, at } => {
@@ -399,6 +411,22 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             _ => None,
                         };
                         let disposition = input_state.apply(envelope);
+                        if typing_meow.should_play(
+                            keyboard_down,
+                            input_state.diagnostics.captured_down > captured_down_before,
+                            motion_audio_enabled
+                                && overlay_visible
+                                && !model_settings.ignore_keyboard
+                                && active_model.is_some()
+                                && pending_model.is_none(),
+                            clock.now(),
+                        ) {
+                            shutdown.run_if_not_shutdown(|| {
+                                let _ = motion_audio.try_publish_with_sequence(|sequence| {
+                                    MotionAudioCommand::PlayMeow { sequence }
+                                });
+                            });
+                        }
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {

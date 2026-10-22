@@ -21,6 +21,8 @@ pub enum MotionAudioCommand {
         path: PathBuf,
         volume: MotionAudioVolume,
     },
+    /// Plays a built-in typing sound only when no other sound is playing.
+    PlayMeow { sequence: u64 },
     Stop {
         sequence: u64,
         reason: MotionAudioStopReason,
@@ -33,6 +35,7 @@ impl MotionAudioCommand {
             Self::Prepare { sequence, .. }
             | Self::ActivatePrepared { sequence, .. }
             | Self::Play { sequence, .. }
+            | Self::PlayMeow { sequence }
             | Self::Stop { sequence, .. } => *sequence,
         }
     }

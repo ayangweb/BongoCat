@@ -62,6 +62,10 @@ Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 - Fully open source, public code, and no collection of user data.
 - Works offline with no network access, so your privacy is protected.
 
+### Typing meow
+
+Enable "Play motion sounds" in settings to hear a short synthesized meow on keyboard presses. Holding a key does not repeat the sound, rapid typing is rate limited, and existing motion sounds are not interrupted. Turn the setting off to mute. Typing sounds are suppressed while the cat is hidden or keyboard input is ignored.
+
 ## More models
 
 You can browse and download more cat models, or share your own, in

@@ -4,6 +4,27 @@ use super::*;
 
 #[test]
 #[ignore = "requires a real default audio output device"]
+fn typing_meow_plays_and_releases_the_output_device() {
+    let mut backend = SystemAudioBackend::default();
+    backend.play_meow().expect("typing sound output");
+    assert!(backend.output.is_some());
+    let deadline = Instant::now() + TIMEOUT;
+    while backend.is_playing() {
+        assert!(Instant::now() < deadline, "typing sound did not finish");
+        thread::sleep(Duration::from_millis(10));
+    }
+    backend.stop();
+    assert!(backend.output.is_none());
+    backend.activate_prepared(&[]).unwrap();
+    backend
+        .play_meow()
+        .expect("typing sound survives model cache replacement");
+    backend.stop();
+    assert!(backend.output.is_none());
+}
+
+#[test]
+#[ignore = "requires a real default audio output device"]
 fn product_backend_releases_output_on_stop_and_reopens_for_playback() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../resources/models/standard/live2d_motion1.flac");

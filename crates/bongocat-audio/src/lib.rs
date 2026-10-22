@@ -1,6 +1,6 @@
-//! Motion audio: the one model sound, played through the system's own device.
+//! Model sounds and typing feedback, played through the system's own device.
 //!
-//! There is exactly one voice, and it belongs to the model that is on screen. The
+//! There is exactly one voice; model sounds take priority over typing feedback. The
 //! modules below are the contract the runtime speaks, the handle it holds, the
 //! service that owns the worker thread, the device behind it, and what happens
 //! when the queue overflows.
@@ -43,6 +43,7 @@ mod client;
 mod command;
 mod diagnostics;
 mod error;
+mod meow;
 mod service;
 mod state;
 #[cfg(test)]

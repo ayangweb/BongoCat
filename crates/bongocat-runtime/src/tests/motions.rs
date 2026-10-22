@@ -3,6 +3,86 @@
 use super::*;
 
 #[test]
+fn typing_audio_respects_mute_visibility_and_keyboard_filter() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_audio_and_clock(
+        true,
+        true,
+        8,
+        MotionAudioClient::unavailable(),
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).unwrap();
+    let activation = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .unwrap();
+    let candidate = wait_for_prepared_model(&client, &consumer, activation);
+    let activated = report_model_prepared(&client, &consumer, &candidate);
+    let baseline = activated.motion_audio.rejected_after_shutdown;
+    let send = |command| {
+        let sequence = client.send(command).unwrap();
+        client.wait_for_command(sequence, TIMEOUT).unwrap()
+    };
+    let key = |sequence, edge| {
+        RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+            sequence,
+            event: InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(sequence * 200),
+            },
+        }))
+    };
+    assert_eq!(
+        send(key(0, InputEdge::Down))
+            .motion_audio
+            .rejected_after_shutdown,
+        baseline + 1
+    );
+    clock.set(Duration::from_millis(200));
+    assert_eq!(
+        send(key(1, InputEdge::Down))
+            .motion_audio
+            .rejected_after_shutdown,
+        baseline + 1
+    );
+    send(key(2, InputEdge::Up));
+    send(RuntimeCommand::SetOverlayVisible(false));
+    assert_eq!(
+        send(key(3, InputEdge::Down))
+            .motion_audio
+            .rejected_after_shutdown,
+        baseline + 1
+    );
+    send(key(4, InputEdge::Up));
+    send(RuntimeCommand::SetOverlayVisible(true));
+    send(RuntimeCommand::SetModelSettings(ModelSettings {
+        ignore_keyboard: true,
+        ..ModelSettings::default()
+    }));
+    assert_eq!(
+        send(key(5, InputEdge::Down))
+            .motion_audio
+            .rejected_after_shutdown,
+        baseline + 1
+    );
+    send(key(6, InputEdge::Up));
+    send(RuntimeCommand::SetModelSettings(ModelSettings::default()));
+    let muted = send(RuntimeCommand::SetMotionAudioEnabled(false));
+    assert_eq!(
+        send(key(7, InputEdge::Down))
+            .motion_audio
+            .rejected_after_shutdown,
+        muted.motion_audio.rejected_after_shutdown
+    );
+    owner.shutdown(TIMEOUT).unwrap();
+}
+
+#[test]
 fn motion_commands_use_priority_identity_and_injectable_time() {
     let clock = Arc::new(ManualClock::default());
     let (owner, consumer) = RuntimeOwner::start_with_rendering_audio_and_clock(
