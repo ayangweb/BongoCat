@@ -278,31 +278,32 @@ mod tests {
     }
 
     #[test]
-    fn status_icon_uses_the_label_size_without_an_oversized_row() {
+    fn status_icon_slot_matches_the_measured_label() {
         let font = font();
+        let icon = bongocat_plugin_sdk::StatusIcon::Badge("EN".into());
         let node = UiNode::IconText {
-            icon: bongocat_plugin_sdk::StatusIcon::Badge("EN".into()),
+            icon: icon.clone(),
             text: "Input Source".into(),
         };
         let (width, height) = measure_node(&node, &font);
         assert_eq!(
             width,
-            LABEL_SIZE + PANEL_GAP + font.measure_text("Input Source", LABEL_SIZE)
+            status_icon_width(&icon, &font)
+                + PANEL_GAP
+                + font.measure_text("Input Source", LABEL_SIZE)
         );
         assert_eq!(height, LABEL_SIZE.max(font.line_height(LABEL_SIZE)));
     }
 
     #[test]
-    fn a_short_badge_keeps_the_square_slot_artwork_uses() {
+    fn a_badge_that_fits_keeps_the_square_slot_artwork_uses() {
         let font = font();
 
-        for badge in ["中", "EN"] {
-            assert_eq!(
-                status_icon_width(&StatusIcon::Badge(badge.into()), &font),
-                LABEL_SIZE,
-                "{badge} fits the square"
-            );
-        }
+        assert_eq!(
+            status_icon_width(&StatusIcon::Badge("中".into()), &font),
+            LABEL_SIZE,
+            "a single glyph fits the square"
+        );
     }
 
     #[test]

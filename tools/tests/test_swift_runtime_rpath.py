@@ -102,7 +102,9 @@ class SwiftRuntimeRpathContractTests(unittest.TestCase):
         self.assertIn("bongocat-app", linking)
         self.assertIn("bongocat-overlay", linking)
         self.assertIn("bongocat-ui", linking)
-        self.assertIn("bongocat-input-source", linking)
+        # The input-source plugin links AppKit itself and is built outside the
+        # host workspace, so it must not inherit the host's Swift runtime.
+        self.assertNotIn("bongocat-input-source", linking)
         # A package with no path to the linker must not be dragged in.
         self.assertNotIn("bongocat-log", linking)
 
