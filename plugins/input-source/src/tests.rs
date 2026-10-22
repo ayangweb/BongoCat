@@ -290,3 +290,26 @@ fn ticks_only_advance_display_time_without_querying_the_system() {
     assert!(plugin.monitor.is_none());
     assert_eq!(plugin.now_ms, 1000);
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+fn windows_ticks_observe_the_source_because_no_notification_reaches_this_process() {
+    // The host's clock is the only trigger on Windows: a switch inside the window
+    // the user is already in produces no notification this process can receive.
+    // A tick therefore has to read, which is what re-creating a released monitor
+    // proves — an event-driven tick would leave it released.
+    let mut plugin = InputSourceIndicator::default();
+    plugin
+        .handle(HostMessage::Start {
+            config: Configuration::new(),
+            state: vec![],
+        })
+        .unwrap();
+    plugin.monitor = None;
+    let output = plugin
+        .handle(HostMessage::Tick { elapsed_ms: 1000 })
+        .unwrap();
+    assert!(plugin.monitor.is_some(), "a tick must read the source");
+    assert_eq!(plugin.now_ms, 1000);
+    assert!(output.validate());
+}

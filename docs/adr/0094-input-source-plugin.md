@@ -112,7 +112,8 @@ macOS no longer queries TIS on host ticks or performs one-second reconciliation.
 Its main thread blocks in the default CFRunLoop; the distributed TIS notification
 marks the source dirty and triggers a query and publication immediately. Startup
 and resume still establish a baseline. Host ticks only advance the transient
-visibility timeline. Windows retains its existing sampling behavior.
+visibility timeline. Windows was attempted the same way and kept its clock; see
+the section below.
 
 The generic `push_output_v1` capability reserves response sequence zero for
 validated unsolicited output. Ordinary replies keep their request sequence.
@@ -128,3 +129,66 @@ and macOS ticks not querying the system. Actual switch-to-presentation latency,
 application-specific restoration notifications and sleep/session recovery still
 require interactive macOS acceptance. No polling fallback masks missing system
 notifications; transient hiding retains the existing host clock cadence.
+
+## Windows keeps reading on the host clock (2026-10-22)
+
+Windows was converted to the same notification-driven shape as macOS and then
+reverted, because the notifications it needs do not reach a background process.
+This is what was measured on Windows 11 26200 before deciding.
+
+What was tried: the plugin's main thread blocked in `GetMessageW` on its own
+queue, the stdin reader waking it with `PostThreadMessageW`, a
+`SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` foreground hook,
+and an `ITfInputProcessorProfileActivationSink` advised through `ITfThreadMgr` and
+`ITfSource`. A change was published as a sequence-zero update instead of being
+answered on the next tick.
+
+- The foreground hook works, and it is not the problem. It delivers to a
+  **windowless** background thread's `GetMessageW`, wakes it, and the callback has
+  already run by the time the wait returns; `DispatchMessageW` is not what invokes
+  it. End to end against the real plugin binary, a foreground change produced a
+  sequence-zero update within measurement noise of the OS delivering the event to
+  a hook in the driving process (98.1 ms versus 98.2 ms).
+- The activation sink does not work for this process. It fires only on a thread
+  that owns the focused window: advising it on a windowless background thread and
+  then switching the session's input method produced **no** callback, while a
+  fresh `GetActiveProfile` on that same thread did report the new source. A switch
+  made from another thread was equally invisible. The plugin never owns the
+  focused window, so this sink can never be its trigger.
+- There is nothing to listen to instead. A hidden top-level window receives
+  neither `WM_SETTINGCHANGE` nor `WM_INPUTLANGCHANGE` when the session's input
+  method or layout changes, so no broadcast exists either.
+
+Together that leaves exactly one case uncovered: the user switches input method
+inside the window they are already in. The foreground hook cannot see it (the
+window did not change), and the sink cannot see it (no focused window of ours).
+That is the common case for this plugin, and a live desktop test confirmed the
+display simply stayed on the previous source. Covering it with an event would
+need a hook into another process, which this plugin does not do.
+
+Two smaller findings survive the revert and are recorded because they cost time:
+
+- The apartment must be opened before a TSF object is created. With
+  `CoInitializeEx` running afterwards, `CoCreateInstance(CLSID_TF_ThreadMgr)`
+  fails with "CoInitialize has not been called".
+- Holding the thread manager that carries an activation sink does **not**
+  reintroduce the freeze this ADR recorded; that belongs to
+  `ITfInputProcessorProfileMgr`, which is still created and dropped per read.
+
+Windows therefore keeps the pre-existing behavior: `HostMessage::Tick` reads the
+source while the plugin is running, so a switch is reflected within one host tick,
+and `Start`/`Resume` still establish the baseline. The window from a switch to the
+display is the host's 200 ms cadence, which is what this plugin shipped with and
+what a live desktop test confirms works. macOS keeps its notification loop, where
+the distributed TIS notification does reach a background process.
+
+Rejected alternative: keeping the foreground hook as an accelerator on top of the
+clock. It would shorten app-switch latency from at most one tick to nothing, at
+the cost of a second write path, a custom message loop and a system-wide hook, for
+a delay the user cannot perceive. The plugin publishes nothing it cannot also
+report on the tick, so the simpler path is the one that is kept.
+
+Tests: Windows ticks are covered by a test that releases the monitor and asserts
+the tick re-creates it, i.e. that a tick observes rather than only advancing time;
+the packaged-process test still tolerates interleaved sequence-zero frames so the
+macOS path stays covered.

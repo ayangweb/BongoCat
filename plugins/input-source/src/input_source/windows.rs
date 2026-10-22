@@ -23,6 +23,16 @@
 //! The conversion mode inside an input method (the 中/英 toggle) is not part of
 //! what this adapter reports: the first release shows the input method, and a
 //! toggle inside one method is not a change of source.
+//!
+//! Observation is a read, not a subscription. Windows has no notification that
+//! reaches a background process when the input method changes inside the window
+//! it is already using: the Text Services activation sink only notifies a thread
+//! that owns the focused window, a session-wide layout change reaches a
+//! background thread's next read without raising any sink callback, and no
+//! `WM_SETTINGCHANGE` or `WM_INPUTLANGCHANGE` broadcast is sent to other windows.
+//! A foreground hook would cover window switches only, which the host's read
+//! already covers, so the host's clock stays the trigger and every read is a
+//! cheap, self-contained snapshot.
 
 use super::{InputSource, InputSourceError};
 use std::{collections::HashMap, mem::size_of};

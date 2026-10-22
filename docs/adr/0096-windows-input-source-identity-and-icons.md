@@ -119,8 +119,10 @@ application identity, and it never switches an input method.
 
 - Switching input methods is reflected on the next snapshot, within the 200 ms host
   tick, with the correct localized name and the method's own icon. No restart is
-  involved. Switching the 中/英 mode inside one method does not change the
-  display, because the display is the input method.
+  involved. ADR-0094 records why the tick is the trigger on Windows: no
+  notification for an in-place input method switch reaches a background process.
+  Switching the 中/英 mode inside one method does not change the display, because
+  the display is the input method.
 - The "exactly one installed input method" heuristic is gone, along with the
   catalogue enumeration and the installed-method list it needed: the session says
   which method is running, so nothing has to be counted or guessed.

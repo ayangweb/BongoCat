@@ -3,6 +3,9 @@
 
 mod input_source;
 
+/// macOS publishes a change from its own notification loop; Windows has no
+/// notification that reaches a background process, so it answers on the host's
+/// clock like any other plugin.
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 #[path = "input_source/event_loop.rs"]

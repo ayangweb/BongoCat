@@ -29,6 +29,11 @@ impl InputSourceMonitor {
         platform::Monitor::new().map(Self)
     }
 
+    /// Whether a native observer reported a change since the last snapshot.
+    ///
+    /// Only macOS observes its input source: its distributed TIS notification
+    /// reaches a background process, so a change can be published without asking.
+    /// Windows has no notification with that reach — see `windows.rs`.
     #[cfg(target_os = "macos")]
     pub fn changed(&self) -> bool {
         self.0.changed()

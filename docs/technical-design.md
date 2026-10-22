@@ -143,13 +143,16 @@ Rust 2024 edition application
   输入法状态（#849，Input Source）独立读取平台输入源，支持始终显示图标与名称或仅在切换后
   显示 1–10 秒；新建、重置或缺少显示方式时默认始终显示，保留已保存的显示方式。设置弹框不展示
   当前输入法预览，只提供显示方式、按需显示的时长及不可用／暂停状态；图标与名称仅在模型窗口展示。
-  macOS 使用 TIS 通知与每秒校正，优先采用系统输入法菜单所用的图标，TIS 图标
+  macOS 使用 TIS 通知，优先采用系统输入法菜单所用的图标，TIS 图标
   URL 仅作输入法自带图标的后备；Windows 由 HKL 判定语言、由会话活动输入法配置判定输入法：
-  每次采样新建并随即释放 TSF 配置管理器后读取（长期持有会被冻结在创建时的状态，这正是
-  以往必须重启才能更新显示的原因），名称与图标取自该配置自身注册，切换在下一次采样内即
+  每次读取新建并随即释放 TSF 配置管理器后读取（长期持有会被冻结在创建时的状态，这正是
+  以往必须重启才能更新显示的原因），名称与图标取自该配置自身注册，切换在下一次读取内即
   生效；首版只显示输入法本身，不显示同一输入法内的中／英模式；纯键盘布局按布局注册表
   命名且不套用会话输入法，其图标位置采用系统同样的三字母语言缩写（如 `ENG`），不自造徽标。
   平台未提供图标时显示名称徽标。不读取文本、不切换输入法、不增加输入权限。
+  macOS 由 TIS 通知驱动、以 sequence 0 主动推送；Windows 没有能到达后台进程的同类通知
+  （同窗口内切换输入法既不触发前台钩子，也不回调后台线程的 TSF 激活 sink），因此仍在宿主
+  tick 内读取，切换在下一个 tick 内生效。
   SDK 的有界 `IconText` 节点经 `icon_text_v1` capability 声明，由共用 HUD 在模型窗口绘制，
   并复用设置窗口既有组件配置；图标槽高度固定、宽度由内容决定（位图按方形，文字徽标按自身宽度
   撑开，避免三字母语言缩写压到名称上）；未声明的新节点在进程边界拒绝。
@@ -1882,4 +1885,7 @@ updates without a host request. The process reader wakes the service owner to
 collect changed views and compose the HUD. macOS Input Source runs its native
 notification loop on the plugin main thread, queries TIS on startup/resume and
 source-change notifications only, and uses host ticks only for display expiry.
-Windows source sampling and other plugins retain their existing cadence.
+Windows has no notification with that reach — a switch inside the window the user
+is already in notifies neither a `WinEvent` foreground hook nor a background
+thread's Text Services sink — so Windows Input Source keeps reading on the host
+tick. Other plugins retain their existing cadence.

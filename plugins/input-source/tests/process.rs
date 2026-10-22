@@ -21,7 +21,18 @@ fn real_process_supports_modes_locale_errors_reset_and_clean_shutdown() {
     let mut send = |message| {
         sequence += 1;
         write_frame(&mut input, &Request { sequence, message }).unwrap();
-        let response: Response = read_frame(&mut output).unwrap();
+        // A native change may publish an unsolicited update before the reply, in
+        // exactly the shape the host accepts: reserved sequence zero and a valid
+        // output. Every other frame keeps its request's sequence.
+        let response: Response = loop {
+            let frame: Response = read_frame(&mut output).unwrap();
+            if frame.sequence == 0 {
+                let update = frame.result.expect("an update is never a refusal");
+                assert!(update.validate(), "an update is bounded");
+                continue;
+            }
+            break frame;
+        };
         assert_eq!(response.sequence, sequence);
         if let Ok(value) = &response.result {
             assert!(
