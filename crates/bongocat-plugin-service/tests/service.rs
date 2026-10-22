@@ -414,7 +414,10 @@ fn an_unknown_plugin_is_refused_by_its_own_code() {
 fn settled(
     client: &bongocat_plugin_service::PluginServiceClient,
 ) -> bongocat_plugin_service::PluginCenterSnapshot {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    // The catalog worker may install or start a plugin while the rest of this
+    // test binary is running concurrently. Bound a genuine hang without
+    // treating a busy CI runner as a lifecycle failure.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         let center = client.read_center_blocking().unwrap();
         if !center.loading {
