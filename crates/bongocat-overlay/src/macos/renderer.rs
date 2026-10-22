@@ -606,6 +606,30 @@ impl NativeOverlay {
                 0,
             );
         }
+        // The plugin layer is the topmost one: a plugin's panel is the user's
+        // own foreground element and must never end up behind the cat.
+        if let Some(layer) = &self.model.plugin_layer {
+            let pixel_uniforms = PixelUniforms {
+                scale_offset: layer.transform,
+            };
+            encoder.set_cull_mode(MTLCullMode::None);
+            encoder.set_render_pipeline_state(&self.pipelines.layer);
+            encoder.set_vertex_buffer(0, Some(&layer.vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<PixelUniforms>() as u64,
+                std::ptr::from_ref(&pixel_uniforms).cast(),
+            );
+            encoder.set_fragment_texture(0, Some(&layer.texture));
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                6,
+                MTLIndexType::UInt16,
+                &self.model.background_index_buffer,
+                0,
+            );
+        }
         encoder.end_encoding();
         // Shared per-drawable buffers cannot be rewritten until this frame
         // retires. A later renderer revision will replace this correctness

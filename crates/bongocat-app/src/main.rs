@@ -21,9 +21,11 @@
 
 #[cfg(test)]
 mod binary_tests;
+mod dev_plugins;
 mod gamepad_observer;
 mod model_cover;
 mod overlay_placement;
+mod plugin_input;
 mod preset_root;
 mod product_icons;
 mod product_options;
@@ -69,6 +71,7 @@ use gpui_kit::{
     platform::current_platform,
 };
 use gpui_kit::{AsyncApp, Context, Window};
+use reqwest_client::ReqwestClient;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
@@ -135,7 +138,25 @@ fn gpui_application() -> GpuiApplication {
     // update restart), not by window bookkeeping: the product stays alive behind
     // the overlay and the status icon even when every product window is closed,
     // so GPUI must never auto-quit on last-window-closed.
-    GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
+    //
+    // Plugin card PNGs arrive from GitHub Release in Production and are loaded
+    // by GPUI's image element through `cx.http_client()`. `new_inaccessible`
+    // installs a null client, so the product must provide the same Rustls-backed
+    // client for both Development and Production.
+    let http_client = ReqwestClient::user_agent(&product_user_agent())
+        .expect("the product user agent is a valid HTTP header");
+    GpuiApplication::new_inaccessible(current_platform(false))
+        .with_http_client(std::sync::Arc::new(http_client))
+        .with_quit_mode(QuitMode::Explicit)
+}
+
+fn product_user_agent() -> String {
+    format!(
+        "BongoCat/{} ({}/{})",
+        bongocat_app::PRODUCT_VERSION,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
 }
 
 /// How long a Windows taskbar check waits for the runtime's published
@@ -193,6 +214,12 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    /// The one owner of the installed plugins.
+    ///
+    /// It outlives every window on purpose: a plugin's timer keeps counting while
+    /// the settings window is closed, and the model window draws the panels the
+    /// service composes.
+    plugin_service: Option<bongocat_plugin_service::PluginService>,
     /// The currently open settings window, if any; close destroys it.
     settings_window: Option<SettingsWindowHandle>,
     /// Process-local memory for the last settings sidebar page.
@@ -327,6 +354,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
     let application_log = application.log_handle();
+    // The plugin service starts before the overlay, because the overlay is what
+    // draws the layer the service composes: the window has to be handed the
+    // consumer end before its first tick. A store that cannot be opened is not
+    // fatal — the plugin center reports it and the cat still runs.
+    let plugin_storage_root = application.storage_root().to_path_buf();
+    let activity = application.runtime_client().subscribe_activity();
+    let (plugin_service, plugin_overlay_handles) =
+        match bongocat_plugin_service::PluginService::start_with_events(
+            &plugin_storage_root,
+            16,
+            dev_plugins::source(),
+            Box::new(plugin_input::PluginActivity(activity)),
+        ) {
+            Ok(started) => (Some(started.0), Some(started.1)),
+            Err(error) => {
+                application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                        .with_context(ApplicationLogContext::Service("plugin"))
+                        .with_context(ApplicationLogContext::Reason("plugin_service_unavailable")),
+                );
+                let _ = error;
+                (None, None)
+            }
+        };
+    if let Some(service) = &plugin_service {
+        application.attach_plugin_service(service.client());
+    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),
@@ -495,6 +549,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
                 resize_sender: Some(resize_sender),
+                hud_consumer: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.hud_consumer.clone()),
+                hud_interaction_sender: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.interaction_sender.clone()),
+                hud_viewport_reporter: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.viewport_reporter.clone()),
             },
         ) {
             Ok(overlay) => overlay,
@@ -611,6 +674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
+            plugin_service,
             settings_window: None,
             settings_navigation_memory: SettingsNavigationMemory::new(),
             update_service: Some(update_service),

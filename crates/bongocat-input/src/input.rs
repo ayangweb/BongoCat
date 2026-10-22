@@ -481,6 +481,48 @@ pub struct SequencedInputEvent {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InputDiagnostics {
     pub captured_down: u64,
+    /// Unique captured keyboard downs, without identities or text.
+    pub keyboard_activity: u64,
+    /// Unique captured keyboard releases, without identities or text.
+    ///
+    /// It is counted beside [`Self::keyboard_activity`] rather than derived from
+    /// it: a plugin that plays one sound for a press and another for a release
+    /// has to tell the two edges apart, and a release the platform reported
+    /// after the runtime had already forgotten the press is still a release the
+    /// user performed.
+    pub keyboard_release: u64,
+    /// Captured space presses, a subset of [`Self::keyboard_activity`].
+    pub space_activity: u64,
+    /// Captured space releases, a subset of [`Self::keyboard_release`].
+    pub space_release: u64,
+    /// Captured Enter presses, a subset of [`Self::keyboard_activity`].
+    pub enter_activity: u64,
+    /// Captured Enter releases, a subset of [`Self::keyboard_release`].
+    pub enter_release: u64,
+    /// Captured Backspace presses, a subset of [`Self::keyboard_activity`].
+    pub backspace_activity: u64,
+    /// Captured Backspace releases, a subset of [`Self::keyboard_release`].
+    pub backspace_release: u64,
+    /// Captured Tab presses, a subset of [`Self::keyboard_activity`].
+    pub tab_activity: u64,
+    /// Captured Tab releases, a subset of [`Self::keyboard_release`].
+    pub tab_release: u64,
+    /// Captured left-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_left_activity: u64,
+    /// Captured left-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_left_release: u64,
+    /// Captured right-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_right_activity: u64,
+    /// Captured right-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_right_release: u64,
+    /// Captured left-Control presses, a subset of [`Self::keyboard_activity`].
+    pub ctrl_left_activity: u64,
+    /// Captured left-Control releases, a subset of [`Self::keyboard_release`].
+    pub ctrl_left_release: u64,
+    /// Unique captured mouse button downs, without identities or coordinates.
+    pub mouse_activity: u64,
+    /// Unique captured mouse button releases, without identities or coordinates.
+    pub mouse_release: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
     pub released_by_reset: u64,

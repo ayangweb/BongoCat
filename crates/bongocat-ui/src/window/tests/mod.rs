@@ -122,7 +122,9 @@ fn settings_view_with_endpoint(
     (view, visual, endpoint)
 }
 
-fn settings_view(cx: &mut TestAppContext) -> (Entity<SettingsView>, &mut VisualTestContext) {
+pub(crate) fn settings_view(
+    cx: &mut TestAppContext,
+) -> (Entity<SettingsView>, &mut VisualTestContext) {
     let (view, visual, _endpoint) = settings_view_with_endpoint(cx);
     (view, visual)
 }

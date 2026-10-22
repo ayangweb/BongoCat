@@ -27,6 +27,10 @@
     },
     "about": {
       "title": "정보"
+    },
+    "plugins": {
+      "title": "플러그인 센터",
+      "empty": "사용 가능한 플러그인이 없습니다."
     }
   },
   "system_menu": {
@@ -539,6 +543,44 @@
         "unsupported_os": "이 운영체제에서는 자동 시작을 사용할 수 없습니다",
         "unsupported_build": "개발 빌드에서는 자동 시작을 사용할 수 없습니다"
       }
+    }
+  },
+  "plugins": {
+    "enable": "활성화",
+    "disable": "비활성화",
+    "loading": "플러그인 불러오는 중…",
+    "discovery_failed": "플러그인 목록을 불러올 수 없습니다. 다시 시도하세요.",
+    "install": "설치",
+    "update": "업데이트",
+    "update_all": "모두 업데이트",
+    "update_available": "업데이트 가능",
+    "update_all_success": "모든 플러그인이 최신 상태입니다.",
+    "available_version": "사용 가능한 버전 %{version}",
+    "uninstall": "제거",
+    "uninstall_confirm": "%{name} 플러그인을 제거하시겠습니까?",
+    "settings": {
+      "open": "설정",
+      "title": "%{name} 설정",
+      "empty": "이 플러그인에는 설정이 없습니다."
+    },
+    "version": "버전 %{version}",
+    "errors": {
+      "install_failed": "플러그인 설치 실패: %{name}",
+      "update_failed": "플러그인 업데이트 실패: %{name}",
+      "enable_failed": "플러그인을 활성화할 수 없습니다: %{name}",
+      "disable_failed": "플러그인을 비활성화할 수 없습니다: %{name}",
+      "uninstall_failed": "플러그인 제거 실패: %{name}",
+      "action_failed": "플러그인 작업 실패: %{name}",
+      "configure_failed": "플러그인 설정을 저장할 수 없습니다: %{name}",
+      "update_all_failed": "다음 플러그인을 업데이트할 수 없습니다: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "플러그인 서비스를 사용할 수 없습니다",
+      "not_installed": "플러그인을 찾을 수 없습니다",
+      "not_running": "플러그인이 실행 중이 아닙니다",
+      "load_failed": "플러그인 불러오기 실패: %{name}",
+      "runtime_failed": "플러그인이 예기치 않게 중지되었습니다: %{name}",
+      "reported": "플러그인 오류: %{name} — %{reason}",
+      "preview_failed": "플러그인 미리 보기 실패: %{name}"
     }
   }
 }

@@ -50,6 +50,9 @@ impl SettingsView {
         if let Err(error) = self.show_shortcuts_page_for_smoke(cx) {
             failures.push(error);
         }
+        if let Err(error) = self.show_plugins_page_for_smoke(cx) {
+            failures.push(error);
+        }
         if let Err(error) = self.show_about_page_for_smoke(cx) {
             failures.push(error);
         }
@@ -58,6 +61,64 @@ impl SettingsView {
         } else {
             Err(failures.join("; "))
         }
+    }
+
+    /// Report whether the plugin center would paint usable copy.
+    ///
+    /// The center is the one page whose words come from two places: the framework
+    /// copy in this repository's catalogs and the name and description each
+    /// installed plugin publishes for itself. Both have to be non-empty in the
+    /// language on screen, so both are checked here rather than only the page
+    /// title the navigation sweep already covers.
+    pub fn show_plugins_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
+        let locale = self.display_language().catalog_locale();
+        for key in [
+            "navigation.plugins.empty",
+            "plugins.loading",
+            "plugins.update_all",
+            "plugins.update_all_success",
+            "plugins.update_available",
+            "plugins.discovery_failed",
+            "plugins.errors.install_failed",
+            "plugins.errors.update_failed",
+            "plugins.errors.enable_failed",
+            "plugins.errors.disable_failed",
+            "plugins.errors.uninstall_failed",
+            "plugins.errors.action_failed",
+            "plugins.errors.configure_failed",
+            "plugins.errors.update_all_failed",
+            "plugins.errors.with_reason",
+            "plugins.errors.service_unavailable",
+            "plugins.errors.not_installed",
+            "plugins.errors.not_running",
+            "plugins.errors.load_failed",
+            "plugins.errors.runtime_failed",
+            "plugins.errors.reported",
+            "plugins.errors.preview_failed",
+            "plugins.install",
+            "plugins.update",
+            "plugins.uninstall",
+            "plugins.enable",
+            "plugins.disable",
+            "plugins.version",
+            "plugins.available_version",
+            "plugins.settings.open",
+            "plugins.settings.title",
+            "plugins.settings.empty",
+        ] {
+            if bongocat_i18n::text(locale, key).is_empty() {
+                return Err(format!("the plugin center is missing {key}"));
+            }
+        }
+        // A card renders the plugin's own copy, so an installed plugin that
+        // declared nothing for this language would paint a blank identity.
+        for card in self.plugin_host.snapshot().cards {
+            let (name, description) = card.copy(locale);
+            if name.trim().is_empty() || description.trim().is_empty() {
+                return Err(format!("plugin {} has no copy for {locale}", card.id));
+            }
+        }
+        Ok(())
     }
 
     pub fn show_navigation_pages_for_smoke(

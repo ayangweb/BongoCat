@@ -1,0 +1,1620 @@
+{
+  "registry": "https://raw.githubusercontent.com/kamillobinski/thock-soundpacks/refs/heads/main/manifest.json",
+  "registry_version": "1.0.0",
+  "registry_updated": "2026-03-28T12:17:11Z",
+  "policy": "Only soundpacks whose license permits redistribution are carried, and each keeps the keyboard groups Thock selects by key (default, space, enter, del, tab, shiftLeft, shiftRight and ctrlLeft) plus the mouse left/right groups. A missing keyboard group falls back to `default` at playback.",
+  "packs": [
+    {
+      "id": "skcm-blue",
+      "category": "keyboard",
+      "label": "SKCM Blue",
+      "name": "SKCM Blue",
+      "brand": "Alps",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/alps/tplai/skcm_blue/52722920-07ec-45b4-91cc-6f29cad794d2.zip",
+      "files": {
+        "1.wav": "c671c69f63948b7e29339a17f171370f92850a3b56ea969db7627bbda3eb32cd",
+        "2.wav": "5f47d0f459154fcd4bf84f43994b42b98efeeed229ff2be884f6363bfe8112d8",
+        "3.wav": "73faca7cb603cd7df80deced34dedab5bd29dc1917d4e2c9684486663f2b7fdf",
+        "4.wav": "8744a2342a889ba5d4055934261811b8b330c425ff10b1fc44add13d4f58251c",
+        "5.wav": "21d1f7b4f946983a1184b98be1ece0ee5262a53aaa7d199aa75132fd548daa60",
+        "101.wav": "07d8b9fb6ae2ed7093895313088eeb2240e179ed590e5f52196aeb7c05097861",
+        "102.wav": "aa3561abc99b6f78a90fed8878789792c98a8f06daeb8c293a69f79aa6551a75",
+        "201.wav": "9301f507039735530e026a1ce786ef01837cb6a80fbde245ce490f88a155a824",
+        "251.wav": "c6b5f2fa63aaedfe1149eccf569275fbc25b3dd43c8bb1f0265ffa79171c26b4",
+        "301.wav": "220b80dbca2baedc32ff2a3d0c9b0eade42de08d13663c0d54bfe78de5aba3ca",
+        "351.wav": "02476eb7dc93f99d01ebc78d85de75c43836bef8d03d869b3f6aae28356021ac"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav",
+            "102.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "black-abs",
+      "category": "keyboard",
+      "label": "Black ABS",
+      "name": "Black ABS",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/black_abs/de401889-0ccb-4522-a213-836aad88c447.zip",
+      "files": {
+        "14.wav": "cc164663cb5feaf1e2146335e63db31848cf253cd1c30b6a613a1d7a8541be7c",
+        "15.wav": "7f86fda8bccc45bd6ef080481873eafb02911ee7d9708a133dce274d2c2e92f0",
+        "20.wav": "a677a15f87602b1f1b7e4df27d5f61547a84dbf306b8f31413a17759de4b67d1",
+        "21.wav": "290022965a676048d05efb26edb107797c93258936094826434a5008a9c57dd2",
+        "22.wav": "4d2c454dc19651b407aa8a736951c247cb2a131f2a459bd2f3e00903a2e96541",
+        "23.wav": "5c0be9bbc75241d9f641083dff894524c909d1de9f4a6f1eba22bd2741795512",
+        "24.wav": "b2ba1a75530dade54c1f68ecd2f2240be1af3e70b600e7a8b3029cd8e84928c7",
+        "28.wav": "916d27300d94ed66bbd9094ad3001b5272743b984826dfbb8a0cabd5733de59c",
+        "29.wav": "99b7f7b38b7a2f4ca32904a8831e68c407a4f26e6064c7a9cb2590b9786ea0df",
+        "42.wav": "a1d81226bd478c18006b7a0c0dd14b21e6f7091a08292fb4a7f2016d5384f8f9",
+        "54.wav": "bd3b0e24a6efe4f56d25f6d93b265579b910446e1f88ac809f0748c11aec6e4a",
+        "57.wav": "5ed297645ef6235b0fb6e1ad145cf3839ce04655e553a1818626b452353ec408"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "black-pbt",
+      "category": "keyboard",
+      "label": "Black PBT",
+      "name": "Black PBT",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/black_pbt/980c6cc1-7daf-4584-8b0e-643b3a811a6d.zip",
+      "files": {
+        "14.wav": "e3c1858e0a8bd10bcfd014f19818bce7ad6fd02a5560a9c6e4a3b17038bf605d",
+        "15.wav": "513fd031cdc6bf944b90145b928d98ff4698245f47f34c0cae2e124c6fdb635c",
+        "20.wav": "e33ee406562d3626c2a145b3d7560b9fdce59583035ae7724eb7be7733276295",
+        "21.wav": "0eaa5b9a1746a8f6c182ce70f57a3fd6a5b2a3d2489af10490f0f19a40a69772",
+        "22.wav": "7b6f38f5cc3ed2958d8606718675f5e2272bdf344da68646761b259766df8c23",
+        "23.wav": "bac573aa988e8c614c5f068e9ac1e2e06e0e37b52f9f4b1b37f7c05f3066b6bd",
+        "24.wav": "702865b81b86e242fc43e9f109e5a9f682f56173bdbf32abc92e2c839034aa9a",
+        "28.wav": "132ee323cd0defee4ea07b1468d6523ab382f8a5ce1ede1ca55ceef2b1430d53",
+        "29.wav": "a738a30b55b3730dc21964060838e8725a1eb228c7f3ae1793de579287f3aee1",
+        "42.wav": "2b7916e8e6739960e2b478c3ffa6e47769275b3a6816355fa830949390286eda",
+        "54.wav": "a5fcc70ae9a6b791fda9405e1d2100391ed23c38a63b5f83b811df842dcf1c47",
+        "57.wav": "a25a5bc9e8a8209a318c771fac29dd1240a2c099a85809007a8b0bc1f4ceac40"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "blue-abs",
+      "category": "keyboard",
+      "label": "Blue ABS",
+      "name": "Blue ABS",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/blue_abs/cf535c6d-9cc7-46a0-bf53-af6d3aeef534.zip",
+      "files": {
+        "14.wav": "d0c79e005f0435a1d6c211af617bc98c99d3a8e203c3048d566fe55efe4998b7",
+        "15.wav": "143dae94b340abe8bb318a39e006359f60b4c14c7a763ad2c66f5f30a0cb0e23",
+        "20.wav": "63b74b6f011402f859e5c1a1215ec632da552425e60c34073d080dee7c5aab64",
+        "21.wav": "d1b58ff6645292a7fd0c84e80938eb3478922b510bd2e9b0714866112369ae0a",
+        "22.wav": "7abc601e6c7978e24e543ac8eccb86e6468bc71946b0cef542740e1f06ca19d0",
+        "23.wav": "b49692ea932663fe910a9760f7277309cf218a061ae45bebbe36015832828a66",
+        "24.wav": "5d6a1f0d1502d3ff0f9698c8ea5936440fe2b8cbd7ae814c802d98492bdff1cf",
+        "28.wav": "de50c5e90f555c21a965551cb3f99f914b691d263b4497e107ac1d9a688f88e0",
+        "29.wav": "39c7a1e3e144aea4e5fbb79bb29eecd42ce6f25cdd09b4010c0f682c35735306",
+        "42.wav": "c1eca66ef29b2e589b5ba80c8190feca80d1442345a3a74bf0a9c0e260bab48c",
+        "54.wav": "4eb83ae324ba5432ec55a01fb9918b87ba351e30e5557cdeedff6357e36e0743",
+        "57.wav": "a7a205a680026169a2ace03b726709110ad2a2a54452aab1ca8edc1d3aa07083"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "blue-pbt",
+      "category": "keyboard",
+      "label": "Blue PBT",
+      "name": "Blue PBT",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/blue_pbt/ca2d54d7-31d0-4177-b26a-43d99a3bcaaf.zip",
+      "files": {
+        "14.wav": "1c43b68250a7f95c3477d0a62e1b735283d125555f85c909997ffb3d9101783a",
+        "15.wav": "7bc84ea8771ed5bc4d0af4d4b8d9cf9147b637e04e1210f925ea05e67d43558b",
+        "20.wav": "4f5039d24636e42561ab3f1275d24dc3046b820e99ef293f511ba2d54ac9a582",
+        "21.wav": "4a1e45c4d5a65274b5da05e053277e7a023e2ba2d073fdb02538495108928a1b",
+        "22.wav": "079688d34cc992076e5da5c6bd6541d28cc3f1d4bec95ca78bb8c8b393467e2a",
+        "23.wav": "8dfcdfb8bfd14547f5babc1cf574b2c1e69eb4fe0eb12709584c59f6d7151210",
+        "24.wav": "61d71b1a0a651017a08df95afd1072773f6d5b9a09df9014b192f7683781d214",
+        "28.wav": "fab751a9c7261a944a8e6c249679dd13c0e27b24fbed6beca716c3eac5dcafe3",
+        "29.wav": "ba3f18cd8ef194ae6e9465804f9065434f62a78ea308a58c0ec12578de13976a",
+        "42.wav": "fb29bb93afa34f0088f0b0d48e178603950c07b84b9806ba081f8f4b44bceb77",
+        "54.wav": "fe025b0606553d61570e41a6e6fe9f00db912309c3f7827b9e42f4238ba56794",
+        "57.wav": "93225404a1c121d7702c970ec1ca906c0867529ac29cac98e527c104274e507f"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "brown-abs",
+      "category": "keyboard",
+      "label": "Brown ABS",
+      "name": "Brown ABS",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/brown_abs/186ca33e-9998-4a28-974c-c21ac353c16e.zip",
+      "files": {
+        "14.wav": "4162d30979ba1314f83bd7f4d9978576437aa84c760a23f919b48b20e5013ac5",
+        "15.wav": "d6595507fd0e53a0c277659ea7c1677baf940c184122af1919509e986c915870",
+        "20.wav": "b89aaa5a0d1deda02d19028164cea1f6de5d3575435360bedf65e93d26e55601",
+        "21.wav": "f1a66f35ee9713fdb74895f2e502b09ea1ea09e3b47cb19dde8ba7d2b8d392b1",
+        "22.wav": "0da97debc0ab68580355a9dee4ded5f101d16ef7421bb07cbbb1ce0f4e23d563",
+        "23.wav": "4d2a568a68252b47b36a4cedb66f76716be4dc00bb01304576936ac1f4deb4f0",
+        "24.wav": "2a1d1ce6ac3f73b654a996114d28372e34cd95af5f94e612caf91cda900b7bc0",
+        "28.wav": "f1ef212826148af11df826fba427c07252ae1005af9a9f784ecfea5fb3dc24f8",
+        "29.wav": "63231cb25e53b4ddbf16b9796e92a73722f3383884858c993c4769bab1b5d6ce",
+        "42.wav": "1f973bd1a2a584be5435dec17435d3e77732ce959e4b2740207b638cb97a94c0",
+        "54.wav": "349294941e6a8ba827497d8cc857268a50ac6ab6ec21149226782b1cef311126",
+        "57.wav": "c98ff540de61ab7e4f19d4bc20c0be1359fcbc86640c3d827b149dfef8cd1b76"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "brown-pbt",
+      "category": "keyboard",
+      "label": "Brown PBT",
+      "name": "Brown PBT",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/brown_pbt/3aa3c556-ab47-4ab9-a791-498bf9910bf7.zip",
+      "files": {
+        "14.wav": "42c505639c310877bbad85d3c20d98997707d32bdc84c013db931074a439f640",
+        "15.wav": "c1dd5a2389668fedd76d4ed4c81b764c9f79ab8d73b71038a20e8978949e2192",
+        "20.wav": "e0ed1a2d0002f41550c04694f7ecb879c367e0e78af8ab9cf52ea8d571b56321",
+        "21.wav": "1f80ece54ae3db59ff3a2774c7a3ee70d8b6019ebeb14981d6db04e009b26307",
+        "22.wav": "b3273a6f0ee5b0052cf25f04a4226998003ef0c7f46d8e02659c111448121360",
+        "23.wav": "bbc2e962fca2d865fcaee243d9830e2ab48a16953c912cb21efccc95fcf7d752",
+        "24.wav": "59c8744a7b3998e0362feedbc6eb438c2e2d1d0ad8ef45aa6c8f61f9640d6bb2",
+        "28.wav": "57ef7f4112b10b5568a0d231d3139ffe4424e82c5ff4fc9bb8b6c6818a284518",
+        "29.wav": "8924a72245a77411120cd82ca337895ca40ce9b53ee9434472d3eb6c7b6683f9",
+        "42.wav": "c2e8b730aedb4e616a903f8245dfe9c6bb99e578456ba586886d9b7881a25b5c",
+        "54.wav": "260f8c0afe2f75799026a3da90d8f3df61cc72d138bf286186774c3121bc0658",
+        "57.wav": "06c14ee2d9a5348fe9af3fde3d184379a371cacf1c08944565751739471f6554"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "red-abs",
+      "category": "keyboard",
+      "label": "Red ABS",
+      "name": "Red ABS",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/red_abs/31071be3-c9ad-44a4-8d38-aaa7fe414a58.zip",
+      "files": {
+        "14.wav": "0d343ebb184e55237deb8e6a2fc13a7163e428cc9c9ede46da518d1550cd0488",
+        "15.wav": "c62e8d3848de538cbf1571cb378cbbd4a59d49603ac89f66d6804a3e5e64f590",
+        "20.wav": "4a0091a777c46598440285c50d5a7abf1150062dc196a7abbb210f1183743ab0",
+        "21.wav": "c9ea43edbc1f9828a305ea8d0ecd7f5414b7595a6f53736ae00553c07fbb44cc",
+        "22.wav": "ee1b37be8a265fcb7be6622c7d2035d6b58e8144a924840fdb240dbc1b7adcac",
+        "23.wav": "c5e1be597fef1dfbdb01a5759c9034268b173bf4ef9896d147eccfadbfe26ae2",
+        "24.wav": "912ca37becd23c95d6f8e35369c4e4b94af29c0f5774e2b29cb1b3aebc09eb08",
+        "28.wav": "a5196a08c1ea292878eb9bf137cebb92cc9e618c235ba4d178e8e72741c7cf13",
+        "29.wav": "41e54f359058cd8b8ad8e60e9602fab7a40dbd7b4552a9019319b4377403c2d4",
+        "42.wav": "1118683e915929798394d0b70dd2400cac02f86e26c1d235383a56322de1bf60",
+        "54.wav": "4ce30bb2594849e344b64dac6c9f7cadededf3f9ae4ac0f1e7920fe88c18ccba",
+        "57.wav": "91502a173742762c181137b8857850d71e28834f38718f39287e48629d921740"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "red-pbt",
+      "category": "keyboard",
+      "label": "Red PBT",
+      "name": "Red PBT",
+      "brand": "Cherry MX",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/red_pbt/e05fa018-400e-4d9c-b357-d5467b07650c.zip",
+      "files": {
+        "14.wav": "591119b94fa6eaad65b699527c661382c2b8b35df587d318d311d1a9b5e2d6e3",
+        "15.wav": "43f91445e3bf4c4b6763ac75cd31e142eb339f3fd6a784a80c2c6b07b27c62d7",
+        "20.wav": "336246465f464806a1071e7b8c1903121e9cb0ff36c73d209f9cde3c2d8e62da",
+        "21.wav": "1b40062162d9f278abaf001efd980e7811b905411819446b488325bc2960ef95",
+        "22.wav": "3cc6f376256aac89c02c8ea9dceb53f97b09353de52cd6182b559f8945a692b0",
+        "23.wav": "911e5f238f87643644ba5eff0414b6621a3acc017acba06a6677a1cb05cac9dc",
+        "24.wav": "79bb52964901636e0d0595d38882b0540edf2c9fd886eef500fe600bfea8f380",
+        "28.wav": "8d6f4cbe58a1e79b64b0a0ba1c048328a6fcf89b4329735654f370bcb48b879b",
+        "29.wav": "d61282bb6567d7c6c1fc74fe76c8e26362feaf47bfe43af97307bf2a174c05ae",
+        "42.wav": "9fde1ae5d019e770cb4ac610bbc4f2af2dd6149109d1a6f53f5606339c06b2f3",
+        "54.wav": "c4c4aabefe5073c769351f6e2964b7003aca4ccdd05fd864b3cb91b3a2e92d9f",
+        "57.wav": "a62e004ff4fc45e3c7204b3037b57761e7113173a79e352ba741a6f2613009cd"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "holy-panda",
+      "category": "keyboard",
+      "label": "Holy Panda",
+      "name": "Holy Panda",
+      "brand": "Drop",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/drop/tplai/holy_panda/4da844a6-346e-4361-84fd-5bc142ff975e.zip",
+      "files": {
+        "1.wav": "65c080bd6b13991ce5d88ca8ab24636a1bd1a94e920c5f2cc876bc0f768716c0",
+        "2.wav": "55a9d4bf51d777c0313cdb34cd8d3b7ddfd2a1e89232d7b8e6f0941234d535a4",
+        "3.wav": "0b6e67d4fd74418362174b8ccaa2cba942dc4c2542be491059219bd75ee7c2d8",
+        "4.wav": "46519b56e5b1b2453dc8a73f493e6900ebe400ce7a9897da231833ac547d4bef",
+        "5.wav": "397fe97cb38e785e9f37eac163800fbffd07835552890843c861863eecd5ba66",
+        "101.wav": "233434854f944a91faf162076443f676b37c3dd5b5339eeff04786c2b2df9436",
+        "201.wav": "aa512fad5eafda5c482b8df1091925a43f33ada7bbef449cf36f7126cda3bb06",
+        "251.wav": "0d101caef2fe8f8ab35db1017cbd1fda0041e5d828a5e47412e529e6052ee80f",
+        "301.wav": "2ee3cac06eb4db0efac18b4139ad0770b45c571ea8428551f53ce90272fddd1f",
+        "351.wav": "6e1aba4af9adccc119eff8e258afb3d09c187a1750d3e4a1500235cc7a0c56d6"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "alpaca",
+      "category": "keyboard",
+      "label": "Alpaca",
+      "name": "Alpaca",
+      "brand": "Durock",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/durock/tplai/alpaca/23d8cf7b-f99b-49fc-ae84-3f99dc728ad9.zip",
+      "files": {
+        "1.wav": "99a1ac0d59ee209b5e02eec10ab438ef7689670ce3159813f15feec0b16200f2",
+        "2.wav": "fc931f08ac98ddf2d8abbfc66fd199af603cd0bc704f40478f5cc885de0f3147",
+        "3.wav": "24e1ad344ac4c6dffc79c2f0e7e9626a8d693738d2e26bee55b3abdf5d31f956",
+        "4.wav": "badf3cfd664f21f70f3938882fa88a66b89d7ec77f85d0eae941bdf558cf04b9",
+        "5.wav": "d5b8670e40789205461e15adca0feed0fb7e9188c308e791d2445031e2899b7d",
+        "101.wav": "8bec5be7fcabddf98d956a8021afd00c7d62570747ad194771cce65c238b0786",
+        "201.wav": "c87f5df1f52d9ea9d1cc356075ee7a596cb32f8f193088c450afdbfb2e6c52cd",
+        "251.wav": "409b6502d70aa098f98ba74b1e51b7eea6b3f2f0d4cd09a75cd9f53708695ce4",
+        "301.wav": "9face908837b8f02464e5532370fd999a6c592a543f8c2b0f3f46264573d74ab",
+        "351.wav": "53ea8628ead64957fffc70a7d3e4cf8e50a26d2c3982864ac810e4449f4c0c4e"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "crystal-purple",
+      "category": "keyboard",
+      "label": "Crystal Purple",
+      "name": "Crystal Purple",
+      "brand": "Everglide",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/everglide/mechvibes/crystal_purple/7a4c575c-2c5f-49f2-bcd0-966f0ac874a6.zip",
+      "files": {
+        "14.wav": "8c40acb017c623e4190473aadca9447f141fdf97164698628e2a2cd5d780bbfc",
+        "15.wav": "7a1e026033778220d696d4e7e92cd06d6694008a488cd78d1b1452a5e1cf85f3",
+        "20.wav": "6de0babeb27d6adf915680f58956d2818894f105240c41c1f15575267919c50a",
+        "21.wav": "af5297f396abd63e41a69b5c8167f883539c916d9826174e92db8fe53e329d35",
+        "22.wav": "ac5e0ea9e206895a4a011c241a572c523b05082b57fdf6f198d748c41e796b35",
+        "23.wav": "93f9133d9b3e6c38309974fd362e19721615aeb8f3e6b667f8076d5e99d3b741",
+        "24.wav": "8f601af3e56d71d1afa4b45a21f988b545d9ea23492325e1fe7b2e60368416ea",
+        "28.wav": "4ff46064bbcca2c3ff1b232807691d68463b08c03e9591ee663727010d9da169",
+        "29.wav": "29499caa3518a8aa9cd7d5444b56bf0a09c9b35a7b7d04f82b62372aae658724",
+        "42.wav": "a5eb5b1a80f0e4f5427b88d2c3bd74280a3eb077282740ec79a2fbd0f8f58609",
+        "54.wav": "0a05abde9e283d8e2aa6d9072bf34b70aba0e0b5852f409dac21566292f2f778",
+        "57.wav": "3ca9c97c1fd6b3cd840a38d57c73e53b73634c3bcca08c8a1457c565d7d234bd"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "oreo",
+      "category": "keyboard",
+      "label": "Oreo",
+      "name": "Oreo",
+      "brand": "Everglide",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/everglide/mechvibes/oreo/c9f8ec9f-4fe0-414b-87ac-4d5b64be84e0.zip",
+      "files": {
+        "14.wav": "e76a3e4e5a44911fbf37cf2183444094472d64ddf9423d490ac9b0c36f2e5833",
+        "15.wav": "ef607961f7341cbbaf4e9a35c080fbc8a4076a62a6b127ff733a5ec2159dd804",
+        "20.wav": "98dc590effaf43d8d89ef199a49f373c3448477972bdaaea4abad91448f7be38",
+        "21.wav": "3b48b12874778b4260bad2f3ece4253466489b69e7bc3d92c3df36db04f99819",
+        "22.wav": "e0e2ce71a1de4b9ded0c992c88a5326f38582a78056e939c7f7db8798105d998",
+        "23.wav": "a1a339ca96c93c587e2b93e4e4c6516018165e56ea596b461a7e088e3fe84e75",
+        "24.wav": "528f48ac9bd83ce4fc7e80e255ae197970c06be00fd1e403ce812737602f72d1",
+        "28.wav": "47dd238ecfb4767020c7f95e22c07f6bcf007ec6520d750e4e562d8515b26baf",
+        "29.wav": "d39630a2753fea2749b2a98b47fe1cfe83c6c16ca26e54297742b71342970ef8",
+        "42.wav": "a9a2e90f24364464ebb95ba36fe96cdaa6bcabbbc9dbe30a377246063e0d00e7",
+        "54.wav": "1c2971ba897c99295cdc674110da28654ca3bada6fbacfc1b350bee939173247",
+        "57.wav": "4c3c35b279c1f4dd52ce2e04a949828ec5352f2724310f9a0f4a6b2ae4c965e1"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "ink-black",
+      "category": "keyboard",
+      "label": "Ink Black",
+      "name": "Ink Black",
+      "brand": "Gateron",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/ink_black/b9bfb429-16c6-449f-aa85-5da083696f68.zip",
+      "files": {
+        "1.wav": "6c260bd761c55d2c42e38c17557165545db944b5e3e68858d50cfe160f8b4b35",
+        "2.wav": "1c1a45deb6d6ca58e497f0007d392b234cf8b5be475735cd83a3708748e4450a",
+        "3.wav": "dbd7fa5054b92e9b9c866746c12875c11dbec06eb575dc927446809b6bc08ff9",
+        "4.wav": "dbd7fa5054b92e9b9c866746c12875c11dbec06eb575dc927446809b6bc08ff9",
+        "5.wav": "cc96ef24fa638b006426b70f276e69e6550afad46d157dcfd99947f6c98f2339",
+        "101.wav": "09c9302868404e48caec8a572ee2fa8c1f348b83594ce69ddeba7e9ba07949ab",
+        "201.wav": "fa0f42fd1e5c815707868f8115299bd157c560f2ac6fb182930ecd235d2673e0",
+        "251.wav": "5d41c808d74233f30806f4f85fa85e9cee6de8879901f5b2d7d0629202c4b82a",
+        "301.wav": "c71b822541eb763bd2aad516e66712b2f12f5561780bf486923872067ca17251",
+        "351.wav": "e1c0d7b328546fa10ba4dbc328d61ec0acc3692c10cbadb0eba87ecb92ce456b"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ink-red",
+      "category": "keyboard",
+      "label": "Ink Red",
+      "name": "Ink Red",
+      "brand": "Gateron",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/ink_red/631754b0-eafe-4b14-b86e-61842f1f195c.zip",
+      "files": {
+        "1.wav": "88d0c6577a26ac660b218e121284e58a01a48a2c4e1726781c7760f59218dd00",
+        "2.wav": "a26913406d7e7023d4fc32528b2c5d9a23ca672a9ca5b0be1ebbaa51d7346b84",
+        "3.wav": "981f07e27017e741867e231c9233a08a65e7c0e00cbf8b4fc248c4759e3a6125",
+        "4.wav": "27767e73f7037bd446ba1b31d3e96e819cb0c469b57d8be7331cabfee3b0d715",
+        "5.wav": "cb698f0bc1cfc0af1cf656046fda194ef2b8ad26591972be031efdb16dcd571e",
+        "101.wav": "8c696d019d843fd505140eb4572ae7485922538aad71b18deaca52ee6cc26374",
+        "201.wav": "f55564e63a9e8c60ed791661fe6d83ff03a8f1b3ff5ebed947f577cb4873aaba",
+        "251.wav": "29b4229d5c4c095fe72f5fe15fb2d90af8a9ad6d7d3c6fb0b5e1d51b64b03a73",
+        "301.wav": "601353525bd4dd6174202ed6735973edd35dbcc1b2955affd70fa47e637d2f49",
+        "351.wav": "843805e8ab0cd287dab4ca9242b3de87765c8c43fa505563fc63a12c6b5d3a26"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "turquoise-tealios",
+      "category": "keyboard",
+      "label": "Turquoise Tealios",
+      "name": "Turquoise Tealios",
+      "brand": "Gateron",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/turquoise_tealios/c556e214-5d78-4fc1-a7fe-3eb3f53152ba.zip",
+      "files": {
+        "1.wav": "2e97b4171364b5cb2589168ee5680e6a9ddf599799e8d96d7b0b971290b9832f",
+        "2.wav": "6e88b3d8289ff159d2b2b5dbc12084ef8f0ec5d8adf2060f2c1fa30e9d561ada",
+        "3.wav": "ed153eba97783bc5f2faea0ffb29c265f61553a78a09fa51ce7ba2ad4a6d68e1",
+        "4.wav": "0ffb4ce9214e7611ddfc2d9bc3ea9fc504ebdaf2f89522f696092ae49269928a",
+        "5.wav": "378897c59b5dfd70618cec57a4fd2374503dfb705db4aa03ce0476f6ca5e638c",
+        "101.wav": "89264483bedcb5665957dc1070edb5bd124a1f7dd4721f3128f141d8440efc5b",
+        "201.wav": "996a89457b1735a33d0c3d4cb810356c96ba4cc13d5dec53727f49b563cdef57",
+        "251.wav": "e9ea60b873f2c7edf1902d20a5296591a7535c6a36b5bb0a33c4ae777e42eeb1",
+        "301.wav": "265e22e6a17b7560f7127b19418c7036cfa6c028ad38f487d3f21912c202f6b4",
+        "351.wav": "d003228da9c5164df4c0ec272d70d0497d1d7ead896b18177f01f409dcb42bbc"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "buckling-spring",
+      "category": "keyboard",
+      "label": "Buckling Spring",
+      "name": "Buckling Spring",
+      "brand": "IBM",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/ibm/tplai/buckling_spring/61861d39-1242-41f5-8cf9-5823c472ce28.zip",
+      "files": {
+        "1.wav": "314ccfe47478c411b17c6c0aadcda3dff4b812997dbb7d2e1944397b361407e6",
+        "2.wav": "7d165654289081b3c60e55fd9035b160babf20752b7c4144abecb8d1c7842fbf",
+        "3.wav": "75c7542953e24235c5e53b3e286e7e851637d4af149aee52ccbaf6433d954b64",
+        "4.wav": "f1fa7070536021add8c074f446a498be80b2d778ab524fdfcc2150e03b95f725",
+        "5.wav": "beb4840cdbf765aa3b837635886f80b85bbbf62b4f3131c95c7e740cbda307aa",
+        "101.wav": "550f65da05bfea55a10c804fb9cdd472d971d2d99a002dac2c2e36eae82a5e64",
+        "201.wav": "d932a700ab8c3dd38c24ac8f3579767feabc4bfe7db659a07fc73ee80aacc08a",
+        "251.wav": "d555a0813ff18729d441777ddfa800aa5736d3c05e65e6f5e53f4e649fcd01e8",
+        "301.wav": "23490cb82cde40c3ccc2cac233c2c10382d8c14fe708ab8ea1488954812d0200",
+        "351.wav": "32b321e683ffd6bae3b48ef34d836c8851fda60ca8c2f1137cb9a7a986d4ffc0"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "box-navy",
+      "category": "keyboard",
+      "label": "Box Navy",
+      "name": "Box Navy",
+      "brand": "Kailh",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/kailh/tplai/box_navy/c573d01e-2d20-4844-9286-a9e628ef8f3b.zip",
+      "files": {
+        "1.wav": "430c4f706fdbcad7af8cca81068a1c879dc0642f99eaeb83a394f9644e305ea7",
+        "2.wav": "669faf1c756f8907f8fadb6d6fc44c982f73923cacc1da42d0a8ef7f7181a696",
+        "3.wav": "ddeb62b0d4535fa934fe6ae0569d4a8783c684b52b8f18ef6b830699fff7f83b",
+        "4.wav": "5f1fb8e5003d8394bcd5d528d258dad17a1960fb15f90a564128ccafd6420a30",
+        "5.wav": "e07a9b65aada80286204ebc60d883ca97424427c4f49e0fa4139ca99aef4009f",
+        "101.wav": "0aa23212266f844ce002c0dad925dbfb84ed9bfa399fe42d21a76a19640520ae",
+        "201.wav": "b1544b6f60f154b86671fcf5fc666dceb96a2bf96df1dfcc0dd99e10ab4f9255",
+        "251.wav": "b5cb436faad1563e429139ef978c92440a48ec6f813161ca419fb38cc8466b78",
+        "301.wav": "df70e1062f3221ed7fa2f7ff0742c26c4be051c9722689a9695ef762354830fb",
+        "351.wav": "d6d12e0b57caa9612a1d232255d3f62aff8e93453f4953560c192f218a4e07f1"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cream",
+      "category": "keyboard",
+      "label": "Cream",
+      "name": "Cream",
+      "brand": "NovelKeys",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/novelkeys/tplai/cream/f0cc3d8e-5b1e-4412-a3f0-8a4f70912d0e.zip",
+      "files": {
+        "1.wav": "975b1c0444a6d2d527fb387d532c91f31d80a2b43123fb3f990f0a001e179ca0",
+        "2.wav": "916de52fca52d690321be9cfd580e3e2d993dbad24e054f96e8ff5da6f95e8d4",
+        "3.wav": "730e0c655bca15cd6b2bd275fce0d39f878cc593d7edd0b99f938750f26f2002",
+        "4.wav": "9656be17ae9816e3f6b823357766461b1a4912b9e73291feba37887e61a17b72",
+        "5.wav": "4c9c03f393a540afb6ebe332f61abc659cdea0f3eddbb37c2dab58ce3cdfe590",
+        "101.wav": "1fe12fb030292eab8ffdc4de89f6f7899f6c5805b2ca30c7fa28dfa7a947c3d0",
+        "201.wav": "2de0e977f1c1a0147560a87c57d112116b66a50179d973c41364da430fce9e3d",
+        "251.wav": "7f5ddf7d7e4c0a7f684f281f5dcba2842c3e205e59095b8a2dd5d242f23bafde",
+        "301.wav": "27c31dfbe05522a8afae9b1dcf08e32d4f444beafd4c04b4104e83063935c3c2",
+        "351.wav": "a8bec0819708779b01eb695468926ad1fdf90522faf49d9e2fe4373bbfc8c101"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "quack",
+      "category": "keyboard",
+      "label": "Quack",
+      "name": "Quack",
+      "brand": "Quirky",
+      "author": "Freesound Community",
+      "license": {
+        "type": "Pixabay Content License",
+        "url": "https://pixabay.com/pl/service/license-summary/"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/quirky/freesound_community/quack/5e02cd62-f79b-43c4-8899-78bbb630a81d.zip",
+      "files": {
+        "1.wav": "6845172659c9d99107b092375aa689aed94b61657ed141b40a01716de1eaa892"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "purple-hybrid-pbt",
+      "category": "keyboard",
+      "label": "Purple Hybrid PBT",
+      "name": "Purple Hybrid PBT",
+      "brand": "Topre",
+      "author": "mechvibes",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/topre/mechvibes/purple_hybrid_pbt/fada0d4f-c510-4c19-8cc3-d756c186de8e.zip",
+      "files": {
+        "14.wav": "410b4883d5fed05a272a344b0403b6f7ed781e30c57a4e864dd7127f9248ab1c",
+        "15.wav": "809639485e3c59b2ec804818740cce6c4173deb76ad76e8fe1f405935d0a91ab",
+        "20.wav": "3bd5aea0ca6690debeda4aa4897a706eb3374e3c0ee30cd9c58ade4e5508d5db",
+        "21.wav": "384c4d84d5aa86ef18e873e3f2acd7aa138e0f1e83c8fe2b01ba13f36c619fb7",
+        "22.wav": "a1da417d3fed382c394ee195a03ff9e57cb545d2ee98002e337d36db46a04c54",
+        "23.wav": "868e49da802712fc6d127e586b51ae55338a5215ab246563fe2053828ad6f8d1",
+        "24.wav": "0496918f8833e2994045f7d6af04af1314280378423a6a6f92c3b3aec01b8741",
+        "28.wav": "facedb8fb5e10748997d22046b0f42317f35c58b76fddcedf4f506f04ca96252",
+        "29.wav": "05a7eea656382a4da03371fe821e37e7547a522590ea647263dc328bc7add83c",
+        "42.wav": "b90bd91e6aa6cde89680aa33943309d75f750dcb3ac130c7fef3fb21a3fe90a8",
+        "54.wav": "f5e436e11141dd47c19307f103a54b3421d18dc369f6aa9740045e5b8a38c407",
+        "57.wav": "927a0760d73a4d95f70fc7ae1f76542933f911677b469e3ea5387f93576039d4"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "20.wav",
+            "21.wav",
+            "22.wav",
+            "23.wav",
+            "24.wav"
+          ],
+          "up": []
+        },
+        "space": {
+          "down": [
+            "57.wav"
+          ],
+          "up": []
+        },
+        "enter": {
+          "down": [
+            "28.wav"
+          ],
+          "up": []
+        },
+        "del": {
+          "down": [
+            "14.wav"
+          ],
+          "up": []
+        },
+        "tab": {
+          "down": [
+            "15.wav"
+          ],
+          "up": []
+        },
+        "shiftLeft": {
+          "down": [
+            "42.wav"
+          ],
+          "up": []
+        },
+        "shiftRight": {
+          "down": [
+            "54.wav"
+          ],
+          "up": []
+        },
+        "ctrlLeft": {
+          "down": [
+            "29.wav"
+          ],
+          "up": []
+        }
+      }
+    },
+    {
+      "id": "unknown",
+      "category": "keyboard",
+      "label": "Unknown",
+      "name": "Unknown",
+      "brand": "Topre",
+      "author": "tplai",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/topre/tplai/unknown/ab2657fe-dc0a-4c75-ab74-81d8f56002b0.zip",
+      "files": {
+        "1.wav": "a21408b9a5d06009fe079b9885b046e773032e2367833ac293ad47c81407d7cb",
+        "2.wav": "3b970719641bcc0eb06d86568415ada297beb302c78834c9b333dce8d16bc44a",
+        "3.wav": "eb2340f6bd27068f9be2dcdcc43a84448a0f75c2611c4c532262eb7e1094f0cc",
+        "4.wav": "4471e33e63238b4909933acfa51b9dd7400f946d33d27d36948a2e5d6e28e7de",
+        "5.wav": "4f87b2677959d473df5a308240ea436e81b33de025ab7fa4ab150cf41a9a0b69",
+        "101.wav": "fdae3c40c4f98d973602ce9a9fe4178d3071c2111ccf9c37a959b15449504a47",
+        "201.wav": "960bf24d545c6ad230ca2f4c80e3845a54b4ec37a90e02e3de2b57cb29270352",
+        "251.wav": "4bb964915005915f6a3bd947002beabe808a1529a7103d493c16faebc80965fa",
+        "301.wav": "1cd98fcd228b7cd90c96cedee3bcd9b25fd4b76d0d2e8ee70a1d70c85ced5656",
+        "351.wav": "6b0b12fe017d3e86c0774ba5da7250b799b07c90ae2b2c7ee5d01dc339e694cc"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav"
+          ],
+          "up": [
+            "101.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-unknown",
+      "category": "keyboard",
+      "label": "Unknown",
+      "name": "Unknown",
+      "brand": "Unknown",
+      "author": "webdevcody",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/webdevcody/type-joy/blob/main/LICENSE"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/unknown/webdevcody/unknown/c3f120e1-809f-4265-8167-14d708c99a48.zip",
+      "files": {
+        "1.wav": "93ddd43784a85b9bee164069aef87a49741d49934406733fc8fbc3ab461e6992",
+        "2.wav": "b8c2b71a9ca6d583b5d8f01ecc3f88ba6dcd09d14b58bebaea40a7022cb5a789",
+        "3.wav": "fc2e8489c5318985963d2381696ed3ef094b75048b07f461984bd144a6db07b5",
+        "4.wav": "f460646b68aac7a79db468d7058b1a80450f1ddbf76a791fc79744e3972a7c0a",
+        "5.wav": "f7e1bbc44bc6325e1ebd4138380b610a163b75b1fff184cecce30caa71c70d39",
+        "6.wav": "02d6f8164077da0f218e434483d24809d8b4f7b4cdac008205ad025c6b447368",
+        "7.wav": "84eed7c422607a62f9b431badb21fb3060c007a7faf1147ca59bf715b3ea71a7",
+        "101.wav": "839692ebc9afc23031891beee0e9ee2f4e77021a610b75b8aa9973fa4aa4d6b8",
+        "102.wav": "064a9ba9a51d8b6aac0db99ddbf9f94cbb7a6c72388d599f05beb690d0e6cfce",
+        "103.wav": "c4c3e57cf4058d0c39cbe3ec4a10638956e4e1abba680595a8e2d628b64d0a31",
+        "104.wav": "f0925ab04e899900f3f5f171d2745a2d271d9db628a4934437172957f803c8ea",
+        "105.wav": "d4eb294405f0ebff86956238675170fa86219031bf66fc0e7c3d94c57982a434",
+        "106.wav": "50834f40ffd72fb124a815338085215f0e17167a153d261caefa264da3433be4",
+        "107.wav": "aa1a4562811faab605f086317d7590c78e56fd92601553a592b9918772234e87",
+        "201.wav": "6a1eee6f46ff162cc192323f84916b2461ceab2eb075bc4ffb3ee66b687a75a0",
+        "251.wav": "e6b0b0b39c9180873958ac4ca7e1e2bec64ffe2dcff2d257ccbe3e75e00c7fae",
+        "301.wav": "2b66a95b4079bdd3e1ddde2deb1c0713bcfd7f611fe9c915bfbbd2ab9401c2cf",
+        "351.wav": "892a6e85044b193e9eca582f3f56978189caae31d3e1543956383d27f18082b9"
+      },
+      "groups": {
+        "default": {
+          "down": [
+            "1.wav",
+            "2.wav",
+            "3.wav",
+            "4.wav",
+            "5.wav",
+            "6.wav",
+            "7.wav"
+          ],
+          "up": [
+            "101.wav",
+            "102.wav",
+            "103.wav",
+            "104.wav",
+            "105.wav",
+            "106.wav",
+            "107.wav"
+          ]
+        },
+        "space": {
+          "down": [
+            "201.wav"
+          ],
+          "up": [
+            "251.wav"
+          ]
+        },
+        "enter": {
+          "down": [
+            "301.wav"
+          ],
+          "up": [
+            "351.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "orochi-v2",
+      "category": "mouse",
+      "label": "Orochi V2",
+      "name": "Orochi V2",
+      "brand": "Razer",
+      "author": "Sadiquecat",
+      "license": {
+        "type": "CC0",
+        "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/mouse/razer/sadiquecat/orochi_v2/3222385c-d428-4d98-8ce9-1cbc992c3373.zip",
+      "files": {
+        "1.wav": "5a5268f08ae469622bd5d7eb3ef7ee729d3aa0c31d7479dd70c0f2ce88add8fb",
+        "2.wav": "25148e6e978018276d7897df04b947508d0baea23f58367e1bf9d6ab3d7f47b5",
+        "3.wav": "149322a06c61839615ce47d119879f96537c5afe0eb962637ef704cb2de75886",
+        "4.wav": "5b7b6494ff7570eb493cfd951b89557fce8b543e7275c97fe229d86536be4c2b"
+      },
+      "groups": {
+        "left": {
+          "down": [
+            "1.wav"
+          ],
+          "up": [
+            "2.wav"
+          ]
+        },
+        "right": {
+          "down": [
+            "3.wav"
+          ],
+          "up": [
+            "4.wav"
+          ]
+        }
+      }
+    },
+    {
+      "id": "pixabay-unknown-unknown",
+      "category": "mouse",
+      "label": "Unknown",
+      "name": "Unknown",
+      "brand": "Unknown",
+      "author": "pixabay",
+      "license": {
+        "type": "Pixabay Content License",
+        "url": "https://pixabay.com/pl/service/license-summary/"
+      },
+      "source": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/mouse/unknown/pixabay/unknown/230f722e-104a-4ce3-ae60-2bb4d8d9691c.zip",
+      "files": {
+        "1.wav": "513562be5cadc5630a30d9881fa07c120c9a7df60b08f5a4a1997b1e4b24223e",
+        "2.wav": "f55a42d95fee2fab8929dae90dd72435858f3f5293a222da848e27279ecbcaca",
+        "3.wav": "49cf5a1aa84e1558ddc1c8345f4050d551da33cbe7ca493fb94370e7d6206baa",
+        "4.wav": "18f4e020733c4743463e9263f1d75f7c1d9dcf889092e58517a33694e4693c88"
+      },
+      "groups": {
+        "left": {
+          "down": [
+            "1.wav"
+          ],
+          "up": [
+            "2.wav"
+          ]
+        },
+        "right": {
+          "down": [
+            "3.wav"
+          ],
+          "up": [
+            "4.wav"
+          ]
+        }
+      }
+    }
+  ]
+}

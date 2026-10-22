@@ -25,7 +25,7 @@ allow = [
 ]
 exceptions = [
     { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@0.26.11" },
-    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@1.0.9" },
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots@1.0.10" },
 ]
 confidence-threshold = 0.8
 

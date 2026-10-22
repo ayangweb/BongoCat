@@ -1,0 +1,16 @@
+[package]
+name = "bongocat-plugin-hud"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-plugin-sdk.workspace = true
+fontdue = "=0.9.4"
+thiserror.workspace = true
+
+[lints]
+workspace = true

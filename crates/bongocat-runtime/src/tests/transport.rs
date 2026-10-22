@@ -41,6 +41,7 @@ fn full_queue_returns_the_original_typed_command() {
                 motion_audio.diagnostics(),
             )),
             changed: Condvar::new(),
+            activity: Default::default(),
         }),
         platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
         motion_audio,
@@ -115,6 +116,7 @@ fn input_producer_overflow_is_observable_and_recovery_resets_state() {
                 motion_audio.diagnostics(),
             )),
             changed: Condvar::new(),
+            activity: Default::default(),
         }),
         input_producer: InputProducer::new(Arc::new(RuntimeInputSubmitter {
             producer: runtime_producer,

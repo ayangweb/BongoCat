@@ -27,6 +27,7 @@ fn renderer_health_transitions_degrade_once_and_recover() {
             MotionAudioClient::unavailable().diagnostics(),
         )),
         changed: Condvar::new(),
+        activity: Default::default(),
     };
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     let ready_revision = snapshot

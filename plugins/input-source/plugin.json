@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "id": "com.bongocat.input-source",
+    "name": "Input Source",
+    "description": "Shows the current input source in real time, so you always know the input state.",
+    "version": "1.0.0",
+    "app_versions": ">=2.3.1",
+    "protocol_version": 1,
+    "entry": "bongocat-input-source",
+    "icon": { "type": "local_image", "value": "resources/icon.png" },
+    "capabilities": ["model_ui", "push_output_v1", "configuration", "localized_views_v1", "icon_text_v1"],
+    "localizations": {
+      "zh-CN": {
+        "name": "输入法状态",
+        "description": "实时显示当前使用的输入法，方便随时了解输入状态。"
+      }
+    }
+  }
+}

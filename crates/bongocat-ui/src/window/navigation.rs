@@ -18,6 +18,7 @@ pub(super) enum SettingsNavigationPage {
     ModelWindow,
     InputInteraction,
     Shortcuts,
+    Plugins,
     AppSystem,
     About,
 }
@@ -76,18 +77,20 @@ impl SettingsNavigationPage {
             Self::ModelWindow => 3,
             Self::InputInteraction => 4,
             Self::Shortcuts => 5,
-            Self::AppSystem => 6,
-            Self::About => 7,
+            Self::AppSystem => 7,
+            Self::Plugins => 6,
+            Self::About => 8,
         }
     }
 
-    pub(super) const ALL: [Self; 8] = [
+    pub(super) const ALL: [Self; 9] = [
         Self::Appearance,
         Self::ModelLibrary,
         Self::ModelBehavior,
         Self::ModelWindow,
         Self::InputInteraction,
         Self::Shortcuts,
+        Self::Plugins,
         Self::AppSystem,
         Self::About,
     ];
@@ -102,6 +105,7 @@ impl SettingsNavigationPage {
             Self::Shortcuts => "navigation.shortcuts.title",
             Self::AppSystem => "navigation.app_system.title",
             Self::About => "navigation.about.title",
+            Self::Plugins => "navigation.plugins.title",
         }
     }
 
@@ -118,6 +122,7 @@ impl SettingsNavigationPage {
             Self::InputInteraction => IconName::MousePointer2,
             Self::Shortcuts => IconName::Keyboard,
             Self::AppSystem => IconName::Cog,
+            Self::Plugins => IconName::Package,
             Self::About => IconName::Info,
         }
     }
@@ -162,6 +167,7 @@ impl SettingsNavigationPage {
             ],
             Self::ModelWindow => &["Overlay"],
             Self::InputInteraction => &["Interaction", "Input", "交互", "输入"],
+            Self::Plugins => &["Extensions", "Add-ons", "扩展", "插件"],
             Self::Shortcuts => &[],
             Self::AppSystem => &[
                 "Application",
@@ -226,6 +232,7 @@ mod tests {
                 SettingsNavigationPage::ModelWindow,
                 SettingsNavigationPage::InputInteraction,
                 SettingsNavigationPage::Shortcuts,
+                SettingsNavigationPage::Plugins,
                 SettingsNavigationPage::AppSystem,
                 SettingsNavigationPage::About,
             ]

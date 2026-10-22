@@ -183,6 +183,31 @@ impl Render for SettingsView {
         let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
         self.sync_model_selection_dialog(window, cx);
         self.sync_mver_mode_dialog(window, cx);
+        self.sync_plugin_settings_dialog(window, cx);
+        let plugin_cards = self.plugin_host.snapshot().cards;
+        while let Some(report) = self.plugin_host.take_failure() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>(plugin_failure_notification_id(
+                        &report.failure,
+                    ))
+                    .message(plugin_failure_message(language, &report, &plugin_cards))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
+        if self.plugin_host.take_update_success() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>("plugin-update-all")
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "plugins.update_all_success",
+                    ))
+                    .with_type(NotificationType::Success),
+                cx,
+            );
+        }
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()
@@ -1632,6 +1657,31 @@ impl Render for SettingsView {
         // and support actions.
         let about_keywords =
             SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
+
+        // Plugins page shows the plugin management interface.
+        let plugins_keywords =
+            SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
+        let plugins_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
+            SettingItem::render({
+                let view = view_entity.clone();
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                    let page_language = view.read(app).display_language();
+                    view.update(app, move |view, cx| {
+                        plugins_page::content(view, window, page_language, cx)
+                    })
+                    .into_any_element()
+                }
+            })
+            .keywords(plugins_keywords),
+        );
+        let plugins_page = SettingPage::new(SettingsNavigationPage::Plugins.title(language))
+            .icon(SettingsNavigationPage::Plugins.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Plugins,
+                navigation_memory.clone(),
+            ))
+            .group(plugins_group);
+
         let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
             .icon(SettingsNavigationPage::About.icon())
             .title_suffix(page_reporter(
@@ -1660,6 +1710,7 @@ impl Render for SettingsView {
                 overlay_page,
                 input_interaction_page,
                 shortcuts_page,
+                plugins_page,
                 app_system_page,
                 about_page,
             ]);

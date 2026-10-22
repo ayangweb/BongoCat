@@ -397,6 +397,8 @@ impl SettingsView {
             hold_modifier_clear_focus: cx.focus_handle(),
             hold_modifier_blur_subscription: None,
             hold_modifier_recording_generation: 0,
+            plugin_host: PluginHost::default(),
+            plugin_settings: None,
             window_hidden: true,
             navigation_memory: SettingsNavigationMemory::default(),
             applied_theme: None,

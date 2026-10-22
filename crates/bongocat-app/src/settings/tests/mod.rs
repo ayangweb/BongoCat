@@ -35,6 +35,7 @@ use tempfile::tempdir;
 mod lifecycle;
 mod model_import;
 mod models;
+mod plugins;
 mod projection;
 mod service;
 mod shortcuts;

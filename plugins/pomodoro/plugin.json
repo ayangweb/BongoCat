@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "id": "com.bongocat.pomodoro",
+    "name": "Pomodoro",
+    "description": "A focus timer that helps you stay focused and plan your time.",
+    "version": "1.0.0",
+    "app_versions": ">=2.3.1",
+    "protocol_version": 1,
+    "entry": "bongocat-pomodoro",
+    "icon": { "type": "local_image", "value": "resources/icon.png" },
+    "capabilities": [
+      "model_ui",
+      "configuration",
+      "persistent_state",
+      "localized_views_v1"
+    ],
+    "localizations": {
+      "zh-CN": {
+        "name": "番茄时钟",
+        "description": "通过专注计时帮助你保持专注、合理安排时间。"
+      }
+    }
+  }
+}

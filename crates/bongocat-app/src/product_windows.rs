@@ -108,7 +108,7 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
         cx.global_mut::<ProductCoordinator>().settings_window = None;
     }
 
-    let (settings_client, window_state, seed, navigation_memory) = cx
+    let (settings_client, window_state, seed, navigation_memory, plugin_service) = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| {
             coordinator.settings_service.as_ref().map(|service| {
@@ -120,6 +120,10 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
                         appearance_theme: coordinator.product_appearance_theme,
                     },
                     coordinator.settings_navigation_memory.clone(),
+                    coordinator
+                        .plugin_service
+                        .as_ref()
+                        .map(bongocat_plugin_service::PluginService::client),
                 )
             })
         })
@@ -130,6 +134,7 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
             window_state,
             seed,
             navigation_memory,
+            plugin_service,
             finish_product_quit,
             open_update_window_and_check,
             cx,

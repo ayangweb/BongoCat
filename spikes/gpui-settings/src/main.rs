@@ -5,15 +5,15 @@ mod runtime_bridge;
 mod text_input;
 
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Menu, MenuItem, Render,
-    SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, rgba, size,
+    App, Application, AsyncApp, Bounds, Context, FocusHandle, Focusable, KeyBinding, Menu,
+    MenuItem, Render, SharedString, SystemMenuType, Timer, TitlebarOptions, Window,
+    WindowAppearance, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, rgba, size,
 };
 use runtime_bridge::{RuntimeBridge, RuntimeProbeMode, RuntimeSnapshot, run_runtime};
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -74,6 +74,85 @@ struct UiProbeState {
     failed: Arc<AtomicBool>,
     tooltip_seen: Arc<AtomicBool>,
     tooltip_hovered: Arc<AtomicBool>,
+    pending: Arc<AtomicUsize>,
+}
+
+/// Counts a running UI probe so the auto-quit watchdog cannot tear the window
+/// down while a probe is still driving native menu items or mouse moves.
+struct ProbeGuard(Arc<AtomicUsize>);
+
+impl ProbeGuard {
+    fn new(pending: Arc<AtomicUsize>) -> Self {
+        pending.fetch_add(1, Ordering::AcqRel);
+        Self(pending)
+    }
+}
+
+impl Drop for ProbeGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+const PROBE_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const PROBE_POLL_ATTEMPTS: usize = 150;
+/// Upper bound for the auto-quit watchdog to wait on running probes. It only has
+/// to cover a probe settling, so it stays well inside the smoke's own timeout.
+const PROBE_SETTLE_ATTEMPTS: usize = 500;
+
+/// Sample probe state until it reports the effect a native action must produce.
+///
+/// A fixed sleep made every probe depend on runner speed: on a loaded macOS
+/// runner the dispatched menu action could land after the sleep had already
+/// sampled the previous state, which then read as a broken clipboard path.
+/// The last observed value is returned so failures can name what was missing.
+async fn poll_probe<T>(
+    cx: &mut AsyncApp,
+    mut sample: impl FnMut(&mut AsyncApp) -> Option<T>,
+    accept: impl Fn(&T) -> bool,
+) -> Option<T> {
+    let mut observed = None;
+    for _ in 0..PROBE_POLL_ATTEMPTS {
+        let value = sample(cx)?;
+        if accept(&value) {
+            return Some(value);
+        }
+        observed = Some(value);
+        Timer::after(PROBE_POLL_INTERVAL).await;
+    }
+    observed
+}
+
+/// Arm a main-run-loop timer that performs a native menu item, matching how a
+/// user selection dispatches it outside the current GPUI callback.
+#[cfg(target_os = "macos")]
+fn schedule_menu_action(item_name: &str) -> Result<(), String> {
+    macos_menu::schedule_perform("Edit", item_name, Duration::from_millis(10))
+}
+
+/// Wait until the rendered frame can dispatch `action` to the focused element.
+///
+/// `Window::dispatch_action` resolves its target node from the *rendered* frame,
+/// and falls back to the tree root when focus was moved but not yet drawn. A
+/// menu item performed in that window silently dispatched to nothing, which is
+/// what made the menu probe fail on slower runners. Waiting for the action to
+/// be available proves the frame registered the focused input's handlers.
+#[cfg(target_os = "macos")]
+async fn wait_for_dispatch_ready(
+    cx: &mut AsyncApp,
+    window_handle: gpui::AnyWindowHandle,
+    action: impl gpui::Action + 'static,
+) -> bool {
+    for _ in 0..PROBE_POLL_ATTEMPTS {
+        let ready = window_handle
+            .update(cx, |_, window, cx| window.is_action_available(&action, cx))
+            .unwrap_or(false);
+        if ready {
+            return true;
+        }
+        Timer::after(PROBE_POLL_INTERVAL).await;
+    }
+    false
 }
 
 #[derive(Clone, Copy, Default)]
@@ -302,7 +381,10 @@ impl SettingsWindow {
         }
 
         let window_handle = window.window_handle();
+        let probe_guard = ProbeGuard::new(Arc::clone(&self.ui_probe.pending));
         cx.spawn(async move |this, cx| {
+            let _probe_guard = probe_guard;
+
             Timer::after(Duration::from_millis(100)).await;
             let focused = window_handle.update(cx, |_, window, cx| {
                 this.update(cx, |settings, cx| {
@@ -315,77 +397,97 @@ impl SettingsWindow {
                 });
                 return;
             }
-            Timer::after(Duration::from_millis(100)).await;
-            let select_all = match cx.update(|_| {
-                macos_menu::schedule_perform("Edit", "Select All", Duration::from_millis(10))
-            }) {
-                Ok(result) => result,
-                Err(error) => Err(error.to_string()),
-            };
-            if let Err(error) = select_all {
+            // Wait until the rendered frame can dispatch Edit actions to the focused
+            // TextInput. Dispatching earlier silently fell back to the dispatch-tree
+            // root, so the menu probe observed no effect at all.
+            if !wait_for_dispatch_ready(cx, window_handle, SelectAll).await {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe(
+                        "Edit actions were not dispatchable to the focused input".into(),
+                        cx,
+                    );
+                });
+                return;
+            }
+            if let Err(error) = schedule_menu_action("Select All") {
                 let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
-            Timer::after(Duration::from_millis(100)).await;
-            let cut = match cx
-                .update(|_| macos_menu::schedule_perform("Edit", "Cut", Duration::from_millis(10)))
-            {
-                Ok(result) => result,
-                Err(error) => Err(error.to_string()),
-            };
-            if let Err(error) = cut {
+            let select_all = poll_probe(
+                cx,
+                |cx| {
+                    this.update(cx, |settings, cx| {
+                        settings.model_name.read(cx).has_selection()
+                    })
+                    .ok()
+                },
+                |selected| *selected,
+            )
+            .await;
+            if select_all != Some(true) {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe(
+                        format!("Select All did not select the probe text: {select_all:?}"),
+                        cx,
+                    );
+                });
+                return;
+            }
+            if let Err(error) = schedule_menu_action("Cut") {
                 let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
-            Timer::after(Duration::from_millis(100)).await;
-            let cut_state = window_handle
-                .update(cx, |_, _, cx| {
+            let cut = poll_probe(
+                cx,
+                |cx| {
                     this.update(cx, |settings, cx| {
                         (
-                            settings.model_name.read(cx).content().is_empty(),
-                            cx.read_from_clipboard()
-                                .and_then(|item| item.text())
-                                .as_deref()
-                                == Some(PROBE_TEXT),
+                            settings.model_name.read(cx).content().to_string(),
+                            cx.read_from_clipboard().and_then(|item| item.text()),
                         )
                     })
-                    .unwrap_or((false, false))
-                })
-                .unwrap_or((false, false));
-            if cut_state != (true, true) {
+                    .ok()
+                },
+                |(text, clipboard)| text.is_empty() && clipboard.as_deref() == Some(PROBE_TEXT),
+            )
+            .await;
+            let Some((text, clipboard)) = cut else {
+                let _ = this.update(cx, |settings, cx| {
+                    settings.fail_ui_probe("settings window closed during menu probe".into(), cx);
+                });
+                return;
+            };
+            if !text.is_empty() || clipboard.as_deref() != Some(PROBE_TEXT) {
                 let _ = this.update(cx, |settings, cx| {
                     settings.fail_ui_probe(
                         format!(
                             "Cut result text_empty={} clipboard_matches={}",
-                            cut_state.0, cut_state.1
+                            text.is_empty(),
+                            clipboard.as_deref() == Some(PROBE_TEXT)
                         ),
                         cx,
                     );
                 });
                 return;
             }
-            let paste = match cx.update(|_| {
-                macos_menu::schedule_perform("Edit", "Paste", Duration::from_millis(10))
-            }) {
-                Ok(result) => result,
-                Err(error) => Err(error.to_string()),
-            };
-            if let Err(error) = paste {
+            if let Err(error) = schedule_menu_action("Paste") {
                 let _ = this.update(cx, |settings, cx| settings.fail_ui_probe(error, cx));
                 return;
             }
-            Timer::after(Duration::from_millis(100)).await;
-            let paste_verified = window_handle
-                .update(cx, |_, _, cx| {
+            let paste = poll_probe(
+                cx,
+                |cx| {
                     this.update(cx, |settings, cx| {
-                        settings.model_name.read(cx).content() == PROBE_TEXT
+                        settings.model_name.read(cx).content().to_string()
                     })
-                    .unwrap_or(false)
-                })
-                .unwrap_or(false);
-            if !paste_verified {
+                    .ok()
+                },
+                |text| text == PROBE_TEXT,
+            )
+            .await;
+            if paste.as_deref() != Some(PROBE_TEXT) {
                 let _ = this.update(cx, |settings, cx| {
-                    settings.fail_ui_probe("Paste did not restore text".into(), cx);
+                    settings.fail_ui_probe(format!("Paste did not restore text: {paste:?}"), cx);
                 });
                 return;
             }
@@ -400,8 +502,10 @@ impl SettingsWindow {
             .tooltip_hovered
             .store(false, Ordering::Release);
         let window_handle = window.window_handle();
+        let probe_guard = ProbeGuard::new(Arc::clone(&self.ui_probe.pending));
 
         cx.spawn(async move |this, cx| {
+            let _probe_guard = probe_guard;
             Timer::after(Duration::from_millis(100)).await;
             let mut hovered_y = None;
             for y in (360..=440).step_by(2) {
@@ -437,15 +541,24 @@ impl SettingsWindow {
             }
             println!("gpui-settings-spike: native tooltip hover entered");
 
-            // GPUI 0.2.2 intentionally waits 500 ms before constructing a tooltip.
-            Timer::after(Duration::from_millis(650)).await;
-            let visible = this
-                .update(cx, |settings, _| {
-                    settings.ui_probe.tooltip_seen.load(Ordering::Acquire)
-                        && settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
-                })
-                .unwrap_or(false);
-            if !visible {
+            // GPUI 0.2.2 intentionally waits 500 ms before constructing a tooltip,
+            // so poll for the constructed tooltip rather than sampling once at a
+            // fixed delay that a loaded runner can miss.
+            let visible = poll_probe(
+                cx,
+                |cx| {
+                    this.update(cx, |settings, _| {
+                        (
+                            settings.ui_probe.tooltip_seen.load(Ordering::Acquire),
+                            settings.ui_probe.tooltip_hovered.load(Ordering::Acquire),
+                        )
+                    })
+                    .ok()
+                },
+                |(seen, hovered)| *seen && *hovered,
+            )
+            .await;
+            if visible != Some((true, true)) {
                 let _ = this.update(cx, |settings, cx| {
                     settings
                         .fail_ui_probe("tooltip was not built after the hover delay".into(), cx);
@@ -466,13 +579,18 @@ impl SettingsWindow {
                 });
                 return;
             }
-            Timer::after(Duration::from_millis(100)).await;
-            let hover_cleared = this
-                .update(cx, |settings, _| {
-                    !settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
-                })
-                .unwrap_or(false);
-            if !hover_cleared {
+            let hover_cleared = poll_probe(
+                cx,
+                |cx| {
+                    this.update(cx, |settings, _| {
+                        settings.ui_probe.tooltip_hovered.load(Ordering::Acquire)
+                    })
+                    .ok()
+                },
+                |hovered| !*hovered,
+            )
+            .await;
+            if hover_cleared != Some(false) {
                 let _ = this.update(cx, |settings, cx| {
                     settings.fail_ui_probe("tooltip hover state did not clear".into(), cx);
                 });
@@ -1143,8 +1261,19 @@ fn main() {
         cx.activate(true);
 
         if let Some(delay) = auto_quit_delay {
+            let probe_pending = Arc::clone(&after_run_ui_probe.pending);
             cx.spawn(async move |cx| {
                 Timer::after(delay).await;
+                // A UI probe drives native menu dispatch and mouse moves through the
+                // main run loop. Quitting while one is still running tears the window
+                // down underneath it and reports the missing final state as a probe
+                // failure, so wait for the probes to settle first.
+                for _ in 0..PROBE_SETTLE_ATTEMPTS {
+                    if probe_pending.load(Ordering::Acquire) == 0 {
+                        break;
+                    }
+                    Timer::after(PROBE_POLL_INTERVAL).await;
+                }
                 let _ = cx.update(|cx| cx.quit());
             })
             .detach();

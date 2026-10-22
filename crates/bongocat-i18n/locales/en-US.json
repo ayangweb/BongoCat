@@ -27,6 +27,10 @@
     },
     "about": {
       "title": "About"
+    },
+    "plugins": {
+      "title": "Plugin Center",
+      "empty": "No plugins available."
     }
   },
   "system_menu": {
@@ -539,6 +543,44 @@
         "unsupported_os": "Running at startup is unavailable on this operating system",
         "unsupported_build": "Running at startup is unavailable in development builds"
       }
+    }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "loading": "Loading plugins…",
+    "discovery_failed": "Could not load the plugin list. Try again.",
+    "install": "Install",
+    "update": "Update",
+    "update_all": "Update all",
+    "update_available": "Update available",
+    "update_all_success": "All plugins are up to date.",
+    "available_version": "Available version %{version}",
+    "uninstall": "Uninstall",
+    "uninstall_confirm": "Are you sure you want to uninstall %{name}?",
+    "settings": {
+      "open": "Settings",
+      "title": "%{name} settings",
+      "empty": "This plugin has no settings."
+    },
+    "version": "Version %{version}",
+    "errors": {
+      "install_failed": "Plugin installation failed: %{name}",
+      "update_failed": "Plugin update failed: %{name}",
+      "enable_failed": "Could not enable plugin: %{name}",
+      "disable_failed": "Could not disable plugin: %{name}",
+      "uninstall_failed": "Plugin uninstallation failed: %{name}",
+      "action_failed": "Plugin action failed: %{name}",
+      "configure_failed": "Could not save plugin settings: %{name}",
+      "update_all_failed": "Could not update these plugins: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "The plugin service is unavailable",
+      "not_installed": "The plugin was not found",
+      "not_running": "The plugin is not running",
+      "load_failed": "Plugin loading failed: %{name}",
+      "runtime_failed": "Plugin stopped unexpectedly: %{name}",
+      "reported": "Plugin error: %{name} — %{reason}",
+      "preview_failed": "Plugin preview failed: %{name}"
     }
   }
 }

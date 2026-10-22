@@ -8,6 +8,48 @@
 
 use super::*;
 
+/// Bounded physical-key categories exposed by the generic input activity contract.
+const INPUT_ACTIVITY_KEYS: [(&str, u16); 8] = [
+    ("space", 0x2c),
+    ("enter", 0x28),
+    ("enter", 0x58),
+    ("backspace", 0x2a),
+    ("tab", 0x2b),
+    ("shift_left", 0xe1),
+    ("shift_right", 0xe5),
+    ("ctrl_left", 0xe0),
+];
+
+fn count_key_activity(diagnostics: &mut InputDiagnostics, key: &str, release: bool) {
+    let count = match (key, release) {
+        ("space", false) => &mut diagnostics.space_activity,
+        ("space", true) => &mut diagnostics.space_release,
+        ("enter", false) => &mut diagnostics.enter_activity,
+        ("enter", true) => &mut diagnostics.enter_release,
+        ("backspace", false) => &mut diagnostics.backspace_activity,
+        ("backspace", true) => &mut diagnostics.backspace_release,
+        ("tab", false) => &mut diagnostics.tab_activity,
+        ("tab", true) => &mut diagnostics.tab_release,
+        ("shift_left", false) => &mut diagnostics.shift_left_activity,
+        ("shift_left", true) => &mut diagnostics.shift_left_release,
+        ("shift_right", false) => &mut diagnostics.shift_right_activity,
+        ("shift_right", true) => &mut diagnostics.shift_right_release,
+        ("ctrl_left", false) => &mut diagnostics.ctrl_left_activity,
+        ("ctrl_left", true) => &mut diagnostics.ctrl_left_release,
+        _ => return,
+    };
+    *count = count.saturating_add(1);
+}
+
+fn activity_key(control: InputControl) -> Option<&'static str> {
+    let InputControl::Key(key) = control else {
+        return None;
+    };
+    INPUT_ACTIVITY_KEYS
+        .iter()
+        .find_map(|(name, usage)| (*usage == key.hid_usage()).then_some(*name))
+}
+
 impl InputState {
     pub fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
         let gap = if let Some(last_sequence) = self.last_sequence {
@@ -139,6 +181,16 @@ impl InputState {
                                     pressed_sequence: sequence,
                                     last_reconciled_at: None,
                                 });
+                                if matches!(control, InputControl::Key(_)) {
+                                    self.diagnostics.keyboard_activity =
+                                        self.diagnostics.keyboard_activity.saturating_add(1);
+                                    if let Some(group) = activity_key(control) {
+                                        count_key_activity(&mut self.diagnostics, group, false);
+                                    }
+                                } else if matches!(control, InputControl::Mouse(_)) {
+                                    self.diagnostics.mouse_activity =
+                                        self.diagnostics.mouse_activity.saturating_add(1);
+                                }
                                 self.diagnostics.captured_down =
                                     self.diagnostics.captured_down.saturating_add(1);
                             }
@@ -159,6 +211,24 @@ impl InputState {
                             InputSource::Capture => {
                                 self.diagnostics.captured_up =
                                     self.diagnostics.captured_up.saturating_add(1);
+                                // A captured release is a physical edge whatever
+                                // the pressed set believed about it; a
+                                // reconciled one is the runtime's own correction
+                                // and is counted by the reconciliation counters.
+                                match control {
+                                    InputControl::Key(_) => {
+                                        self.diagnostics.keyboard_release =
+                                            self.diagnostics.keyboard_release.saturating_add(1);
+                                        if let Some(group) = activity_key(control) {
+                                            count_key_activity(&mut self.diagnostics, group, true);
+                                        }
+                                    }
+                                    InputControl::Mouse(_) => {
+                                        self.diagnostics.mouse_release =
+                                            self.diagnostics.mouse_release.saturating_add(1);
+                                    }
+                                    InputControl::Gamepad(_) => {}
+                                }
                             }
                             InputSource::Reconciliation => {
                                 if released {

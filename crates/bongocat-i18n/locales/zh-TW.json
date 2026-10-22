@@ -27,6 +27,10 @@
     },
     "about": {
       "title": "關於"
+    },
+    "plugins": {
+      "title": "外掛中心",
+      "empty": "暫無可用外掛程式。"
     }
   },
   "system_menu": {
@@ -539,6 +543,44 @@
         "unsupported_os": "目前作業系統不支援開機自動啟動",
         "unsupported_build": "開發版本不支援開機自動啟動"
       }
+    }
+  },
+  "plugins": {
+    "enable": "啟用",
+    "disable": "停用",
+    "loading": "正在載入外掛…",
+    "discovery_failed": "無法載入外掛清單，請重試。",
+    "install": "安裝",
+    "update": "更新",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "update_all_success": "所有外掛程式均已更新。",
+    "available_version": "可用版本 %{version}",
+    "uninstall": "卸載",
+    "uninstall_confirm": "確定要卸載「%{name}」嗎？",
+    "settings": {
+      "open": "設定",
+      "title": "%{name} 設定",
+      "empty": "此外掛沒有可設定的項目。"
+    },
+    "version": "版本 %{version}",
+    "errors": {
+      "install_failed": "外掛安裝失敗：%{name}",
+      "update_failed": "外掛更新失敗：%{name}",
+      "enable_failed": "外掛啟用失敗：%{name}",
+      "disable_failed": "外掛停用失敗：%{name}",
+      "uninstall_failed": "外掛解除安裝失敗：%{name}",
+      "action_failed": "外掛操作失敗：%{name}",
+      "configure_failed": "外掛設定儲存失敗：%{name}",
+      "update_all_failed": "以下外掛更新失敗：%{names}",
+      "with_reason": "%{message}（%{reason}）",
+      "service_unavailable": "外掛服務無法使用",
+      "not_installed": "找不到此外掛",
+      "not_running": "外掛未執行",
+      "load_failed": "外掛載入失敗：%{name}",
+      "runtime_failed": "外掛執行異常：%{name}",
+      "reported": "外掛錯誤：%{name}（%{reason}）",
+      "preview_failed": "外掛預覽失敗：%{name}"
     }
   }
 }

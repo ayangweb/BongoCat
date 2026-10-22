@@ -27,6 +27,10 @@
     },
     "about": {
       "title": "关于"
+    },
+    "plugins": {
+      "title": "插件中心",
+      "empty": "暂无可用插件。"
     }
   },
   "system_menu": {
@@ -539,6 +543,44 @@
         "unsupported_os": "当前操作系统不支持开机自启动",
         "unsupported_build": "开发版本不支持开机自启动"
       }
+    }
+  },
+  "plugins": {
+    "enable": "启用",
+    "disable": "停用",
+    "loading": "正在加载插件…",
+    "discovery_failed": "无法加载插件列表，请重试。",
+    "install": "安装",
+    "update": "更新",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "update_all_success": "所有插件均已更新。",
+    "available_version": "可用版本 %{version}",
+    "uninstall": "卸载",
+    "uninstall_confirm": "确定要卸载“%{name}”吗？",
+    "settings": {
+      "open": "设置",
+      "title": "%{name} 设置",
+      "empty": "该插件没有可配置项。"
+    },
+    "version": "版本 %{version}",
+    "errors": {
+      "install_failed": "插件安装失败：%{name}",
+      "update_failed": "插件更新失败：%{name}",
+      "enable_failed": "插件启用失败：%{name}",
+      "disable_failed": "插件停用失败：%{name}",
+      "uninstall_failed": "插件卸载失败：%{name}",
+      "action_failed": "插件操作失败：%{name}",
+      "configure_failed": "插件设置保存失败：%{name}",
+      "update_all_failed": "以下插件更新失败：%{names}",
+      "with_reason": "%{message}（%{reason}）",
+      "service_unavailable": "插件服务不可用",
+      "not_installed": "找不到该插件",
+      "not_running": "插件未运行",
+      "load_failed": "插件加载失败：%{name}",
+      "runtime_failed": "插件运行异常：%{name}",
+      "reported": "插件错误：%{name}（%{reason}）",
+      "preview_failed": "插件预览失败：%{name}"
     }
   }
 }

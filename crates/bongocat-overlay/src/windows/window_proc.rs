@@ -74,6 +74,68 @@ pub(crate) fn requests_context_menu(message: u32) -> bool {
     matches!(message, WM_CONTEXTMENU)
 }
 
+/// Whether the message is a left-button press.
+pub(crate) fn presses_left_button(message: u32) -> bool {
+    // Pet mode answers `HTCAPTION` from `WM_NCHITTEST`, so its clicks arrive as
+    // non-client messages; window mode keeps user32's client hit testing and
+    // reports the client form.
+    matches!(message, WM_NCLBUTTONDOWN | WM_LBUTTONDOWN)
+}
+
+/// The point a mouse message reported, in the window's client pixels.
+///
+/// Both message forms carry 16-bit signed coordinates, but they are relative to
+/// different origins: the non-client form is relative to the screen and the
+/// client form to the client area. The window is per-monitor DPI aware, so both
+/// are already physical pixels and only the origin has to be translated.
+pub(crate) unsafe fn message_client_point(hwnd: HWND, message: u32, lparam: LPARAM) -> POINT {
+    let packed = lparam.0 as u32;
+    let mut point = POINT {
+        x: i32::from((packed & 0xffff) as u16 as i16),
+        y: i32::from(((packed >> 16) & 0xffff) as u16 as i16),
+    };
+    if message == WM_NCLBUTTONDOWN {
+        // SAFETY: the HWND is live on its owner thread and the point is a local
+        // that stays valid for the call.
+        let _ = unsafe { ScreenToClient(hwnd, &mut point) };
+    }
+    point
+}
+
+/// Report a left click that landed on one of a plugin's controls.
+///
+/// Returns whether the click belonged to a plugin. The window owns every other
+/// click, and a consumed one never reaches user32: in pet mode a non-client
+/// press is what starts the window move loop, so a plugin button would
+/// otherwise drag the cat instead of being pressed.
+pub(crate) unsafe fn handle_plugin_click(
+    state: &OverlayWindowState,
+    hwnd: HWND,
+    message: u32,
+    lparam: LPARAM,
+) -> bool {
+    if state.plugin_targets.is_empty() {
+        return false;
+    }
+    // SAFETY: the caller reached this from a message on the HWND's owner thread.
+    let point = unsafe { message_client_point(hwnd, message, lparam) };
+    let Some(interaction) = state
+        .plugin_targets
+        .interaction_at(point.x as f32, point.y as f32)
+    else {
+        return false;
+    };
+    let Some(sender) = &state.plugin_interaction_sender else {
+        return false;
+    };
+    // A plugin service that has gone away takes the control with it, and the
+    // click then falls back to the window rather than being swallowed.
+    match sender.try_send(interaction) {
+        Ok(()) | Err(std::sync::mpsc::TrySendError::Full(_)) => true,
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
+    }
+}
+
 pub(crate) unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
@@ -145,6 +207,21 @@ pub(crate) unsafe extern "system" fn window_proc(
             if style & WS_EX_TRANSPARENT.0 as isize != 0 {
                 return LRESULT(HTTRANSPARENT as isize);
             }
+            if !state.is_null() {
+                let mut point = POINT {
+                    x: (lparam.0 as u16 as i16) as i32,
+                    y: ((lparam.0 >> 16) as u16 as i16) as i32,
+                };
+                // SAFETY: the point and boxed hit-test state belong to this live HWND.
+                if unsafe { ScreenToClient(hwnd, &mut point) }.as_bool()
+                    && unsafe { &*state }
+                        .plugin_targets
+                        .interaction_at(point.x as f32, point.y as f32)
+                        .is_some()
+                {
+                    return LRESULT(HTCLIENT as isize);
+                }
+            }
             if !state.is_null() && unsafe { (*state).window_mode } {
                 // SAFETY: let user32 retain caption buttons, borders and client hit testing.
                 return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
@@ -167,6 +244,12 @@ pub(crate) unsafe extern "system" fn window_proc(
     if !state.is_null() {
         // SAFETY: the state belongs to this HWND and remains live while it is dispatched.
         let state = unsafe { &mut *state };
+        if presses_left_button(message)
+            // SAFETY: the state and HWND belong to this message's owner thread.
+            && unsafe { handle_plugin_click(state, hwnd, message, lparam) }
+        {
+            return LRESULT(0);
+        }
         if message == WM_WINDOWPOSCHANGING && lparam.0 != 0 && !unsafe { IsIconic(hwnd) }.as_bool()
         {
             // SAFETY: user32 supplies writable WINDOWPOS storage for this

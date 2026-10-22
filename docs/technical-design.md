@@ -1,7 +1,7 @@
 # Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-25
+最后更新：2026-10-15
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -51,6 +51,120 @@ Rust 2024 edition application
   驱动、mapping 与 backend 生命周期修复进入 fork（ADR-0066）。
 - 官方 Cubism Core 是预编译厂商二进制，是“应用代码纯 Rust”的唯一 FFI 例外；BongoCat 业务逻辑不得进入 SDK bridge。
 - Linux 不进入首发范围，但共享业务 crate 不得依赖 Win32/AppKit 类型，不得故意封死后续 backend。
+
+## 1.1 插件系统
+
+- 插件专属业务与系统适配由插件自身持有，不依赖应用平台 crate；宿主只提供通用通信、输入活动统计、存储和展示能力。
+- 插件是**独立 Rust 进程**，以版本化 JSON 协议（`bongocat-plugin-sdk`）与主程序通信；
+  插件不进入主程序进程，也不共享 Rust ABI，因此插件与主程序的编译器和链接布局互不影响。
+- 插件以 ZIP 包分发，包内含 `plugin.json` 清单与入口可执行文件，开发与发布使用同一形状。
+  安装按 `<plugin_dir>/packages/<id>/<version>/` 落盘并以 `current` 指针原子切换，插件数据
+  独立存放在 `<plugin_dir>/data/<id>/`：卸载只删除可执行文件并保留数据。
+- `bongocat-plugin-manager` 负责包发现（`plugin.json` 清单）、ZIP 解包校验（路径安全、解压
+  体积与条目上限）、安装/卸载/重置生命周期（discover → enable → configure/tick → disable →
+  shutdown）、协议帧大小上限、请求/响应超时和单个进程的故障隔离。
+- `bongocat-plugin-service` 是插件在应用内唯一的 owner：设置窗口只是它的一个客户端，关闭设置
+  窗口不影响插件继续运行、继续 tick 和继续更新模型窗口。
+- 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
+  action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
+- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板。协议只有一种当前形状：
+  `UiNode::Button` 必然携带 `icon` 与 `loading`，`UiNode::Select` 必然携带 `preview` 且每个选项
+  必然携带 `group`，`PluginOutput::errors` 与清单的 `localizations` 必然存在；主程序不补默认值、
+  不做旧帧兼容。插件中心身份图标固定为
+  清单声明的本地 PNG，由目录单独投影 `icon_url`：Development 指向构建产物中的本地文件，
+  Production 指向 GitHub Release 中与插件版本同名的独立 PNG 资源；两者都复用目录的代理顺序。
+  卡片不使用字体或 Emoji 回退，也不依赖插件是否已安装。主程序按 anchor 渲染到模型窗口，
+  配置界面渲染到插件中心。
+  模型窗口 HUD 将相邻动作按钮横向分组，复用组件尺寸约定，主操作为柔白底深色文字、次操作为炭灰底白字，文字水平垂直居中，保留边框且不绘制按钮图标；
+  平台 adapter 将可交互时的指针转换为 device 坐标，共享 overlay 状态仅在 Hover 目标变化时更新纹理，
+  离开后恢复原图，不改变点击目标或发送业务动作。
+- 插件中心复用模型库页的响应式网格：同一套“窗口宽度 → 列数”规则、同一个滚动网格与行模板，
+  只是卡片列宽下限按插件卡片的内容取更高值；两处目录对“一行放几列”保持一致。
+- 插件中心使用统一卡片：图标、名称、版本和设置入口在顶部，描述与配置在中部，底部左侧使用
+  GPUI Kit `Switch` 启用/禁用，右侧集中展示带 Tooltip 的图标操作按钮。每个操作按钮都使用
+  与自身含义匹配的图标：包生命周期由主程序映射，插件发布的按钮由插件在 `UiNode::Button`
+  上声明 `ActionIcon`，未声明的按钮保留中性图标；主程序不从插件 ID、action ID 或译文标签
+  推断业务语义。按钮标签（含设置面板中的按钮）仍作为 Tooltip。窄卡片中的操作区允许换行。
+  页头只保留主按钮“更新全部”，不提供手动刷新入口，不再显示说明容器；有可用更新的卡片在
+  已安装版本旁显示更新徽标，没有可更新插件时页头不显示“更新全部”。“更新全部”串行复用单个
+  插件的安装/更新命令，失败项不阻塞其余插件并以通知报告，可再次重试；底部操作区作为一个
+  整体换行，整枚图标按钮不会越过卡片边界。颜色、圆角和控件尺寸来自现有主题与组件默认值。
+- 正在执行的操作由控件自身表达：按钮切换为 Loading 并禁用，插件侧持续进行的工作通过
+  `UiNode::Button::loading` 由插件上报，不再发布进度占位文本；
+  不能旋转的 `Switch` 在命令进行中保持惰性。窗口侧为每个已发送命令记录在途状态，回复到达即
+  清除，因此一个命令只影响发起它的那个控件。
+- 每个已安装且启用的插件在卡片头部有独立的设置入口，以 Modal 打开该插件自己的配置面板；面板按
+  插件发布的顺序渲染 Toggle、Integer、Select、Button、IconText 与文本节点，控件直接写回插件的 typed
+  command，插件被卸载、关闭或故障时面板随之关闭。`UiNode::Select` 连同自己的选项列表一起
+  发布，选中值必属于该列表；选项可携带插件本地化的分组标题，主程序仅在全部选项都声明了分组时
+  复用 GPUI Kit 的 Group delegate 展示分组，否则保持平面列表，不为未声明分组的选项补造标题；
+  下拉在面板存续期间只刷新不重建，避免关闭用户已展开的菜单。各插件
+  的入口位置与交互完全一致。Select 可用 `preview: true` 声明悬停试听，通过非持久化的
+  `Preview { key, value }` 请求插件；普通下拉仍只在确认时写配置。悬停请求仅保留最新待处理选项，
+  离开选项或关闭面板后丢弃尚未发送的请求，避免快速移动时积压、乱序。
+  音效插件不再提供独立试听按钮；新试听替换旧声音并复用输出设备，试听播放期间抑制正常输入
+  音效但继续更新输入基线，播放结束后恢复，不重放期间的输入；暂停或静音时不打开音频设备。
+  “跟随”试听设备当前音效，没有弹起录音的选项保持静音，试听不修改配置或正常输入的冷却时间。
+- 插件运行时错误通过 `PluginOutput.errors` 发布稳定 ID 与插件本地化文案；设置窗口将其、插件加载故障、中心操作失败和模型窗口交互失败统一转换为全局 `Notification`，并按插件与错误 ID 去重。`UiNode::Text` 只表示普通状态，不得作为错误占位或页面错误条直接展示。
+- 插件名称、描述与界面文案由插件自身拥有：清单通过 `localizations` 提供按语言标签的
+  name／description（英文同样在该映射内，是唯一的文案来源），`localized_views_v1` capability
+  声明插件会本地化自己发布的视图，主程序用应用配置解析后的语言经 `HostMessage::Locale` 告知
+  插件，启动时在打开窗口前初始化，语言修改成功持久化后同步，不依赖设置窗口渲染；之后启用或
+  重启的插件在启动时收到当前语言。插件中心自身的框架文案仍取自 `bongocat-i18n` 目录；未声明
+  capability 的插件不接收该消息。
+- 插件统一仅支持简体中文（`zh-CN`）与英文，自动跟随应用语言，不提供独立语言配置；其他应用
+  语言统一回退英文。清单没有完整中文名称或描述时，整组文案和发布的视图均回退英文，不逐字段
+  拼接中英文；语言条目缺少 name 或 description，或带有未知字段，属于无效清单，主程序不做补全。
+  不改变主程序支持的语言范围。
+- 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
+  画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。只有非 Loading 的 Button
+  与 Toggle 可交互，分别发送 Action 与布尔配置修改；Integer、Select 在该窗口只作展示。
+- 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
+  HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
+- Development 的 `just dev` / `just dev-smoke` 先经打包工具把本地插件构建为 ZIP 写入
+  `target/plugins`，同时生成 `catalog.json` 并把图标复制到
+  `target/plugins/icons/<plugin-id>/icon.png`，构建工具不写入应用数据目录；Development 构建
+  启动后由产品自身的安装目录发现可用插件；全部本地插件构建成功后清理不再对应源码插件的旧
+  ZIP，避免改名后残留目录项，
+  不自动安装或重新安装已卸载的插件。生产环境从 GitHub release 的签名
+  `plugins.json` 发现列表；两个环境复用插件中心的安装、更新、启用、禁用和卸载路径。
+  清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。
+  番茄时钟、按键音效、输入法状态均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。
+  Production 不读取本地源码目录，不接受手动导入或运行时目录覆盖。签名清单与各平台 ZIP
+  由打包工具 `just plugin-catalog` 组装，未发布签名资源时显示可重试错误，不回退到未签名数据。
+- 首个验证插件是番茄时钟（#996）：它在模型窗口显示独立倒计时区域，并与插件的开始、暂停、重置
+  保持同步。按键音效（#90，英文名 Key Sounds）也作为独立插件维护音频、音量、
+  限流和设备生命周期；鼠标音效在新建、重置配置或缺少对应字段时默认开启，保留已保存的关闭选择；runtime
+  提供去重后的输入活动计数（键盘按下／弹起、鼠标按下／弹起四个设备总数，以及空格、主键盘／小键盘
+  回车、退格、Tab、左右 Shift、左 Control 的按下／弹起子集），service 经 `input_activity_v1`
+  capability 发送合并的单调计数，不传递字母、符号、文本、指针位置或鼠标按钮身份。
+  该插件把音效资源编译进自身可执行文件，离线可用，并分别按键盘、鼠标解析音效选择；
+  按下与弹起共用设备级音效包，自定义音效与按动作拆分后续再扩展。
+  输入法状态（#849，Input Source）独立读取平台输入源，支持始终显示图标与名称或仅在切换后
+  显示 1–10 秒；新建、重置或缺少显示方式时默认始终显示，保留已保存的显示方式。设置弹框不展示
+  当前输入法预览，只提供显示方式、按需显示的时长及不可用／暂停状态；图标与名称仅在模型窗口展示。
+  macOS 使用 TIS 通知，优先采用系统输入法菜单所用的图标，TIS 图标
+  URL 仅作输入法自带图标的后备；Windows 由 HKL 判定语言、由会话活动输入法配置判定输入法：
+  每次读取新建并随即释放 TSF 配置管理器后读取（长期持有会被冻结在创建时的状态，这正是
+  以往必须重启才能更新显示的原因），名称与图标取自该配置自身注册，切换在下一次读取内即
+  生效；首版只显示输入法本身，不显示同一输入法内的中／英模式；纯键盘布局按布局注册表
+  命名且不套用会话输入法，其图标位置采用系统同样的三字母语言缩写（如 `ENG`），不自造徽标。
+  平台未提供图标时显示名称徽标。不读取文本、不切换输入法、不增加输入权限。
+  macOS 由 TIS 通知驱动、以 sequence 0 主动推送；Windows 没有能到达后台进程的同类通知
+  （同窗口内切换输入法既不触发前台钩子，也不回调后台线程的 TSF 激活 sink），因此仍在宿主
+  tick 内读取，切换在下一个 tick 内生效。
+  SDK 的有界 `IconText` 节点经 `icon_text_v1` capability 声明，由共用 HUD 在模型窗口绘制，
+  并复用设置窗口既有组件配置；图标槽高度固定、宽度由内容决定（位图按方形，文字徽标按自身宽度
+  撑开，避免三字母语言缩写压到名称上）；未声明的新节点在进程边界拒绝。
+  其余候选 Issue（#905、#74、#945、#927）保留。插件配置、状态与启用标记按环境原子持久化；更新
+  替换 registry 的实际入口，失败恢复旧版本。边界、取舍与限制见 ADR-0090、ADR-0091、
+  ADR-0092、ADR-0093、ADR-0094、ADR-0095、ADR-0096。
+- 插件最近一次有效输出是内存配置与状态的单一来源。启用须完成握手、Start、语言协商与持久化后
+  才发布 Enabled；显式安装（包括卸载后重装）成功后自动走该启用流程，仅更新已安装插件时保留禁用选择。
+  自动启用失败保留已安装包，复用全局错误通知并允许手动重试启用。
+  配置落盘失败停止进程并保留上次有效配置。正常配置／动作拒绝不破坏协议会话，
+  传输、序号或声明能力的响应失败则隔离该插件。服务关闭入口并清理排队回复后停止全部进程，
+  停止或持久化失败须向应用报告，不将强杀视为正常退出。
 
 ## 2. “纯 Rust”的定义
 
@@ -977,12 +1091,18 @@ DirectComposition 对最终 surface 的显示转换不同，因此同一组 enco
 现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的 presentation alpha，二者都不应
 因为设置变化替换 HWND/NSPanel。
 
-指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
-开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
-窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
-`opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
-runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
-穿透强制为开，因此不可见的 overlay 不会吞掉本该落到下层窗口的点击。
+指针悬停动作是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.pointer_hover_action` 决定指针
+进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后发生什么：
+
+- `off` 不做任何事，指针链路不被读取；
+- `hide` 把窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
+  `opacity_percent`，并把穿透恢复为 `overlay.click_through`；
+- `reposition_random` 把窗口**临时挪开**到当前所在显示器上的一个随机位置，保持可见，既不淡出也不
+  改变指针路由；指针离开它原来所在的那块矩形之后，窗口搬回原处。
+
+三个动作都不隐藏或销毁窗口，runtime 的 overlay visibility 不受影响，frame source 继续按
+`overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间穿透强制为开，因此不可见的 overlay 不会
+吞掉本该落到下层窗口的点击。
 
 淡入淡出复刻旧版 CSS `transition-opacity-300` 的 `300 ms`，但按「从过渡起点起算的绝对经过时间」
 求值，而不是按帧累加：同样的时间点在不同帧率下得到同一个 alpha，60 FPS 与 240 FPS 的采样结果
@@ -995,10 +1115,28 @@ runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.ma
 平台采样与窗口矩形的坐标空间不同时必须在 owner 内换算，不允许把平台坐标泄漏给 runtime 或 renderer。
 圆角窗口的透明角落仍算在窗口矩形内，与旧版一致。
 
+换位是**位移而不是搬家**：挪开时记住窗口原来的矩形，之后只要指针不再位于那块矩形内就把窗口搬回去。
+判据是指针要离开**原矩形**、而不是要离开挪开后的窗口——挪开的用意本来就是「指针留在原地，窗口让开」，
+所以挪开后的窗口那里通常没有指针；盯住原矩形等于在问「用户是不是已经去别处了」。指针追着模型跑到
+新位置同样算离开原矩形，此时窗口先搬回原处（位移必须先释放，不会连续挪第二次）。
+
+目标位置与返回时机都由平台无关的 `reposition` 模块计算，平台 owner 只负责读窗口矩形、枚举显示器和
+应用新原点。三条不变量保证它不会变成循环、不会把模型推出桌面、也不会把模型留在用户没放的地方：
+触发是边沿式的（一次进入只触发一次，指针不动就不会重复挪动）；同一时刻只有一个原矩形，位移未释放
+前不会再次挪动；目标始终落在窗口当前所在显示器内且尺寸不变，因此放置约束永远不需要把它拉回来。
+位移一定会被释放——指针离开原矩形、动作被改成 `off` 或 `hide`、或指针链路失去可信度，都会让窗口
+搬回原处。随机取位优先选择不含指针的位置，并排除窗口当前所在的位置；显示器与窗口同尺寸时无处可去，
+保持原地，且不会因此留下一个待释放的位移。
+
+换位只有随机取位一种，没有「移到屏幕另一侧」：镜像对「居中」是不动点，接近中心时位移也趋近 0，
+而窗口有几百像素宽，指针落在窗口靠中间的位置时新矩形照样盖着它——恰好在最需要它的时候失效。要修
+就得逐级兜底到「跳到屏幕边缘」，那时它既不比随机可预测、又比随机突兀。均匀取位没有这个盲区。
+
 指针采样缺失、或平台输入服务不在 `Running` 状态时一律视为「不在窗口内」。这条降级规则保证指针
-链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
-`opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
-延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
+链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态；对换位而言它同时意味着
+「没有可信指针 = 指针已不在原矩形」，因此一个已经挪开的窗口会被搬回原处，而不是因为采样断掉就永久
+停在别处。隐藏与 `opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的
+presentation alpha；动作与延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
 
 「按住修饰键以恢复交互」是这两个临时状态之上的一个开关，而不是第三个状态机。
 `overlay.hold_modifier_to_interact` 设置后，平台 owner 在每次 frame tick 内把它与 runtime snapshot
@@ -1739,3 +1877,15 @@ About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈
 ### Phase 6：稳定性与发布
 
 完成性能基线、异常恢复、8 小时 soak、安装/升级/回滚和发布清单。达到门槛后完成发布切换。
+
+### Notification-driven plugin output
+
+The `push_output_v1` capability permits bounded, validated sequence-zero output
+updates without a host request. The process reader wakes the service owner to
+collect changed views and compose the HUD. macOS Input Source runs its native
+notification loop on the plugin main thread, queries TIS on startup/resume and
+source-change notifications only, and uses host ticks only for display expiry.
+Windows has no notification with that reach — a switch inside the window the user
+is already in notifies neither a `WinEvent` foreground hook nor a background
+thread's Text Services sink — so Windows Input Source keeps reading on the host
+tick. Other plugins retain their existing cadence.

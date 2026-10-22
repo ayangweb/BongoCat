@@ -41,9 +41,23 @@ def package_dependencies(crate: Path) -> set:
     return set(DEPENDENCY.findall(source))
 
 
-def packages_linking_swift(root=CRATES) -> set:
+def package_paths(root=None) -> dict:
+    """Product crates and independently named plugin directories, by Cargo name."""
+    paths = {}
+    for directory in ([root] if root is not None else [CRATES, ROOT / "plugins"]):
+        for crate in directory.iterdir():
+            manifest = crate / "Cargo.toml"
+            if not manifest.is_file():
+                continue
+            name = re.search(r'(?m)^name\s*=\s*"([^"]+)"', manifest.read_text(encoding="utf-8"))
+            if name:
+                paths[name.group(1)] = crate
+    return paths
+
+
+def packages_linking_swift(root=None) -> set:
     """Every workspace package that ends up linking the Swift library."""
-    dependencies = {crate.name: package_dependencies(crate) for crate in root.iterdir() if crate.is_dir()}
+    dependencies = {name: package_dependencies(crate) for name, crate in package_paths(root).items()}
     linking = {name for name, deps in dependencies.items() if SWIFT_LINKER in deps}
     linking.add(SWIFT_LINKER)
     # Transitive closure: a package that depends on a linker also links the library.
@@ -57,11 +71,12 @@ def packages_linking_swift(root=CRATES) -> set:
     return linking
 
 
-def missing_rpath(root=CRATES) -> list:
+def missing_rpath(root=None) -> list:
     """Return `package: reason` for every linker whose binaries would fail to load."""
     reported = []
+    paths = package_paths(root)
     for name in sorted(packages_linking_swift(root)):
-        build_script = root / name / "build.rs"
+        build_script = paths[name] / "build.rs"
         if not build_script.is_file():
             reported.append(f"{name}: no build.rs, so its binaries carry no LC_RPATH")
             continue
@@ -87,6 +102,9 @@ class SwiftRuntimeRpathContractTests(unittest.TestCase):
         self.assertIn("bongocat-app", linking)
         self.assertIn("bongocat-overlay", linking)
         self.assertIn("bongocat-ui", linking)
+        # The input-source plugin links AppKit itself and is built outside the
+        # host workspace, so it must not inherit the host's Swift runtime.
+        self.assertNotIn("bongocat-input-source", linking)
         # A package with no path to the linker must not be dragged in.
         self.assertNotIn("bongocat-log", linking)
 

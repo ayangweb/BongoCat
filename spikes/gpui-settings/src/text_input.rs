@@ -186,6 +186,11 @@ impl TextInput {
         &self.buffer.content
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn has_selection(&self) -> bool {
+        !self.buffer.selected_range.is_empty()
+    }
+
     pub fn set_dark_theme(&mut self, dark_theme: bool) {
         self.dark_theme = dark_theme;
     }

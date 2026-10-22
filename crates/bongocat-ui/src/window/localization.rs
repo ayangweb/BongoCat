@@ -1,7 +1,10 @@
+use super::plugins_host::{PluginCardView, PluginFailure, PluginFailureReport};
 use super::{
     BehaviorKind, BehaviorOrdinal, SettingsBuildInfo, SettingsError, SettingsErrorCode,
     SettingsLanguage, SettingsModelOrigin,
 };
+use bongocat_plugin_service::PluginCommandError;
+use gpui_kit::SharedString;
 
 /// The version row the About page shows.
 ///
@@ -147,6 +150,156 @@ pub(super) fn shortcut_conflict_message(language: SettingsLanguage, shortcut: &s
         "shortcuts.errors.conflict",
         &[("shortcut", shortcut.to_owned())],
     )
+}
+
+/// The one notification message for a failed plugin command.
+///
+/// The plugin is named by the copy its own manifest publishes, falling back to
+/// its id only when no card is available. The operation is always named, so a
+/// failure reads as "plugin update failed" rather than the unhelpful "load
+/// failed" that could belong to any subsystem.
+pub(super) fn plugin_failure_message(
+    language: SettingsLanguage,
+    report: &PluginFailureReport,
+    cards: &[PluginCardView],
+) -> String {
+    let locale = language.catalog_locale();
+    let plugin_name = |id: &str| {
+        cards
+            .iter()
+            .find(|card| card.id == id)
+            .map_or(id, |card| card.copy(locale).0)
+            .to_owned()
+    };
+    let message = match &report.failure {
+        PluginFailure::Refresh => {
+            bongocat_i18n::text(locale, "plugins.discovery_failed").to_owned()
+        }
+        PluginFailure::Load { plugin, running } => bongocat_i18n::format_text(
+            locale,
+            if *running {
+                "plugins.errors.runtime_failed"
+            } else {
+                "plugins.errors.load_failed"
+            },
+            &[("name", plugin_name(plugin))],
+        ),
+        PluginFailure::Reported {
+            plugin, message, ..
+        } => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.reported",
+            &[("name", plugin_name(plugin)), ("reason", message.clone())],
+        ),
+        PluginFailure::Preview { plugin, .. } => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.preview_failed",
+            &[("name", plugin_name(plugin))],
+        ),
+        PluginFailure::Install { plugin, update } => {
+            let key = if *update {
+                "plugins.errors.update_failed"
+            } else {
+                "plugins.errors.install_failed"
+            };
+            bongocat_i18n::format_text(locale, key, &[("name", plugin_name(plugin))])
+        }
+        PluginFailure::Enable { plugin, enabled } => {
+            let key = if *enabled {
+                "plugins.errors.enable_failed"
+            } else {
+                "plugins.errors.disable_failed"
+            };
+            bongocat_i18n::format_text(locale, key, &[("name", plugin_name(plugin))])
+        }
+        PluginFailure::Uninstall { plugin } => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.uninstall_failed",
+            &[("name", plugin_name(plugin))],
+        ),
+        PluginFailure::Action { plugin, .. } => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.action_failed",
+            &[("name", plugin_name(plugin))],
+        ),
+        PluginFailure::Configure { plugin, .. } => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.configure_failed",
+            &[("name", plugin_name(plugin))],
+        ),
+        PluginFailure::UpdateAll { failed } => {
+            let names = failed
+                .iter()
+                .map(|id| plugin_name(id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            bongocat_i18n::format_text(
+                locale,
+                "plugins.errors.update_all_failed",
+                &[("names", names)],
+            )
+        }
+    };
+    match report.code {
+        PluginCommandError::ServiceUnavailable => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.with_reason",
+            &[
+                ("message", message),
+                (
+                    "reason",
+                    bongocat_i18n::text(locale, "plugins.errors.service_unavailable").to_owned(),
+                ),
+            ],
+        ),
+        PluginCommandError::NotFound => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.with_reason",
+            &[
+                ("message", message),
+                (
+                    "reason",
+                    bongocat_i18n::text(locale, "plugins.errors.not_installed").to_owned(),
+                ),
+            ],
+        ),
+        PluginCommandError::NotRunning => bongocat_i18n::format_text(
+            locale,
+            "plugins.errors.with_reason",
+            &[
+                ("message", message),
+                (
+                    "reason",
+                    bongocat_i18n::text(locale, "plugins.errors.not_running").to_owned(),
+                ),
+            ],
+        ),
+        PluginCommandError::Operation => message,
+    }
+}
+
+/// The notification slot one failure belongs to.
+pub(super) fn plugin_failure_notification_id(failure: &PluginFailure) -> SharedString {
+    match failure {
+        PluginFailure::Refresh => "plugin-refresh".into(),
+        PluginFailure::Load { plugin, .. } => format!("plugin-load-{plugin}").into(),
+        PluginFailure::Reported { plugin, id, .. } => {
+            format!("plugin-reported-{plugin}-{id}").into()
+        }
+        PluginFailure::Preview { plugin, key } => format!("plugin-preview-{plugin}-{key}").into(),
+        PluginFailure::Install { plugin, .. } => format!("plugin-install-{plugin}").into(),
+        PluginFailure::Enable { plugin, enabled } => {
+            format!("plugin-enable-{plugin}-{enabled}").into()
+        }
+        PluginFailure::Uninstall { plugin } => format!("plugin-uninstall-{plugin}").into(),
+        PluginFailure::Action { plugin, action } => {
+            format!("plugin-action-{plugin}-{action}").into()
+        }
+        PluginFailure::Configure { plugin, key } => {
+            format!("plugin-configure-{plugin}-{key}").into()
+        }
+        PluginFailure::UpdateAll { .. } => "plugin-update-all".into(),
+    }
 }
 
 pub(super) fn model_invalid_summary(

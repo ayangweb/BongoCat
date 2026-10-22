@@ -7,8 +7,13 @@ use gpui_kit::{AnyElement, Rems, assets::IconName};
 /// divided by this floor, up to [`MODEL_GRID_MAX_COLUMNS`]; the grid then
 /// stretches every column equally, so every row ends at the container's edge.
 pub(super) const MODEL_CARD_MIN_WIDTH: f32 = 240.0;
+/// The widest a catalog grid ever gets, in columns.
+///
+/// The cap is shared by every grid in the window: two catalogs of the same
+/// window must not disagree about how many cells a row can hold.
+pub(super) const GRID_MAX_COLUMNS: usize = 5;
 /// The catalog never spreads past this many columns, even on a very wide window.
-pub(super) const MODEL_GRID_MAX_COLUMNS: usize = 5;
+pub(super) const MODEL_GRID_MAX_COLUMNS: usize = GRID_MAX_COLUMNS;
 /// Horizontal chrome between the settings window and the model grid: the
 /// resizable sidebar and the page and group padding the grid sits inside. Column
 /// selection only needs the grid's approximate width; the final row grid still
@@ -53,14 +58,38 @@ const MODEL_COVER_OVERLAY_INSET: Pixels = px(8.0);
 /// column floor came from means the columns stay roughly square-necked: they do
 /// not balloon on a wide window, and they do not fall below the model card's
 /// former 240px.
+#[cfg(test)]
 pub(super) fn model_grid_columns(width: Pixels) -> usize {
-    let fit = (f32::from(width) / MODEL_CARD_MIN_WIDTH).floor().max(2.0);
-    (fit as usize).clamp(2, MODEL_GRID_MAX_COLUMNS)
+    grid_columns(width, MODEL_CARD_MIN_WIDTH)
 }
 
 /// Select the column count from the settings window's available width.
 pub(super) fn model_grid_columns_for_window(width: Pixels) -> usize {
-    model_grid_columns(px((f32::from(width) - MODEL_GRID_WINDOW_CHROME).max(0.0)))
+    grid_columns_for_window(width, MODEL_CARD_MIN_WIDTH)
+}
+
+/// How many columns a grid of `min_width` cells uses at a usable width.
+///
+/// The rule is one place because two catalogs in one window have to agree on it:
+/// the count is the usable width divided by the cell floor, at least two — a
+/// desktop window always shows a grid rather than a list — and at most
+/// [`GRID_MAX_COLUMNS`].
+pub(super) fn grid_columns(width: Pixels, min_width: f32) -> usize {
+    let fit = (f32::from(width) / min_width).floor().max(2.0);
+    (fit as usize).clamp(2, GRID_MAX_COLUMNS)
+}
+
+/// The same count, from the settings window's viewport rather than the grid.
+///
+/// The window's own chrome — the resizable sidebar and the page padding the grid
+/// sits inside — is subtracted first, so the estimate is of the space the grid
+/// will actually be given. The row template still stretches to whatever it gets,
+/// so the estimate only has to be close.
+pub(super) fn grid_columns_for_window(width: Pixels, min_width: f32) -> usize {
+    grid_columns(
+        px((f32::from(width) - MODEL_GRID_WINDOW_CHROME).max(0.0)),
+        min_width,
+    )
 }
 
 /// The scrolling catalog body. The window width picks a column count, then the
@@ -68,6 +97,19 @@ pub(super) fn model_grid_columns_for_window(width: Pixels) -> usize {
 /// a short final row leaves its unused columns empty instead of stretching one
 /// card across the whole width.
 pub(super) fn model_grid(
+    columns: usize,
+    children: impl IntoIterator<Item = AnyElement>,
+) -> Stateful<Div> {
+    grid_with_id("model-catalog", columns, children)
+}
+
+/// The same grid under another name.
+///
+/// The id is the scroll container's identity, and a page that reuses the grid
+/// keeps its own: two catalogs that share an id would be one scroll position
+/// pretending to be two.
+pub(super) fn grid_with_id(
+    id: &'static str,
     columns: usize,
     children: impl IntoIterator<Item = AnyElement>,
 ) -> Stateful<Div> {
@@ -91,7 +133,7 @@ pub(super) fn model_grid(
     }
 
     div()
-        .id("model-catalog")
+        .id(id)
         .min_w_0()
         .min_h_0()
         .flex_1()

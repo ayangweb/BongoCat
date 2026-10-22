@@ -45,6 +45,7 @@ pub struct Application {
     config: NativeConfig,
     config_revision: Option<ConfigRevision>,
     system_language: Language,
+    plugin_client: Option<bongocat_plugin_service::PluginServiceClient>,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
     /// The replacement covers of the presets the user customised. A preset's
