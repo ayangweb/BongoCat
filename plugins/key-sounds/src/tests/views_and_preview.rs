@@ -188,7 +188,10 @@ fn hovering_a_sound_option_previews_without_committing_configuration() {
     assert_eq!(output.config, before);
     assert!(plugin.error.is_none());
     assert!(plugin.playback.device.is_none());
-    assert!(plugin.library.decoded.is_empty());
+    assert!(
+        !plugin.library.decoded.is_empty(),
+        "selected packs are preloaded"
+    );
     assert!(
         plugin
             .handle(HostMessage::Preview {
@@ -238,38 +241,11 @@ fn every_published_preview_resolves_to_its_device() {
     assert!(plugin.preview_choice("mouse_pack", "skcm-blue").is_err());
 }
 
-fn install_test_voice(plugin: &mut KeySounds, preview: bool) {
+pub(super) fn install_test_voice(plugin: &mut KeySounds, preview: bool) {
     let (player, _output) = rodio::Player::new();
     player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(1)));
     plugin.playback.players.push(player);
     plugin.playback.previewing = preview;
-}
-
-#[test]
-fn previews_suppress_input_without_replaying_edges_or_resetting_cooldown() {
-    let mut plugin = KeySounds {
-        activity: Some(InputActivity::default()),
-        ..Default::default()
-    };
-    plugin.playback.last_played.insert(Action::KeyboardDown, 10);
-    install_test_voice(&mut plugin, true);
-    assert!(plugin.playback.preview_active());
-    let activity = InputActivity {
-        keyboard_down: 1,
-        keyboard_up: 1,
-        mouse_down: 1,
-        mouse_up: 1,
-        ..InputActivity::default()
-    };
-    plugin.play_edges(100, activity);
-    assert_eq!(plugin.activity, Some(activity));
-    assert_eq!(plugin.playback.players.len(), 1);
-    assert_eq!(plugin.playback.last_played[&Action::KeyboardDown], 10);
-    assert!(plugin.error.is_none());
-    plugin.playback.clear_voices();
-    plugin.play_edges(200, activity);
-    assert!(plugin.playback.players.is_empty());
-    assert!(plugin.admit(Action::KeyboardDown, 200));
 }
 
 #[test]
@@ -332,7 +308,6 @@ fn preview_replaces_old_voice_and_pause_mute_reset_stop_are_safe() {
 #[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
 fn rapid_previews_replace_voices_reuse_output_and_recover_normal_input() {
     let mut plugin = KeySounds {
-        activity: Some(InputActivity::default()),
         ..Default::default()
     };
     plugin.playback.last_played.insert(Action::KeyboardDown, 10);
@@ -349,12 +324,13 @@ fn rapid_previews_replace_voices_reuse_output_and_recover_normal_input() {
             std::ptr::from_ref(plugin.playback.device.as_ref().unwrap())
         );
         assert_eq!(plugin.playback.last_played[&Action::KeyboardDown], 10);
-        plugin.play_edges(
-            100,
-            InputActivity {
-                keyboard_down: 1,
-                ..Default::default()
-            },
+        plugin.play_events(
+            vec![PluginInputEvent {
+                control: InputEventControl::Keyboard,
+                pressed: true,
+                captured_ms: 100,
+            }],
+            0,
         );
         assert_eq!(plugin.playback.players.len(), 1);
     }
@@ -364,7 +340,11 @@ fn rapid_previews_replace_voices_reuse_output_and_recover_normal_input() {
     }
     assert!(!plugin.playback.preview_active());
     assert!(plugin.admit(Action::KeyboardDown, 200));
-    plugin.play(Action::KeyboardDown);
+    plugin.play_from_pack(
+        Action::KeyboardDown,
+        Some(KeyGroup::Default),
+        plugin.selection.keyboard,
+    );
     assert!(plugin.playback.playing());
     plugin.handle(HostMessage::Stop).unwrap();
     assert!(plugin.playback.device.is_none());
@@ -393,47 +373,4 @@ fn the_published_panel_is_valid_and_bounded() {
             );
         }
     }
-}
-
-/// A reset returns the process to a fresh plugin, and the sound it plays
-/// afterwards is a new one rather than a stale edge.
-#[test]
-fn reset_clears_what_the_counters_had_seen() {
-    let mut plugin = KeySounds::default();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 0,
-            activity: InputActivity {
-                keyboard_down: 4,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    plugin.handle(HostMessage::Reset).unwrap();
-    assert_eq!(plugin.activity, None);
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 10,
-            activity: InputActivity::default(),
-        })
-        .unwrap();
-    assert!(plugin.playback.last_played.is_empty());
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 20,
-            activity: InputActivity {
-                keyboard_down: 5,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::KeyboardDown]
-    );
 }

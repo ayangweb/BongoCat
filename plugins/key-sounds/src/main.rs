@@ -13,8 +13,8 @@ mod packs;
 mod views;
 
 use bongocat_plugin_sdk::{
-    ConfigValue, Configuration, HostMessage, InputActivity, Plugin, PluginOutput, PluginView,
-    SelectOption, UiNode,
+    ConfigValue, Configuration, HostMessage, InputEventControl, Plugin, PluginInputEvent,
+    PluginOutput, PluginView, SelectOption, UiNode,
 };
 use packs::{PACKS, PackAsset};
 use rodio::{Source as _, buffer::SamplesBuffer};
@@ -77,6 +77,8 @@ enum KeyGroup {
     ShiftLeft,
     ShiftRight,
     CtrlLeft,
+    MouseLeft,
+    MouseRight,
 }
 
 impl KeyGroup {
@@ -90,90 +92,13 @@ impl KeyGroup {
             Self::ShiftLeft => "shiftLeft",
             Self::ShiftRight => "shiftRight",
             Self::CtrlLeft => "ctrlLeft",
+            Self::MouseLeft => "left",
+            Self::MouseRight => "right",
         }
-    }
-
-    /// The group a single-key batch selects, if the batch is exactly one of the
-    /// special-key subsets.
-    fn for_edge(activity: InputActivity, before: InputActivity, release: bool) -> Self {
-        let total = if release {
-            activity.keyboard_up.saturating_sub(before.keyboard_up)
-        } else {
-            activity.keyboard_down.saturating_sub(before.keyboard_down)
-        };
-        let special = [
-            (
-                Self::Space,
-                activity.space_down,
-                before.space_down,
-                activity.space_up,
-                before.space_up,
-            ),
-            (
-                Self::Enter,
-                activity.enter_down,
-                before.enter_down,
-                activity.enter_up,
-                before.enter_up,
-            ),
-            (
-                Self::Del,
-                activity.backspace_down,
-                before.backspace_down,
-                activity.backspace_up,
-                before.backspace_up,
-            ),
-            (
-                Self::Tab,
-                activity.tab_down,
-                before.tab_down,
-                activity.tab_up,
-                before.tab_up,
-            ),
-            (
-                Self::ShiftLeft,
-                activity.shift_left_down,
-                before.shift_left_down,
-                activity.shift_left_up,
-                before.shift_left_up,
-            ),
-            (
-                Self::ShiftRight,
-                activity.shift_right_down,
-                before.shift_right_down,
-                activity.shift_right_up,
-                before.shift_right_up,
-            ),
-            (
-                Self::CtrlLeft,
-                activity.ctrl_left_down,
-                before.ctrl_left_down,
-                activity.ctrl_left_up,
-                before.ctrl_left_up,
-            ),
-        ];
-        special
-            .into_iter()
-            .find_map(|(group, down, before_down, up, before_up)| {
-                let delta = if release {
-                    up.saturating_sub(before_up)
-                } else {
-                    down.saturating_sub(before_down)
-                };
-                (delta == total && delta > 0).then_some(group)
-            })
-            .unwrap_or(Self::Default)
     }
 }
 
 impl Action {
-    const ALL: [Self; 4] = [
-        Self::KeyboardDown,
-        Self::KeyboardUp,
-        Self::MouseDown,
-        Self::MouseUp,
-    ];
-
     fn category(self) -> PackCategory {
         match self {
             Self::KeyboardDown | Self::KeyboardUp => PackCategory::Keyboard,
@@ -197,21 +122,14 @@ impl Action {
 const DEFAULT_VOLUME: i64 = 100;
 const MIN_VOLUME: i64 = 0;
 const MAX_VOLUME: i64 = 100;
-/// Thock's built-in rapid key filter.
-///
-/// Thock ignores keyboard events that arrive within 10 ms of the previous one
-/// when its "ignore rapid key events" option is on. Key Sounds keeps that
-/// behavior always on and applies the same window per action, so a release is
-/// never swallowed by the press before it.
-const MINIMUM_SOUND_GAP_MS: u64 = 10;
 /// How many sounds may be audible at once.
 ///
 /// A press and its release overlap by design, so this is a ceiling on a
 /// pathological burst rather than a limit a typist reaches: the oldest sound is
 /// dropped only once this many are still playing.
-const MAX_CONCURRENT_SOUNDS: usize = 8;
+const MAX_CONCURRENT_SOUNDS: usize = 256;
 /// How long the output device is kept after the last sound.
-const DEVICE_IDLE: Duration = Duration::from_secs(2);
+const DEVICE_IDLE: Duration = Duration::from_secs(10);
 
 /// Every word this plugin publishes, in one language.
 ///
@@ -333,7 +251,7 @@ impl DecodedPack {
 
 /// The sound sets this process has decoded, keyed by the set's id.
 ///
-/// A set is decoded the first time it is played and dropped when the
+/// Selected sets are decoded during configuration and dropped when the
 /// configuration stops naming it, so what a user's choices cost in memory is the
 /// four sets those choices resolve to rather than every set that ships. A
 /// failure is remembered with the same map: a sound that cannot be decoded would
@@ -425,8 +343,14 @@ impl Playback {
     /// Play one sound, keeping at most [`MAX_CONCURRENT_SOUNDS`] audible.
     fn play(&mut self, sound: SamplesBuffer, volume: i64) -> Result<(), AudioError> {
         if self.device.is_none() {
-            let mut device =
-                rodio::DeviceSinkBuilder::open_default_sink().map_err(|_| AudioError::Output)?;
+            let mut device = rodio::DeviceSinkBuilder::from_default_device()
+                .and_then(|builder| {
+                    builder
+                        .with_buffer_size(rodio::cpal::BufferSize::Fixed(256))
+                        .open_stream()
+                })
+                .or_else(|_| rodio::DeviceSinkBuilder::open_default_sink())
+                .map_err(|_| AudioError::Output)?;
             device.log_on_drop(false);
             self.device = Some(device);
         }
@@ -583,6 +507,10 @@ impl Pick {
 }
 
 struct KeySounds {
+    #[cfg(test)]
+    resolved: Vec<(Action, Option<KeyGroup>, usize)>,
+    #[cfg(test)]
+    silent_output: bool,
     volume: i64,
     mouse_enabled: bool,
     choices: Choices,
@@ -590,7 +518,7 @@ struct KeySounds {
     /// The counters from the last activity message after the host established
     /// the initial baseline. `None` prevents cumulative counters that predate
     /// this process from being replayed as fresh key edges.
-    activity: Option<InputActivity>,
+    overflow: u64,
     paused: bool,
     library: Library,
     playback: Playback,
@@ -612,7 +540,11 @@ impl Default for KeySounds {
             mouse_enabled: true,
             choices,
             selection,
-            activity: None,
+            overflow: 0,
+            #[cfg(test)]
+            resolved: Vec::new(),
+            #[cfg(test)]
+            silent_output: false,
             paused: false,
             library: Library::default(),
             playback: Playback::default(),
@@ -665,7 +597,15 @@ impl KeySounds {
         self.mouse_enabled = mouse_enabled;
         self.choices = Choices::from_config(config);
         self.selection = Selection::resolve(&self.choices);
-        self.library.retain(&self.selection.ids());
+        let ids = self.selection.ids();
+        self.library.retain(&ids);
+        for id in ids {
+            if let Some(pack) = packs::PACKS.iter().find(|pack| pack.id == id)
+                && let Err(error) = self.library.load(pack)
+            {
+                self.error = Some(error);
+            }
+        }
         if volume == 0 {
             self.playback.stop();
         }
@@ -678,14 +618,6 @@ impl KeySounds {
             || self.playback.preview_active()
             || self.volume == 0
             || (action.category() == PackCategory::Mouse && !self.mouse_enabled)
-        {
-            return false;
-        }
-        if self
-            .playback
-            .last_played
-            .get(&action)
-            .is_some_and(|last| now_ms.saturating_sub(*last) < MINIMUM_SOUND_GAP_MS)
         {
             return false;
         }
@@ -709,6 +641,8 @@ impl KeySounds {
                     Some(group) => decoded.keyboard_sounds(action, group),
                     None => decoded.sounds(action),
                 };
+                #[cfg(test)]
+                self.resolved.push((action, key_group, sounds.len()));
                 self.pick.pick(sounds).cloned()
             }
             Err(error) => {
@@ -720,15 +654,11 @@ impl KeySounds {
         let Some(sound) = chosen else {
             return;
         };
+        #[cfg(test)]
+        if self.silent_output {
+            return;
+        }
         self.error = self.playback.play(sound, self.volume).err();
-    }
-
-    fn play_keyboard(&mut self, action: Action, key_group: KeyGroup) {
-        self.play_from_pack(action, Some(key_group), self.selection.pack(action));
-    }
-
-    fn play(&mut self, action: Action) {
-        self.play_from_pack(action, None, self.selection.pack(action));
     }
 
     /// Resolve a published device option to the edge whose preview it plays.
@@ -746,10 +676,10 @@ impl KeySounds {
     }
 
     /// A preview owns the voices until its one-shot sample finishes. Normal
-    /// input counters still advance, but cannot mix with or replay after it.
+    /// incoming edges are consumed, but cannot mix with or replay after it.
     fn preview(&mut self, key: &str, value: &str) -> Result<(), String> {
         let (action, pack) = self.preview_choice(key, value)?;
-        // Reuse the output device and preserve normal input cooldowns.
+        // Reuse the output device while replacing the current preview.
         self.playback.clear_voices();
         self.error = None;
         if !self.paused && self.volume > 0 {
@@ -764,37 +694,38 @@ impl KeySounds {
         Ok(())
     }
 
-    /// Play whichever edges moved since the counters were last read.
-    ///
-    /// The counters are compared rather than treated as events because that is
-    /// what the host's signal is: a coalesced edge is one sound, an edge that
-    /// arrived between two polls is not lost, and a device nobody touched costs
-    /// nothing.
-    fn play_edges(&mut self, elapsed_ms: u64, activity: InputActivity) {
-        let Some(before) = self.activity.replace(activity) else {
-            // InputActivity is cumulative and the host sends one baseline after
-            // starting this process. Never replay activity that happened before
-            // that baseline as a new press or release.
-            return;
-        };
-        for action in Action::ALL {
-            let (current, previous) = match action {
-                Action::KeyboardDown => (activity.keyboard_down, before.keyboard_down),
-                Action::KeyboardUp => (activity.keyboard_up, before.keyboard_up),
-                Action::MouseDown => (activity.mouse_down, before.mouse_down),
-                Action::MouseUp => (activity.mouse_up, before.mouse_up),
+    fn play_events(&mut self, events: Vec<PluginInputEvent>, overflow: u64) {
+        if overflow != self.overflow {
+            self.playback.clear_voices();
+            self.overflow = overflow;
+        }
+        for event in events {
+            let mouse = matches!(
+                event.control,
+                InputEventControl::MouseLeft | InputEventControl::MouseRight
+            );
+            let action = match (mouse, event.pressed) {
+                (false, true) => Action::KeyboardDown,
+                (false, false) => Action::KeyboardUp,
+                (true, true) => Action::MouseDown,
+                (true, false) => Action::MouseUp,
             };
-            if current > previous && self.admit(action, elapsed_ms) {
-                let group = match action {
-                    Action::KeyboardDown => KeyGroup::for_edge(activity, before, false),
-                    Action::KeyboardUp => KeyGroup::for_edge(activity, before, true),
-                    Action::MouseDown | Action::MouseUp => {
-                        self.play(action);
-                        continue;
-                    }
-                };
-                self.play_keyboard(action, group);
+            if !self.admit(action, event.captured_ms) {
+                continue;
             }
+            let group = match event.control {
+                InputEventControl::Keyboard => KeyGroup::Default,
+                InputEventControl::Space => KeyGroup::Space,
+                InputEventControl::Enter => KeyGroup::Enter,
+                InputEventControl::Backspace => KeyGroup::Del,
+                InputEventControl::Tab => KeyGroup::Tab,
+                InputEventControl::ShiftLeft => KeyGroup::ShiftLeft,
+                InputEventControl::ShiftRight => KeyGroup::ShiftRight,
+                InputEventControl::CtrlLeft => KeyGroup::CtrlLeft,
+                InputEventControl::MouseLeft => KeyGroup::MouseLeft,
+                InputEventControl::MouseRight => KeyGroup::MouseRight,
+            };
+            self.play_from_pack(action, Some(group), self.selection.pack(action));
         }
     }
 }
@@ -818,13 +749,11 @@ impl Plugin for KeySounds {
             HostMessage::Start { config, .. } => {
                 self.configure(&config)?;
                 self.paused = false;
-                self.activity = None;
+                self.overflow = 0;
             }
             HostMessage::Configure { config } => self.configure(&config)?,
-            HostMessage::InputActivity {
-                elapsed_ms,
-                activity,
-            } => self.play_edges(elapsed_ms, activity),
+            HostMessage::InputEvents { events, overflow } => self.play_events(events, overflow),
+            HostMessage::InputActivity { .. } => {}
             HostMessage::Tick { .. } => self.playback.idle(),
             HostMessage::Preview { key, value } => self.preview(&key, &value)?,
             HostMessage::Action { .. } => return Err("Unknown action".into()),
@@ -837,7 +766,7 @@ impl Plugin for KeySounds {
             }
             HostMessage::Resume => {
                 self.paused = false;
-                self.activity = None;
+                self.overflow = 0;
             }
             HostMessage::Reset => {
                 self.playback.stop();

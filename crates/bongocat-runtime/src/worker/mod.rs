@@ -398,7 +398,18 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
+                        let activity = ActivityEvent::captured(&envelope.event);
+                        let before = input_state.diagnostics;
                         let disposition = input_state.apply(envelope);
+                        let after = input_state.diagnostics;
+                        if let Some(activity) = activity
+                            && (after.keyboard_activity != before.keyboard_activity
+                                || after.keyboard_release != before.keyboard_release
+                                || after.mouse_activity != before.mouse_activity
+                                || after.mouse_release != before.mouse_release)
+                        {
+                            snapshot.activity.publish(activity);
+                        }
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {

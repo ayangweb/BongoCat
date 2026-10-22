@@ -10,6 +10,23 @@ fn main() {
     let start = Instant::now();
     let mut previous = String::new();
     while start.elapsed() < Duration::from_secs(3) {
+        #[cfg(target_os = "macos")]
+        {
+            // SAFETY: Apple's default-mode constant is immortal; zero wait only
+            // drains pending notifications for this diagnostic sampler.
+            unsafe {
+                objc2_core_foundation::CFRunLoop::run_in_mode(
+                    objc2_core_foundation::kCFRunLoopDefaultMode,
+                    0.0,
+                    true,
+                );
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if !monitor.changed() && !previous.is_empty() {
+            std::thread::sleep(Duration::from_millis(200));
+            continue;
+        }
         let source = monitor.snapshot().expect("read desktop input source");
         assert!(!source.name.is_empty());
         if let Some(icon) = &source.icon_rgba {

@@ -25,6 +25,7 @@ mod dev_plugins;
 mod gamepad_observer;
 mod model_cover;
 mod overlay_placement;
+mod plugin_input;
 mod preset_root;
 mod product_icons;
 mod product_options;
@@ -358,38 +359,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // consumer end before its first tick. A store that cannot be opened is not
     // fatal — the plugin center reports it and the cat still runs.
     let plugin_storage_root = application.storage_root().to_path_buf();
-    let activity_runtime = application.runtime_client();
+    let activity = application.runtime_client().subscribe_activity();
     let (plugin_service, plugin_overlay_handles) =
-        match bongocat_plugin_service::PluginService::start_with_source(
+        match bongocat_plugin_service::PluginService::start_with_events(
             &plugin_storage_root,
             16,
             dev_plugins::source(),
-            // Device totals plus the bounded special-key subset let the plugin
-            // use Thock's per-key groups without receiving letters, text or
-            // pointer position (ADR-0091).
-            Some(Box::new(move || {
-                let diagnostics = activity_runtime.input_diagnostics();
-                bongocat_plugin_service::InputActivity {
-                    keyboard_down: diagnostics.keyboard_activity,
-                    keyboard_up: diagnostics.keyboard_release,
-                    mouse_down: diagnostics.mouse_activity,
-                    mouse_up: diagnostics.mouse_release,
-                    space_down: diagnostics.space_activity,
-                    space_up: diagnostics.space_release,
-                    enter_down: diagnostics.enter_activity,
-                    enter_up: diagnostics.enter_release,
-                    backspace_down: diagnostics.backspace_activity,
-                    backspace_up: diagnostics.backspace_release,
-                    tab_down: diagnostics.tab_activity,
-                    tab_up: diagnostics.tab_release,
-                    shift_left_down: diagnostics.shift_left_activity,
-                    shift_left_up: diagnostics.shift_left_release,
-                    shift_right_down: diagnostics.shift_right_activity,
-                    shift_right_up: diagnostics.shift_right_release,
-                    ctrl_left_down: diagnostics.ctrl_left_activity,
-                    ctrl_left_up: diagnostics.ctrl_left_release,
-                }
-            })),
+            Box::new(plugin_input::PluginActivity(activity)),
         ) {
             Ok(started) => (Some(started.0), Some(started.1)),
             Err(error) => {

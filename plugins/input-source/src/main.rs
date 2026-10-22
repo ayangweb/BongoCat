@@ -3,6 +3,11 @@
 
 mod input_source;
 
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+#[path = "input_source/event_loop.rs"]
+mod event_loop;
+
 use bongocat_plugin_sdk::{
     Anchor, ConfigValue, Configuration, HostMessage, Plugin, PluginOutput, PluginView,
     SelectOption, StatusIcon, UiNode,
@@ -236,6 +241,7 @@ impl Plugin for InputSourceIndicator {
             HostMessage::Tick { elapsed_ms } => {
                 self.now_ms = self.now_ms.max(elapsed_ms);
                 if !self.paused {
+                    #[cfg(target_os = "windows")]
                     self.read_source();
                 }
             }
@@ -269,13 +275,16 @@ impl Plugin for InputSourceIndicator {
             HostMessage::Action { .. } | HostMessage::Preview { .. } => {
                 return Err("Unknown action".into());
             }
-            HostMessage::InputActivity { .. } => {}
+            HostMessage::InputActivity { .. } | HostMessage::InputEvents { .. } => {}
         }
         Ok(self.output())
     }
 }
 
 fn main() -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    return event_loop::run(&mut InputSourceIndicator::default());
+    #[cfg(target_os = "windows")]
     bongocat_plugin_sdk::run(&mut InputSourceIndicator::default())
 }
 

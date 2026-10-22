@@ -325,3 +325,24 @@ under 1000 lines. During validation the existing catalog lifecycle integration
 tests exceeded their five-second budget under parallel load; the isolated suite
 passed with one test thread. Full validation is rerun with `RUST_TEST_THREADS=1`
 without weakening the tests or changing their deadlines.
+
+## Event-driven stream adaptation matching Thock (2026-10-22)
+
+Key Sounds replaces 50 ms counter polling with ordered event delivery
+(`Capability::InputEventsV1`). Thock's architecture is replicated directly:
+
+1. **Immediate event streaming:** Captured keyboard and mouse edges bypass
+   coalescing and stream directly from the runtime input boundary to the plugin
+   owner thread, waking it immediately.
+2. **Sequential edge handling:** Every key down, key up, mouse down, and mouse
+   up is processed in strict sequence without waiting for the next service loop.
+3. **No rapid event swallow:** Thock's default behavior is to process rapid
+   edges without an arbitrary 10 ms skip.
+4. **Pre-decoded soundpacks:** Selected packs are decoded into memory during
+   configuration rather than on first keystroke, eliminating on-demand decode latency.
+5. **Low-latency audio sink:** Output sink requests a 256-frame buffer
+   (matching Thock's default `audioBufferSize`) with graceful fallback to default,
+   and extends idle device teardown to 10 seconds.
+6. **Privacy boundary maintained:** Physical special keys (Space, Enter, Del,
+   Tab, Shift, Ctrl) and mouse buttons retain per-key audio mapping, while normal
+   letters and symbols remain mapped to `default` without leaking text or raw keys.

@@ -8,7 +8,7 @@
     "protocol_version": 1,
     "entry": "bongocat-key-sounds",
     "icon": { "type": "local_image", "value": "resources/icon.png" },
-    "capabilities": ["configuration", "input_activity_v1", "localized_views_v1"],
+    "capabilities": ["configuration", "input_events_v1", "localized_views_v1"],
     "localizations": {
       "zh-CN": {
         "name": "按键音效",

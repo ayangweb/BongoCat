@@ -94,6 +94,8 @@ pub enum PluginIcon {
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
     ModelUi,
+    /// May publish a latest-value output with reserved sequence zero.
+    PushOutputV1,
     Configuration,
     PersistentState,
     /// Keyboard/mouse edge counters with a small physical special-key subset;
@@ -104,6 +106,8 @@ pub enum Capability {
     /// It carries no letters, symbols, text, pointer position or mouse-button
     /// identity.
     InputActivityV1,
+    /// Ordered physical edges, without letters or text; no counter coalescing.
+    InputEventsV1,
     /// The plugin may publish bounded [`UiNode::IconText`] display nodes.
     IconTextV1,
     /// The plugin localizes the text it publishes; the host delivers the
@@ -113,6 +117,30 @@ pub enum Capability {
     /// [`Capability::InputActivityV1`] gates its message: a plugin declares what
     /// it handles, so the host never sends it a frame it would fail to parse.
     LocalizedViewsV1,
+}
+
+/// Privacy-bounded sound groups; ordinary keyboard keys share one identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputEventControl {
+    Keyboard,
+    Space,
+    Enter,
+    Backspace,
+    Tab,
+    ShiftLeft,
+    ShiftRight,
+    CtrlLeft,
+    MouseLeft,
+    MouseRight,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginInputEvent {
+    pub control: InputEventControl,
+    pub pressed: bool,
+    pub captured_ms: u64,
 }
 
 /// The name and description one locale shows for a plugin.
@@ -555,6 +583,10 @@ pub enum HostMessage {
     /// best-effort signal: the plugin plays a sound for "the keyboard was
     /// released since I last looked", which is what anonymous device activity
     /// represents, and the reliable edge queue never waits behind it (ADR-0091).
+    InputEvents {
+        events: Vec<PluginInputEvent>,
+        overflow: u64,
+    },
     InputActivity {
         elapsed_ms: u64,
         activity: InputActivity,

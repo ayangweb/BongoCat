@@ -137,6 +137,13 @@ impl PluginManager {
         self.registry.resume_enabled().map_err(Into::into)
     }
     /// Hand every running plugin the device edges counted since the last poll.
+    pub fn input_events(
+        &mut self,
+        events: Vec<bongocat_plugin_sdk::PluginInputEvent>,
+        overflow: u64,
+    ) {
+        self.registry.input_events(events, overflow);
+    }
     pub fn input_activity(
         &mut self,
         elapsed_ms: u64,
@@ -314,6 +321,9 @@ impl PluginManager {
             .configure(id, config)
             .map(|_| ())
             .map_err(Into::into)
+    }
+    pub fn collect_updates(&mut self) {
+        self.registry.collect_updates();
     }
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, bongocat_plugin_sdk::PluginOutput)> {
         self.registry.tick(elapsed_ms)

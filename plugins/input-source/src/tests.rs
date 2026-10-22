@@ -276,3 +276,17 @@ fn pause_stop_and_backwards_ticks_do_not_leave_stale_display() {
         "stopping is not an unavailable input source"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn ticks_only_advance_display_time_without_querying_the_system() {
+    let mut plugin = InputSourceIndicator::default();
+    plugin.observe(source("fixture"));
+    let before = plugin.source.clone();
+    plugin
+        .handle(HostMessage::Tick { elapsed_ms: 1000 })
+        .unwrap();
+    assert_eq!(plugin.source, before);
+    assert!(plugin.monitor.is_none());
+    assert_eq!(plugin.now_ms, 1000);
+}

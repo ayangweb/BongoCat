@@ -15,11 +15,9 @@
 //! shares with the rest of the product, which is what keeps the plugin system out
 //! of the settings window's lifetime.
 //!
-//! The loop is polled rather than event-driven for one reason: a plugin's tick is
-//! a clock, and a clock is not an event. Everything else the loop does — draining
-//! commands, applying a click, publishing a changed layer — is work that a poll
-//! already covers, so a second wake-up source would add a race without removing a
-//! wake-up.
+//! The owner waits with a bounded timeout for clock and input-counter work.
+//! Capability-gated plugin output wakes it immediately rather than waiting for
+//! that timeout; unchanged views still do not cause HUD composition.
 
 mod command;
 mod service;
@@ -55,3 +53,11 @@ pub use bongocat_plugin_manager::PluginSource;
 /// the binary that wires the two together should not have to depend on the SDK
 /// itself to name it.
 pub use bongocat_plugin_sdk::InputActivity;
+
+/// An event feed attached once to the owner thread, never polled for input.
+pub trait PluginInputEvents: Send {
+    fn set_waker(&self, thread: std::thread::Thread);
+    fn drain(&mut self) -> (Vec<bongocat_plugin_sdk::PluginInputEvent>, u64);
+}
+
+pub use bongocat_plugin_sdk::{InputEventControl, PluginInputEvent};

@@ -29,6 +29,11 @@ impl InputSourceMonitor {
         platform::Monitor::new().map(Self)
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn changed(&self) -> bool {
+        self.0.changed()
+    }
+
     pub fn snapshot(&mut self) -> Result<InputSource, InputSourceError> {
         self.0.snapshot()
     }

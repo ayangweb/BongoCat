@@ -19,6 +19,7 @@ pub(crate) struct Process {
     reader: Option<JoinHandle<()>>,
     sequence: u64,
     icon_text: bool,
+    push_output: bool,
 }
 impl Process {
     pub(crate) fn start(root: &Path, metadata: &PluginMetadata) -> io::Result<Self> {
@@ -41,13 +42,22 @@ impl Process {
             .take()
             .ok_or_else(|| io::Error::other("plugin stdout unavailable"))?;
         let (sender, responses) = mpsc::sync_channel(2);
+        let owner = thread::current();
+        let push = metadata.capabilities.contains(&Capability::PushOutputV1);
         let reader = thread::spawn(move || {
             loop {
-                let response = read_frame(&mut output);
+                let response = read_frame::<Response>(&mut output);
                 let failed = response.is_err();
+                let update = push
+                    && response
+                        .as_ref()
+                        .is_ok_and(|response| response.sequence == 0);
                 // Unsolicited output cannot block process cleanup or grow memory.
                 if sender.try_send(response).is_err() || failed {
                     break;
+                }
+                if update {
+                    owner.unpark();
                 }
             }
         });
@@ -57,6 +67,7 @@ impl Process {
             responses,
             reader: Some(reader),
             sequence: 0,
+            push_output: push,
             icon_text: metadata.capabilities.contains(&Capability::IconTextV1),
         };
         process.exchange(HostMessage::Handshake {
@@ -80,27 +91,37 @@ impl Process {
             sequence: self.sequence,
             message,
         };
+        let (written, completion) = mpsc::sync_channel(1);
         let writer = thread::spawn(move || {
             let mut input = input;
             let result = write_frame(&mut input, &request);
-            (input, result)
+            let _ = written.send((input, result));
         });
         let deadline = Instant::now() + Duration::from_millis(750);
-        while !writer.is_finished() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(2));
-        }
-        if !writer.is_finished() {
+        let completed = completion.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+        if completed.is_err() {
             let _ = self.child.kill();
         }
-        let (input, result) = writer
+        writer
             .join()
             .map_err(|_| io::Error::other("plugin writer failed"))?;
+        let (input, result) = completed
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "plugin write deadline"))?;
         self.input = Some(input);
         result?;
-        let response = self
-            .responses
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "plugin response deadline"))??;
+        let response = loop {
+            let response = self
+                .responses
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::TimedOut, "plugin response deadline")
+                })??;
+            if response.sequence == 0 && self.push_output {
+                self.validate_update(response)?;
+                continue;
+            }
+            break response;
+        };
         if response.sequence != self.sequence {
             return Err(io::Error::other("plugin response sequence mismatch"));
         }
@@ -125,6 +146,36 @@ impl Process {
             ));
         }
         Ok(output)
+    }
+    fn validate_update(&self, response: Response) -> io::Result<PluginOutput> {
+        let output = response.result.map_err(io::Error::other)?;
+        if response.sequence != 0 || !output.validate() {
+            return Err(io::Error::other("invalid plugin update"));
+        }
+        if !self.icon_text
+            && output
+                .model
+                .nodes
+                .iter()
+                .chain(&output.settings.nodes)
+                .any(|node| matches!(node, UiNode::IconText { .. }))
+        {
+            return Err(io::Error::other("undeclared icon_text_v1"));
+        }
+        Ok(output)
+    }
+    pub(crate) fn update(&mut self) -> io::Result<Option<PluginOutput>> {
+        let mut latest = None;
+        for _ in 0..2 {
+            match self.responses.try_recv() {
+                Ok(response) => latest = Some(self.validate_update(response?)?),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    return Err(io::Error::other("plugin reader stopped"));
+                }
+            }
+        }
+        Ok(latest)
     }
     pub(crate) fn stop(&mut self) -> io::Result<PluginOutput> {
         let output = self.exchange(HostMessage::Stop);
@@ -205,6 +256,34 @@ mod tests {
         )
         .unwrap();
         bytes.iter().map(|byte| format!("\\{byte:03o}")).collect()
+    }
+
+    #[test]
+    fn push_updates_do_not_consume_request_sequences() {
+        let fixture = script(&format!(
+            "printf '{}'\nsleep 0.05\nprintf '{}{}'\nexec sleep 10",
+            frame(1),
+            frame(0),
+            frame(2)
+        ));
+        let mut metadata = metadata();
+        metadata.capabilities.push(Capability::PushOutputV1);
+        let mut process = Process::start(fixture.path(), &metadata).unwrap();
+        process
+            .exchange(HostMessage::Tick { elapsed_ms: 1 })
+            .unwrap();
+        assert_eq!(process.sequence, 2);
+    }
+
+    #[test]
+    fn unsolicited_updates_require_the_capability() {
+        let fixture = script(&format!("printf '{}{}'\nexec sleep 10", frame(1), frame(0)));
+        let mut process = Process::start(fixture.path(), &metadata()).unwrap();
+        assert!(
+            process
+                .exchange(HostMessage::Tick { elapsed_ms: 1 })
+                .is_err()
+        );
     }
 
     #[test]

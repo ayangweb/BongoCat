@@ -1874,3 +1874,12 @@ About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈
 ### Phase 6：稳定性与发布
 
 完成性能基线、异常恢复、8 小时 soak、安装/升级/回滚和发布清单。达到门槛后完成发布切换。
+
+### Notification-driven plugin output
+
+The `push_output_v1` capability permits bounded, validated sequence-zero output
+updates without a host request. The process reader wakes the service owner to
+collect changed views and compose the HUD. macOS Input Source runs its native
+notification loop on the plugin main thread, queries TIS on startup/resume and
+source-change notifications only, and uses host ticks only for display expiry.
+Windows source sampling and other plugins retain their existing cadence.

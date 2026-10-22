@@ -96,6 +96,25 @@ impl PluginService {
         source: PluginSource,
         input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
     ) -> Result<(Self, PluginOverlayHandles), PluginServiceStartError> {
+        Self::start_with_inputs(storage_root, capacity, source, input_activity, None)
+    }
+
+    pub fn start_with_events(
+        storage_root: &Path,
+        capacity: usize,
+        source: PluginSource,
+        events: Box<dyn crate::PluginInputEvents>,
+    ) -> Result<(Self, PluginOverlayHandles), PluginServiceStartError> {
+        Self::start_with_inputs(storage_root, capacity, source, None, Some(events))
+    }
+
+    fn start_with_inputs(
+        storage_root: &Path,
+        capacity: usize,
+        source: PluginSource,
+        input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
+        events: Option<Box<dyn crate::PluginInputEvents>>,
+    ) -> Result<(Self, PluginOverlayHandles), PluginServiceStartError> {
         let directory = plugin_directory(storage_root);
         let (client, endpoint) = PluginServiceClient::bounded(capacity);
         let (hud_producer, hud_consumer) = latest_hud_channel();
@@ -117,6 +136,7 @@ impl PluginService {
                     worker_stop,
                     source,
                     input_activity,
+                    events,
                 )
             })
             .map_err(PluginServiceStartError::Spawn)?;
@@ -181,6 +201,7 @@ struct Worker {
     catalog_stop: Arc<AtomicBool>,
     input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
     last_input_activity: InputActivity,
+    input_events: Option<Box<dyn crate::PluginInputEvents>>,
     endpoint: PluginServiceEndpoint,
     hud: OverlaySinks,
     compositor: Option<HudCompositor>,
@@ -226,6 +247,7 @@ fn run(
     stop: Arc<AtomicBool>,
     source: PluginSource,
     input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
+    input_events: Option<Box<dyn crate::PluginInputEvents>>,
 ) -> Result<(), PluginManagerError> {
     let Ok(mut manager) = PluginManager::new(directory) else {
         // The store could not be opened at all. The service still answers, so the
@@ -260,6 +282,7 @@ fn run(
         catalog_stop: Arc::clone(&stop),
         input_activity,
         last_input_activity,
+        input_events,
         endpoint,
         hud,
         compositor: load_platform_font().ok().map(HudCompositor::new),
@@ -324,6 +347,9 @@ impl Unavailable {
 
 impl Worker {
     fn run(&mut self, stop: Arc<AtomicBool>) -> Result<(), PluginManagerError> {
+        if let Some(events) = &self.input_events {
+            events.set_waker(thread::current());
+        }
         self.refresh_catalog();
         while !stop.load(Ordering::Acquire) {
             self.finish_catalog_job();
@@ -331,11 +357,13 @@ impl Worker {
             if stop.load(Ordering::Acquire) {
                 break;
             }
+            self.dispatch_input_events();
             self.dispatch_input_activity();
             self.drain_interactions();
             self.dispatch_tick();
+            self.manager.collect_updates();
             self.compose();
-            thread::sleep(LOOP_INTERVAL);
+            thread::park_timeout(LOOP_INTERVAL);
         }
         self.endpoint.close();
         if let Some(job) = self.job.take() {
@@ -401,6 +429,7 @@ impl Worker {
         match result {
             Ok(CatalogResult::List(offers)) => self.offers = offers,
             Ok(CatalogResult::Package { offer, bytes }) => {
+                self.dispatch_input_events();
                 self.dispatch_input_activity();
                 // Explicit installs, including reinstalls, auto-start;
                 // updates keep the installed plugin's enable choice.
@@ -426,6 +455,15 @@ impl Worker {
     /// happened: an idle desktop costs one comparison per loop and no message at
     /// all, and a plugin that declared no activity capability is skipped inside
     /// the manager rather than here.
+    fn dispatch_input_events(&mut self) {
+        if let Some(source) = &mut self.input_events {
+            let (events, overflow) = source.drain();
+            if !events.is_empty() {
+                self.manager.input_events(events, overflow);
+            }
+        }
+    }
+
     fn dispatch_input_activity(&mut self) {
         let Some(read) = &self.input_activity else {
             return;
@@ -587,6 +625,7 @@ impl Worker {
                 // Flush activity for plugins that are already running before a
                 // newly enabled plugin receives its baseline.
                 if enabled {
+                    self.dispatch_input_events();
                     self.dispatch_input_activity();
                 }
                 let result = self.set_enabled(&id, enabled);
@@ -645,6 +684,7 @@ impl Worker {
                 self.respond(reply, result);
             }
             PluginCommand::ResetData { id, reply } => {
+                self.dispatch_input_events();
                 self.dispatch_input_activity();
                 let result = self
                     .manager
@@ -922,6 +962,7 @@ mod tests {
             catalog_stop: Arc::default(),
             input_activity: None,
             last_input_activity: InputActivity::default(),
+            input_events: None,
             endpoint,
             hud: OverlaySinks {
                 hud_producer,

@@ -38,10 +38,8 @@ no switching API and no accessibility or input-monitoring permission request.
 
 macOS uses `TISCopyCurrentKeyboardInputSource`, including input mode in identity,
 and `kTISNotifySelectedKeyboardInputSourceChanged` on the distributed notification
-center. The plugin's main thread services the default CFRunLoop without waiting
-on each existing host tick; notifications only mark the snapshot dirty. A one
-second reconciliation handles missed notifications and application-specific
-source restoration. On macOS the system's own icon is preferred, with the TIS
+center. Its main thread waits in the default CFRunLoop and queries on source
+change notifications, startup and resume; no periodic reconciliation is used. On macOS the system's own icon is preferred, with the TIS
 icon URL as the fallback for an input method that ships one; see ADR-0095.
 Icons are decoded only when identity changes, using AppKit/CoreGraphics, never
 arbitrary plugin paths or network URLs.
@@ -107,3 +105,26 @@ and Windows versions. Their types remain private to the plugin adapter, and
 replacing the bindings does not change the SDK or host API. Workspace-wide
 `cargo update` also refreshes compatible transitive lock entries as required by
 the dependency policy; no direct application dependency was upgraded.
+
+## Notification-driven macOS updates (2026-10-22)
+
+macOS no longer queries TIS on host ticks or performs one-second reconciliation.
+Its main thread blocks in the default CFRunLoop; the distributed TIS notification
+marks the source dirty and triggers a query and publication immediately. Startup
+and resume still establish a baseline. Host ticks only advance the transient
+visibility timeline. Windows retains its existing sampling behavior.
+
+The generic `push_output_v1` capability reserves response sequence zero for
+validated unsolicited output. Ordinary replies keep their request sequence.
+A bounded reader queue wakes the plugin-service owner, which collects updates
+and composes the HUD without waiting for the next 200 ms tick. Other plugins
+retain their existing request/reply behavior. The native callback only marks an
+atomic flag; queries and stdout writes remain on the plugin's main thread.
+Protocol input signals a separate run-loop source from the stdin reader using
+CoreFoundation's documented thread-safe Signal/WakeUp operations.
+
+Tests cover notification capability admission, request sequence preservation,
+and macOS ticks not querying the system. Actual switch-to-presentation latency,
+application-specific restoration notifications and sleep/session recovery still
+require interactive macOS acceptance. No polling fallback masks missing system
+notifications; transient hiding retains the existing host clock cadence.

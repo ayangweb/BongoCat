@@ -1,7 +1,7 @@
 //! Real pipe protocol; the audio-device test is opt-in for hardware hosts.
 use bongocat_plugin_sdk::{
-    ConfigValue, HostMessage, InputActivity, PluginOutput, Request, Response, UiNode, read_frame,
-    write_frame,
+    ConfigValue, HostMessage, InputEventControl, PluginInputEvent, PluginOutput, Request, Response,
+    read_frame, write_frame,
 };
 use std::{
     io::{BufReader, BufWriter},
@@ -58,79 +58,7 @@ impl Drop for Process {
         let _ = self.child.wait();
     }
 }
-#[test]
-fn anonymous_activity_mute_and_graceful_shutdown_over_real_pipes() {
-    let mut process = Process::start();
-    process.exchange(HostMessage::Start {
-        config: [("volume".into(), ConfigValue::Integer(0))].into(),
-        state: Vec::new(),
-    });
-    // Muted, so a host without an audio device still exercises the whole path:
-    // the counters move, the plugin admits each edge and resolves each set.
-    for (elapsed_ms, activity) in [
-        (
-            0,
-            InputActivity {
-                keyboard_down: 1,
-                ..InputActivity::default()
-            },
-        ),
-        (
-            50,
-            InputActivity {
-                keyboard_down: 1,
-                keyboard_up: 1,
-                ..InputActivity::default()
-            },
-        ),
-        (
-            100,
-            InputActivity {
-                keyboard_down: 1,
-                keyboard_up: 1,
-                mouse_down: 1,
-                mouse_up: 1,
-                ..InputActivity::default()
-            },
-        ),
-    ] {
-        let output = process.exchange(HostMessage::InputActivity {
-            elapsed_ms,
-            activity,
-        });
-        assert!(
-            output
-                .settings
-                .nodes
-                .iter()
-                .any(|node| matches!(node, UiNode::Select { key, .. } if key == "keyboard_pack")),
-            "the panel publishes the sound pickers"
-        );
-    }
-    let before = process.exchange(HostMessage::Tick { elapsed_ms: 110 });
-    for (key, value) in [
-        ("keyboard_pack", "skcm-blue"),
-        ("mouse_pack", "pixabay-unknown-unknown"),
-    ] {
-        let preview = process.exchange(HostMessage::Preview {
-            key: key.into(),
-            value: value.into(),
-        });
-        assert_eq!(preview.config, before.config);
-        assert_eq!(preview.state, before.state);
-        assert!(
-            preview
-                .settings
-                .nodes
-                .iter()
-                .all(|node| !matches!(node, UiNode::Text { .. })),
-            "muted preview never opens an audio device"
-        );
-    }
-    let stopped = process.exchange(HostMessage::Stop);
-    assert!(stopped.model.nodes.is_empty());
-    assert!(process.child.wait().unwrap().success());
-}
+
 #[test]
 fn locale_switches_relabel_the_whole_panel_without_changing_saved_settings() {
     let mut process = Process::start();
@@ -170,66 +98,46 @@ fn locale_switches_relabel_the_whole_panel_without_changing_saved_settings() {
 }
 
 #[test]
-#[ignore = "requires a real audio output device; run explicitly on macOS/Windows"]
-fn preview_and_device_activity_use_the_real_audio_output() {
+fn ordered_edges_mute_pause_resume_and_stop_over_real_pipes() {
     let mut process = Process::start();
     process.exchange(HostMessage::Start {
-        config: [("mouse_enabled".into(), ConfigValue::Boolean(true))].into(),
+        config: [("volume".into(), ConfigValue::Integer(0))].into(),
         state: Vec::new(),
     });
-    // The host establishes the counter baseline before the first real edge.
-    process.exchange(HostMessage::InputActivity {
-        elapsed_ms: 0,
-        activity: InputActivity::default(),
-    });
-    let preview = process.exchange(HostMessage::Preview {
-        key: "keyboard_pack".into(),
-        value: "skcm-blue".into(),
-    });
-    assert_no_audio_error(&preview);
-    process.exchange(HostMessage::Pause);
-    let paused = process.exchange(HostMessage::InputActivity {
-        elapsed_ms: 500,
-        activity: InputActivity {
-            keyboard_down: 1,
-            keyboard_up: 1,
-            ..InputActivity::default()
+    for message in [
+        HostMessage::InputEvents {
+            events: vec![
+                PluginInputEvent {
+                    control: InputEventControl::Space,
+                    pressed: true,
+                    captured_ms: 0,
+                },
+                PluginInputEvent {
+                    control: InputEventControl::Keyboard,
+                    pressed: true,
+                    captured_ms: 1,
+                },
+                PluginInputEvent {
+                    control: InputEventControl::Space,
+                    pressed: false,
+                    captured_ms: 2,
+                },
+            ],
+            overflow: 0,
         },
-    });
-    assert_no_audio_error(&paused);
-    process.exchange(HostMessage::Resume);
-    process.exchange(HostMessage::InputActivity {
-        elapsed_ms: 999,
-        activity: InputActivity {
-            keyboard_down: 1,
-            keyboard_up: 1,
-            ..InputActivity::default()
+        HostMessage::Pause,
+        HostMessage::InputEvents {
+            events: vec![PluginInputEvent {
+                control: InputEventControl::MouseLeft,
+                pressed: true,
+                captured_ms: 3,
+            }],
+            overflow: 1,
         },
-    });
-    let typed = process.exchange(HostMessage::InputActivity {
-        elapsed_ms: 1000,
-        activity: InputActivity {
-            keyboard_down: 2,
-            keyboard_up: 2,
-            mouse_down: 1,
-            mouse_up: 1,
-            ..InputActivity::default()
-        },
-    });
-    assert_no_audio_error(&typed);
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    process.exchange(HostMessage::Stop);
+        HostMessage::Resume,
+        HostMessage::Stop,
+    ] {
+        assert!(process.exchange(message).validate());
+    }
     assert!(process.child.wait().unwrap().success());
-}
-
-fn assert_no_audio_error(output: &PluginOutput) {
-    assert!(
-        output
-            .settings
-            .nodes
-            .iter()
-            .all(|node| !matches!(node, UiNode::Text { .. })),
-        "audio output must open and decode successfully: {:?}",
-        output.settings
-    );
 }

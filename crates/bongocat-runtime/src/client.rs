@@ -20,6 +20,11 @@ pub struct RuntimeClient {
 }
 
 impl RuntimeClient {
+    /// Subscribe at the current input boundary; past edges are never replayed.
+    pub fn subscribe_activity(&self) -> ActivitySubscription {
+        self.snapshot.activity.subscribe()
+    }
+
     pub fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
         self.producer.send(command)
     }

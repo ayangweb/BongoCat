@@ -310,6 +310,25 @@ impl PluginRegistry {
             value: value.into(),
         })
     }
+    pub fn collect_updates(&mut self) {
+        for entry in self.entries.values_mut() {
+            if !entry
+                .metadata
+                .capabilities
+                .contains(&bongocat_plugin_sdk::Capability::PushOutputV1)
+            {
+                continue;
+            }
+            let Some(process) = entry.process.as_mut() else {
+                continue;
+            };
+            match process.update() {
+                Ok(Some(output)) => entry.last_output = output,
+                Ok(None) => {}
+                Err(_) => entry.fail(),
+            }
+        }
+    }
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<(String, PluginOutput)> {
         let mut outputs = Vec::new();
         for (id, entry) in &mut self.entries {
@@ -410,6 +429,25 @@ impl PluginRegistry {
     /// The capability a plugin declared is what entitles it to the message, not
     /// the protocol version: a plugin that never asked for input activity is not
     /// running one at all, and is left alone.
+    pub fn input_events(
+        &mut self,
+        events: Vec<bongocat_plugin_sdk::PluginInputEvent>,
+        overflow: u64,
+    ) {
+        for entry in self.entries.values_mut() {
+            if entry.process.is_some()
+                && entry
+                    .metadata
+                    .capabilities
+                    .contains(&bongocat_plugin_sdk::Capability::InputEventsV1)
+            {
+                let _ = entry.required_exchange(HostMessage::InputEvents {
+                    events: events.clone(),
+                    overflow,
+                });
+            }
+        }
+    }
     pub fn input_activity(
         &mut self,
         elapsed_ms: u64,

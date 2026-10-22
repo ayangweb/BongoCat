@@ -9,6 +9,8 @@
 
 #![forbid(unsafe_code)]
 
+mod activity;
+pub use activity::{ActivityControl, ActivityEvent, ActivitySubscription};
 mod client;
 mod input_state;
 mod owner;

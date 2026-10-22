@@ -177,231 +177,107 @@ fn a_set_without_a_release_sound_is_silent_on_release() {
     assert!(!decoded.sounds(Action::KeyboardDown).is_empty());
 }
 
-/// Cumulative totals already include input from before a plugin was started:
-/// the first snapshot is a baseline, then down and up are independent edges.
-#[test]
-fn initial_activity_is_baselined_and_edges_play_separately() {
-    let mut plugin = KeySounds::default();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 0,
-            activity: InputActivity {
-                keyboard_down: 40,
-                keyboard_up: 39,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert!(plugin.playback.last_played.is_empty());
-
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 1,
-            activity: InputActivity {
-                keyboard_down: 41,
-                keyboard_up: 39,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::KeyboardDown]
-    );
-
-    plugin.playback.last_played.clear();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 2,
-            activity: InputActivity {
-                keyboard_down: 41,
-                keyboard_up: 40,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::KeyboardUp]
-    );
+fn edge(control: InputEventControl, pressed: bool, captured_ms: u64) -> PluginInputEvent {
+    PluginInputEvent {
+        control,
+        pressed,
+        captured_ms,
+    }
 }
 
-/// Every edge the host reports is one sound, and an edge nobody performed is
-/// no sound at all — the counters are compared, not replayed.
 #[test]
-fn each_device_edge_plays_once_and_only_when_its_counter_moves() {
-    let mut plugin = KeySounds::default();
-    plugin
-        .configure(&Configuration::from([(
-            "mouse_enabled".into(),
-            ConfigValue::Boolean(true),
-        )]))
-        .unwrap();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 0,
-            activity: InputActivity::default(),
-        })
-        .unwrap();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 1,
-            activity: InputActivity {
-                keyboard_down: 1,
-                keyboard_up: 1,
-                mouse_down: 1,
-                mouse_up: 1,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        Action::ALL
-    );
-
-    // A repeat of the same counters is not activity, and one counter moving
-    // plays that action alone.
-    plugin.playback.last_played.clear();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 100,
-            activity: InputActivity {
-                keyboard_down: 1,
-                keyboard_up: 1,
-                mouse_down: 1,
-                mouse_up: 1,
-                ..InputActivity::default()
-            },
-        })
-        .unwrap();
-    assert!(plugin.playback.last_played.is_empty());
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 200,
-            activity: InputActivity {
-                keyboard_up: 2,
-                ..plugin.activity.unwrap_or_default()
-            },
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::KeyboardUp]
-    );
-}
-
-/// Turning mouse sounds off silences both mouse edges
-/// without touching the keyboard.
-#[test]
-fn the_mouse_switch_gates_both_mouse_edges() {
-    let activity = InputActivity {
-        keyboard_down: 1,
-        keyboard_up: 1,
-        mouse_down: 1,
-        mouse_up: 1,
-        ..InputActivity::default()
+fn thock_default_keeps_every_rapid_edge_and_its_group_in_order() {
+    let mut plugin = KeySounds {
+        silent_output: true,
+        ..Default::default()
     };
-    let mut plugin = KeySounds::default();
-    plugin
-        .configure(&Configuration::from([(
-            "mouse_enabled".into(),
-            ConfigValue::Boolean(false),
-        )]))
-        .unwrap();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 0,
-            activity: InputActivity::default(),
-        })
-        .unwrap();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 1,
-            activity,
-        })
-        .unwrap();
-    assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::KeyboardDown, Action::KeyboardUp]
+    plugin.configure(&Configuration::new()).unwrap();
+    plugin.play_events(
+        vec![
+            edge(InputEventControl::Space, true, 0),
+            edge(InputEventControl::Enter, true, 1),
+            edge(InputEventControl::Space, false, 2),
+            edge(InputEventControl::Keyboard, true, 2),
+            edge(InputEventControl::Keyboard, true, 2),
+            edge(InputEventControl::MouseLeft, true, 3),
+            edge(InputEventControl::MouseRight, false, 4),
+        ],
+        0,
     );
-
-    plugin.playback.last_played.clear();
-    plugin
-        .configure(&Configuration::from([(
-            "mouse_enabled".into(),
-            ConfigValue::Boolean(true),
-        )]))
-        .unwrap();
-    plugin
-        .handle(HostMessage::InputActivity {
-            elapsed_ms: 100,
-            activity: InputActivity {
-                mouse_down: 2,
-                mouse_up: 2,
-                ..activity
-            },
-        })
-        .unwrap();
+    let actual: Vec<_> = plugin
+        .resolved
+        .iter()
+        .map(|(action, group, _)| (*action, *group))
+        .collect();
     assert_eq!(
-        plugin
-            .playback
-            .last_played
-            .keys()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![Action::MouseDown, Action::MouseUp]
+        actual,
+        vec![
+            (Action::KeyboardDown, Some(KeyGroup::Space)),
+            (Action::KeyboardDown, Some(KeyGroup::Enter)),
+            (Action::KeyboardUp, Some(KeyGroup::Space)),
+            (Action::KeyboardDown, Some(KeyGroup::Default)),
+            (Action::KeyboardDown, Some(KeyGroup::Default)),
+            (Action::MouseDown, Some(KeyGroup::MouseLeft)),
+            (Action::MouseUp, Some(KeyGroup::MouseRight)),
+        ]
     );
 }
 
-/// Pausing, resuming and a zero volume stop playback; the fixed Thock-derived
-/// gap is per action, so a release is never swallowed by the press before it.
 #[test]
-fn cooldown_pause_and_mute_are_plugin_policy() {
+fn configure_predecodes_selected_packs_and_mouse_groups_stay_distinct() {
     let mut plugin = KeySounds::default();
-    assert!(plugin.admit(Action::KeyboardDown, 0));
-    assert!(!plugin.admit(Action::KeyboardDown, MINIMUM_SOUND_GAP_MS - 1));
-    assert!(plugin.admit(Action::KeyboardDown, MINIMUM_SOUND_GAP_MS));
-    assert!(
-        plugin.admit(Action::KeyboardUp, MINIMUM_SOUND_GAP_MS),
-        "the release keeps its own clock"
+    plugin.configure(&Configuration::new()).unwrap();
+    for id in plugin.selection.ids() {
+        assert!(plugin.library.decoded.contains_key(id));
+    }
+    let decoded = decode_pack(pack_by_id("orochi-v2").unwrap()).unwrap();
+    assert_eq!(
+        decoded
+            .keyboard_sounds(Action::MouseDown, KeyGroup::MouseLeft)
+            .len(),
+        1
     );
+    assert_eq!(
+        decoded
+            .keyboard_sounds(Action::MouseDown, KeyGroup::MouseRight)
+            .len(),
+        1
+    );
+    assert_eq!(DEVICE_IDLE, Duration::from_secs(10));
+}
 
+#[test]
+fn paused_muted_and_preview_events_are_consumed_without_replay() {
+    let mut plugin = KeySounds {
+        silent_output: true,
+        ..Default::default()
+    };
     plugin.handle(HostMessage::Pause).unwrap();
-    assert!(!plugin.admit(Action::KeyboardDown, 10_000));
+    plugin.play_events(vec![edge(InputEventControl::Space, true, 1)], 0);
+    assert!(plugin.resolved.is_empty());
     plugin.handle(HostMessage::Resume).unwrap();
-    assert!(plugin.admit(Action::KeyboardDown, 10_001));
+    super::views_and_preview::install_test_voice(&mut plugin, true);
+    plugin.play_events(vec![edge(InputEventControl::Space, true, 2)], 0);
+    assert!(plugin.resolved.is_empty());
+    plugin.playback.clear_voices();
+    plugin.play_events(vec![], 0);
+    assert!(plugin.resolved.is_empty());
+    plugin.play_events(vec![edge(InputEventControl::Space, false, 3)], 0);
+    assert_eq!(plugin.resolved.len(), 1);
+    plugin.volume = 0;
+    plugin.play_events(vec![edge(InputEventControl::Space, true, 4)], 0);
+    assert_eq!(plugin.resolved.len(), 1);
+}
 
-    plugin
-        .configure(&Configuration::from([(
-            "volume".into(),
-            ConfigValue::Integer(0),
-        )]))
-        .unwrap();
-    assert!(!plugin.admit(Action::KeyboardDown, 20_000));
+#[test]
+fn overflow_is_observable_and_clears_old_voices() {
+    let mut plugin = KeySounds {
+        silent_output: true,
+        ..Default::default()
+    };
+    super::views_and_preview::install_test_voice(&mut plugin, false);
+    plugin.play_events(vec![edge(InputEventControl::Space, true, 1)], 1);
+    assert_eq!(plugin.overflow, 1);
+    assert!(plugin.playback.players.is_empty());
+    assert_eq!(plugin.resolved.len(), 1);
 }

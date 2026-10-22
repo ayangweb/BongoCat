@@ -244,7 +244,7 @@ impl Plugin for Pomodoro {
             HostMessage::Configure { config } => self.configure(&config)?,
             // The pomodoro counts time, not keys: device activity says only that
             // something moved, which is nothing a timer needs.
-            HostMessage::InputActivity { .. } => {}
+            HostMessage::InputActivity { .. } | HostMessage::InputEvents { .. } => {}
             HostMessage::Tick { elapsed_ms } => {
                 if self.running
                     && let Some(previous) = self.last_tick

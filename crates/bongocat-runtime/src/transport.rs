@@ -21,6 +21,7 @@ pub(crate) enum WorkerCommand {
 }
 
 pub(crate) struct SnapshotCell {
+    pub(crate) activity: crate::activity::ActivityPublisher,
     pub(crate) value: Mutex<RuntimeSnapshot>,
     pub(crate) changed: Condvar,
 }

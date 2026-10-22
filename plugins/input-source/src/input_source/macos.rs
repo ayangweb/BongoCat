@@ -9,7 +9,7 @@ use objc2::{
 use objc2_app_kit::NSImage;
 use objc2_core_foundation::{
     CFDictionary, CFNotificationCenter, CFNotificationName, CFNotificationSuspensionBehavior,
-    CFRetained, CFRunLoop, CFString, CFType, CFURL, CGPoint, CGRect, CGSize, kCFRunLoopDefaultMode,
+    CFRetained, CFString, CFType, CFURL, CGPoint, CGRect, CGSize,
 };
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGColorSpace, CGContext, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo,
@@ -19,7 +19,6 @@ use std::{
     ffi::c_void,
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, Ordering},
-    time::{Duration, Instant},
 };
 
 // objc2-carbon 0.3.2 is empty. These public Carbon TIS symbols are the only
@@ -60,7 +59,6 @@ pub(super) struct Monitor {
     _main: MainThreadMarker,
     center: CFRetained<CFNotificationCenter>,
     dirty: Box<AtomicBool>,
-    last_query: Option<Instant>,
     cached: Option<InputSource>,
 }
 
@@ -84,25 +82,16 @@ impl Monitor {
             _main: main,
             center,
             dirty,
-            last_query: None,
             cached: None,
         })
     }
 
+    pub(super) fn changed(&self) -> bool {
+        self.dirty.load(Ordering::Relaxed)
+    }
+
     pub(super) fn snapshot(&mut self) -> Result<InputSource, InputSourceError> {
-        // SAFETY: Apple's immortal default-mode constant is non-null. Zero wait
-        // pumps notifications once per host tick, never spins or blocks stdin.
-        unsafe {
-            CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, 0.0, true);
-        }
-        if !self.dirty.swap(false, Ordering::Relaxed)
-            && self
-                .last_query
-                .is_some_and(|time| time.elapsed() < Duration::from_secs(1))
-        {
-            return self.cached.clone().ok_or(InputSourceError);
-        }
-        self.last_query = Some(Instant::now());
+        self.dirty.store(false, Ordering::Relaxed);
         let result = autoreleasepool(|_| read_source(self.cached.as_ref()));
         self.cached = result.as_ref().ok().cloned();
         result
