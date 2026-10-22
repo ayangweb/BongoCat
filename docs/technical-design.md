@@ -325,7 +325,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `live2d-playback`：motion3/exp3 字节解析、曲线/fade/loop/UserData 与 expression 混合的纯数值求值；不持有 Cubism Core 或 GPU 资源。
 - `live2d-render`：将 `CommittedModel` 的纹理、背景和键位图资源准备为 `RenderResources`，并提供同源的键位图清单与 overlay 解析；不持有 Cubism Core 或 GPU handle。
 - `live2d`：Cubism Core 生命周期、Core parameter/part 写入、motion/expression 到 Core 的适配和不可变 `RenderSnapshot` 生产。
-- `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
+- `audio`：motion 音效与合成键盘喵叫的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。键盘喵叫复用默认关闭的动作音效开关，只响应新按下的键盘事件，按单调时钟限频且不打断已有 voice；见 ADR-0090。
 - `render`：不可变 render snapshot 和 renderer contract。
 - `config`：环境隔离、当前 v1 schema、验证、备份和原子提交。
 

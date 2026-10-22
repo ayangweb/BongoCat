@@ -3,6 +3,81 @@
 use super::*;
 
 #[test]
+fn typing_yields_to_current_voice_and_mute_stops_it() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let service = MotionAudioService::start_with_backend(
+        8,
+        Box::new(RecordingBackend {
+            events: Arc::clone(&events),
+            failures: VecDeque::new(),
+            playing: false,
+        }),
+    )
+    .unwrap();
+    let client = service.client();
+    client
+        .try_publish(MotionAudioCommand::PlayMeow { sequence: 1 })
+        .unwrap();
+    client
+        .try_publish(MotionAudioCommand::PlayMeow { sequence: 2 })
+        .unwrap();
+    client.try_publish(play(3, "motion.flac")).unwrap();
+    client
+        .try_publish(MotionAudioCommand::PlayMeow { sequence: 4 })
+        .unwrap();
+    client
+        .try_publish(MotionAudioCommand::Stop {
+            sequence: 5,
+            reason: MotionAudioStopReason::Disabled,
+        })
+        .unwrap();
+    let result = client.wait_for_sequence(5, TIMEOUT).unwrap();
+    assert_eq!(result.playback_starts, 2);
+    assert_eq!(result.discarded_commands, 2);
+    assert_eq!(result.current_voice_sequence, None);
+    assert_eq!(
+        *events.lock().unwrap(),
+        vec![
+            BackendEvent::Meow,
+            BackendEvent::Stop,
+            BackendEvent::Play(PathBuf::from("motion.flac")),
+            BackendEvent::Stop,
+        ]
+    );
+    assert_eq!(
+        service.shutdown(TIMEOUT).unwrap().state,
+        MotionAudioState::Stopped
+    );
+}
+
+#[test]
+fn typing_output_failure_is_reported_and_can_recover() {
+    let service = MotionAudioService::start_with_backend(
+        4,
+        Box::new(RecordingBackend {
+            events: Arc::new(Mutex::new(Vec::new())),
+            failures: VecDeque::from([BackendError::OutputUnavailable]),
+            playing: false,
+        }),
+    )
+    .unwrap();
+    let client = service.client();
+    client
+        .try_publish(MotionAudioCommand::PlayMeow { sequence: 1 })
+        .unwrap();
+    let failed = client.wait_for_sequence(1, TIMEOUT).unwrap();
+    assert_eq!(failed.state, MotionAudioState::Degraded);
+    assert_eq!(failed.output_failures, 1);
+    client
+        .try_publish(MotionAudioCommand::PlayMeow { sequence: 2 })
+        .unwrap();
+    let recovered = client.wait_for_sequence(2, TIMEOUT).unwrap();
+    assert_eq!(recovered.state, MotionAudioState::Ready);
+    assert_eq!(recovered.playback_starts, 1);
+    service.shutdown(TIMEOUT).unwrap();
+}
+
+#[test]
 fn completed_playback_releases_output_and_allows_another_play() {
     #[derive(Default)]
     struct OutputState {

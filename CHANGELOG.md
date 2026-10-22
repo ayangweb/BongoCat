@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- Enabling motion sounds now also plays a short synthesized meow on keyboard presses. Repeated key-down events and rapid typing are limited, and typing sounds do not interrupt motion sounds.
+
 ## 2.3.1 - 2026-10-13
 
 ### 🐛 Bug Fixes

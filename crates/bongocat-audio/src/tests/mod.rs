@@ -10,6 +10,7 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 enum BackendEvent {
     Prepare(Vec<PathBuf>),
     Play(PathBuf),
+    Meow,
     Stop,
 }
 
@@ -68,6 +69,15 @@ impl AudioBackend for BlockingBackend {
 }
 
 impl AudioBackend for RecordingBackend {
+    fn play_meow(&mut self) -> Result<(), BackendError> {
+        if let Some(error) = self.failures.pop_front() {
+            return Err(error);
+        }
+        self.events.lock().unwrap().push(BackendEvent::Meow);
+        self.playing = true;
+        Ok(())
+    }
+
     fn prepare(&mut self, paths: &[PathBuf]) -> Result<usize, BackendError> {
         self.events
             .lock()

@@ -160,6 +160,32 @@ pub(crate) fn process_command(
                 }
             });
         }
+        MotionAudioCommand::PlayMeow { .. } => {
+            // Never cut off a model sound or enqueue a chorus of delayed meows.
+            let result = if backend.is_playing() {
+                None
+            } else {
+                Some(backend.play_meow())
+            };
+            shared.publish(|diagnostics| {
+                diagnostics.processed_commands = diagnostics.processed_commands.saturating_add(1);
+                diagnostics.play_requests = diagnostics.play_requests.saturating_add(1);
+                diagnostics.last_processed_sequence = Some(sequence);
+                match result {
+                    Some(Ok(())) => {
+                        diagnostics.playback_starts = diagnostics.playback_starts.saturating_add(1);
+                        diagnostics.current_voice_sequence = Some(sequence);
+                        diagnostics.last_error = None;
+                        diagnostics.state = MotionAudioState::Ready;
+                    }
+                    Some(Err(error)) => record_backend_error(diagnostics, error),
+                    None => {
+                        diagnostics.discarded_commands =
+                            diagnostics.discarded_commands.saturating_add(1);
+                    }
+                }
+            });
+        }
         MotionAudioCommand::Stop { .. } => {
             let stopped = backend.stop();
             shared.publish(|diagnostics| {
