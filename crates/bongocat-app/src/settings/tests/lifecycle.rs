@@ -83,8 +83,10 @@ fn service_applies_and_persists_status_icon_visibility_transactionally() {
         )
         .expect_err("platform update failure");
     assert_eq!(failed.code(), SettingsErrorCode::StatusIconUpdateFailed);
+    // Runtime work-budget counters advance independently of this transaction.
     let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
-    assert_eq!(unchanged, hidden);
+    assert_eq!(unchanged.config_revision, hidden.config_revision);
+    assert_eq!(unchanged.status_icon_visible, hidden.status_icon_visible);
     assert!(!status_icon.visible());
 
     status_icon.fail_updates.store(false, Ordering::Release);
@@ -102,12 +104,11 @@ fn service_applies_and_persists_status_icon_visibility_transactionally() {
     );
     assert!(!status_icon.visible());
     assert_eq!(status_icon.updates(), vec![false, true, true, false]);
-    assert_eq!(
-        client
-            .read_snapshot_blocking()
-            .expect("rolled back snapshot"),
-        hidden
-    );
+    let rolled_back = client
+        .read_snapshot_blocking()
+        .expect("rolled back snapshot");
+    assert_eq!(rolled_back.config_revision, hidden.config_revision);
+    assert_eq!(rolled_back.status_icon_visible, hidden.status_icon_visible);
     std::fs::remove_dir(occupied).expect("remove occupied temp target");
 
     client.shutdown_blocking().expect("service shutdown");
