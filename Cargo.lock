@@ -868,30 +868,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bongocat-input-source"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "libc",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-foundation 0.3.2",
- "serde_json",
- "thiserror 2.0.21",
- "windows 0.62.2",
-]
-
-[[package]]
-name = "bongocat-key-sounds"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "rodio",
-]
-
-[[package]]
 name = "bongocat-live2d"
 version = "2.3.1"
 dependencies = [
@@ -991,8 +967,6 @@ name = "bongocat-packaging"
 version = "2.3.1"
 dependencies = [
  "bongocat-config",
- "bongocat-plugin-manager",
- "bongocat-plugin-sdk",
  "bongocat-update",
  "cargo-packager",
  "cargo-packager-updater",
@@ -1003,7 +977,6 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.21",
- "zip 9.0.2",
 ]
 
 [[package]]
@@ -1070,7 +1043,8 @@ dependencies = [
 
 [[package]]
 name = "bongocat-plugin-sdk"
-version = "2.3.1"
+version = "0.1.0"
+source = "git+https://github.com/ayangweb/BongoCat-Plugins?rev=89971f44e7d73af8c1aaf38f49aa723589457d8d#89971f44e7d73af8c1aaf38f49aa723589457d8d"
 dependencies = [
  "serde",
  "serde_json",
@@ -1089,15 +1063,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "zip 9.0.2",
-]
-
-[[package]]
-name = "bongocat-pomodoro"
-version = "1.0.0"
-dependencies = [
- "bongocat-plugin-sdk",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2455,12 +2420,6 @@ dependencies = [
  "smallvec",
  "zune-inflate",
 ]
-
-[[package]]
-name = "extended"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
 
 [[package]]
 name = "fastrand"
@@ -8238,9 +8197,7 @@ checksum = "5773a4c030a19d9bfaa090f49746ff35c75dfddfa700df7a5939d5e076a57039"
 dependencies = [
  "lazy_static",
  "symphonia-bundle-flac",
- "symphonia-codec-pcm",
  "symphonia-core",
- "symphonia-format-riff",
  "symphonia-metadata",
 ]
 
@@ -8257,16 +8214,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "symphonia-codec-pcm"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e89d716c01541ad3ebe7c91ce4c8d38a7cf266a3f7b2f090b108fb0cb031d95"
-dependencies = [
- "log",
- "symphonia-core",
-]
-
-[[package]]
 name = "symphonia-core"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8277,18 +8224,6 @@ dependencies = [
  "bytemuck",
  "lazy_static",
  "log",
-]
-
-[[package]]
-name = "symphonia-format-riff"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d7c3df0e7d94efb68401d81906eae73c02b40d5ec1a141962c592d0f11a96f"
-dependencies = [
- "extended",
- "log",
- "symphonia-core",
- "symphonia-metadata",
 ]
 
 [[package]]

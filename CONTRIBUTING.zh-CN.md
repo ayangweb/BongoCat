@@ -26,6 +26,23 @@ just build
 just schema
 ```
 
+`just dev` 和 `just dev-smoke` 也会准备官方插件：优先使用
+`BONGOCAT_PLUGINS_ROOT` 指向的本地插件仓库，否则首次运行时把
+`https://github.com/ayangweb/BongoCat-Plugins` 克隆到 `target/plugin-dev`，检出
+`Cargo.toml` 中 SDK 所固定的 revision，只构建当前主机平台，并把生成的本地目录交给应用。
+自动管理的克隆必须保持干净。要在已有插件仓库上开发（包括未提交改动），可显式指定路径：
+
+```text
+BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
+```
+
+使用 `just plugin-tests` 会在同一插件仓库上运行完整工作区测试，并启用需要真实插件
+进程的用例；不设置插件仓库时，这些用例会显式跳过。需要验证插件仓库中尚未提交的
+改动时，把 `BONGOCAT_PLUGINS_ROOT` 指向同一目录。
+
+插件构建沿用同一套 Rust 工具链和 `just`，编排脚本还需要 Python 3 与 Git。该开发流程
+不发布插件、不使用插件签名私钥，也不依赖主应用 Release。
+
 在 Windows 上构建时，请确保使用 MSVC 工具链（形如 `stable-x86_64-pc-windows-**msvc**`，
 而非 `stable-x86_64-pc-windows-**gnu**`）。本项目依赖 Live2D Cubism Core，而该库的 Windows 版
 官方仅提供 MSVC 格式的 `.lib`，因此 Windows 上必须使用 MSVC 工具链。可使用 `rustup show` 查看

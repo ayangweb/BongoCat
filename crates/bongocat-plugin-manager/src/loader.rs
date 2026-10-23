@@ -228,11 +228,18 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn metadata() -> PluginMetadata {
-        let mut metadata = serde_json::from_str::<crate::PluginManifest>(include_str!(
-            "../../../plugins/pomodoro/plugin.json"
-        ))
-        .unwrap()
-        .metadata;
+        let mut metadata = PluginMetadata {
+            id: "com.bongocat.test".into(),
+            name: "Test plugin".into(),
+            description: "A test fixture plugin.".into(),
+            version: "1.0.0".into(),
+            app_versions: ">=2.3.1".into(),
+            protocol_version: PROTOCOL_VERSION,
+            entry: "plugin".into(),
+            icon: bongocat_plugin_sdk::PluginIcon::Emoji("A".into()),
+            capabilities: Vec::new(),
+            localizations: Default::default(),
+        };
         metadata.entry = "plugin".into();
         metadata
     }

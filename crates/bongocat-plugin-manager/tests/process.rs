@@ -7,21 +7,52 @@ const BINARY_FILE: &str = "bongocat-pomodoro.exe";
 #[cfg(not(target_os = "windows"))]
 const BINARY_FILE: &str = "bongocat-pomodoro";
 
-/// The compiled pomodoro package. The test skips rather than pretending when
-/// nothing has built the plugin binary yet.
+/// The checked-out plugin source, explicitly supplied by the independent repo.
+///
+/// Set `BONGOCAT_PLUGIN_TEST_ROOT` to the `BongoCat-Plugins` checkout and build
+/// its Pomodoro package before running these cross-process tests. The host
+/// repository owns no official plugin source, so an unset value skips.
 fn source() -> Option<std::path::PathBuf> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("plugins/pomodoro");
-    root.join("plugin.json").is_file().then_some(root)
+    let root = std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?;
+    let package = std::path::PathBuf::from(root).join("plugins/pomodoro");
+    package.join("plugin.json").is_file().then_some(package)
 }
 
 fn target_binary() -> Option<std::path::PathBuf> {
-    let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-    ["debug", "release"]
-        .iter()
-        .map(|profile| target.join(profile).join(BINARY_FILE))
-        .find(|candidate| candidate.is_file())
+    let root = std::path::PathBuf::from(std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?);
+    let triple = host_target_triple();
+    [
+        root.join("target")
+            .join(triple)
+            .join("release")
+            .join(BINARY_FILE),
+        root.join("target")
+            .join(triple)
+            .join("debug")
+            .join(BINARY_FILE),
+        root.join("target/release").join(BINARY_FILE),
+        root.join("target/debug").join(BINARY_FILE),
+    ]
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+    .or_else(|| panic!("BONGOCAT_PLUGIN_TEST_ROOT is set but {BINARY_FILE} was not built"))
+}
+
+fn host_target_triple() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        return if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return "x86_64-pc-windows-msvc";
+    }
+    #[allow(unreachable_code)]
+    ""
 }
 
 /// Build the package the way the packaging tool does: one ZIP with the manifest,

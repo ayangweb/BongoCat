@@ -7,8 +7,8 @@
 > UI 文案的书写规范另见 `docs/localization-copy-conventions.md`；该文 §1.2 明确把
 > `CHANGELOG` 排除在自己的适用范围之外，所以两套规范互不覆盖。
 
-适用范围：两份应用 CHANGELOG 与插件共享的 `plugins/CHANGELOG.md`、
-`plugins/CHANGELOG.zh-CN.md`；§1 的固定词表只约束**版本条目内**的变更分段标题，
+适用范围：两份应用 CHANGELOG；插件仓库维护自己的 CHANGELOG。§1 的固定词表只约束
+**版本条目内**的变更分段标题，
 版本标题（`## <version> - <date>`）另见 §2。
 
 ## 0. 条目是 PR 的交付摘要，不是开发记录

@@ -110,6 +110,21 @@ impl SettingsView {
                 return Err(format!("the plugin center is missing {key}"));
             }
         }
+        if std::env::var_os("BONGOCAT_PLUGIN_SMOKE_REQUIRE_CARDS").is_some() {
+            let cards = self.plugin_host.snapshot().cards;
+            if cards.is_empty() {
+                return Err("the Development plugin catalog produced no cards".to_owned());
+            }
+            for card in cards {
+                let icon = card
+                    .icon_url
+                    .as_deref()
+                    .ok_or_else(|| format!("plugin {} has no icon", card.id))?;
+                if !std::path::Path::new(icon).is_file() {
+                    return Err(format!("plugin {} icon is unavailable", card.id));
+                }
+            }
+        }
         // A card renders the plugin's own copy, so an installed plugin that
         // declared nothing for this language would paint a blank identity.
         for card in self.plugin_host.snapshot().cards {

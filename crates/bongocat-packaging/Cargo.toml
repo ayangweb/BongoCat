@@ -10,8 +10,6 @@ publish.workspace = true
 
 [dependencies]
 bongocat-config.workspace = true
-bongocat-plugin-manager.workspace = true
-bongocat-plugin-sdk.workspace = true
 bongocat-update.workspace = true
 cargo-packager.workspace = true
 cargo-packager-updater.workspace = true
@@ -22,7 +20,6 @@ serde_json.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-zip.workspace = true
 
 [lints]
 workspace = true

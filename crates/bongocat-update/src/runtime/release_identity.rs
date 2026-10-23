@@ -12,6 +12,19 @@ pub const RELEASE_REPOSITORY_OWNER: &str = "ayangweb";
 
 pub const RELEASE_REPOSITORY_NAME: &str = "BongoCat";
 
+/// The repository that publishes independently versioned plugin releases.
+pub const PLUGIN_REPOSITORY_OWNER: &str = "ayangweb";
+
+pub const PLUGIN_REPOSITORY_NAME: &str = "BongoCat-Plugins";
+
+/// The plugin-owned Minisign public key, base64 of the complete public-key box.
+///
+/// This key is deliberately separate from [`RELEASE_SIGNING_KEY`](super::RELEASE_SIGNING_KEY):
+/// a compromise of an application update key must not also authorize plugin code.
+pub const PLUGIN_RELEASE_SIGNING_KEY: &str =
+    "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVGODJGNDY3RjQ1NDU2N0UK
+UldSK1ZsVDBaL1NDNzI0Y2dJOHhkM2ZGSG9PTFdIMW85QjRnTXdOL1JlRWNKN2MweHJ5NHVtanAK";
+
 /// Name of the release manifest asset an update run requests.
 ///
 /// One shared manifest for the whole release, carrying a `<os>-<arch>` entry per

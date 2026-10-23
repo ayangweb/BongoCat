@@ -16,7 +16,6 @@ members = [
     "crates/bongocat-overlay",
     "crates/bongocat-packaging",
     "crates/bongocat-platform",
-    "crates/bongocat-plugin-sdk",
     "crates/bongocat-plugin-manager",
     "crates/bongocat-plugin-hud",
     "crates/bongocat-plugin-service",
@@ -25,9 +24,6 @@ members = [
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
-    "plugins/pomodoro",
-    "plugins/key-sounds",
-    "plugins/input-source",
 ]
 
 [workspace.package]
@@ -91,7 +87,7 @@ bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
-bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
+bongocat-plugin-sdk = { git = "https://github.com/ayangweb/BongoCat-Plugins", rev = "89971f44e7d73af8c1aaf38f49aa723589457d8d" }
 bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
 bongocat-plugin-hud = { path = "crates/bongocat-plugin-hud" }
 bongocat-plugin-service = { path = "crates/bongocat-plugin-service" }

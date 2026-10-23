@@ -31,6 +31,28 @@ just build
 just schema
 ```
 
+`just dev` and `just dev-smoke` also prepare the official plugins. They use the
+checkout named by `BONGOCAT_PLUGINS_ROOT`, or clone
+`https://github.com/ayangweb/BongoCat-Plugins` under `target/plugin-dev` on the
+first run and check out the SDK revision pinned in `Cargo.toml`, build only the
+current host target, and start the application with the generated local
+catalog. The automatic checkout must stay clean. Set the variable to work
+against an existing plugin checkout, including uncommitted plugin changes:
+
+```text
+BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
+```
+
+Use `just plugin-tests` to run the workspace tests with the same plugin checkout
+and real-capable plugin binaries. Without that command, tests that need the
+independent checkout skip; this is useful for lightweight local checks but is
+not the full plugin lifecycle verification. Set `BONGOCAT_PLUGINS_ROOT` to the
+same checkout when testing uncommitted plugin changes.
+
+The plugin build requires the same Rust toolchain and `just`; the orchestration
+script requires Python 3 and Git. No plugin release, plugin signing key, or
+application release is involved.
+
 When building on Windows, ensure you use the MSVC toolchain (of the form
 `stable-x86_64-pc-windows-**msvc**`, not `stable-x86_64-pc-windows-**gnu**`). This project depends
 on Live2D Cubism Core, whose Windows distribution is only available in MSVC format (`.lib`), so MSVC

@@ -4,7 +4,7 @@
 
 ### ✨ Features
 
-- Added a plugin system and Plugin Center to manage plugins and extend the model window, with Pomodoro, Key Sounds and Input Source plugins.
+- Added a plugin system and Plugin Center; official plugins are distributed independently from the BongoCat-Plugins repository.
 
 ## 2.3.1 - 2026-10-13
 

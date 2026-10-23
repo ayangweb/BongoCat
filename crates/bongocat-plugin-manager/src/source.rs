@@ -83,7 +83,13 @@ impl PluginSource {
                     if stop.load(Ordering::Acquire) {
                         return Err("catalog refresh cancelled".into());
                     }
-                    let package = packages.join(format!("{}-{}.zip", entry.id, entry.version));
+                    let package_name = entry
+                        .downloads
+                        .values()
+                        .next()
+                        .cloned()
+                        .unwrap_or_else(|| format!("{}-{}.zip", entry.id, entry.version));
+                    let package = packages.join(package_name);
                     let bytes = install::read_bounded(&package, catalog::MAX_DOWNLOAD_BYTES)
                         .map_err(|error| error.to_string())?;
                     let manifest =
@@ -200,100 +206,21 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    #[test]
-    fn bundled_plugin_copy_is_simplified_chinese_or_english() {
-        for bytes in [
-            include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/key-sounds/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
-        ] {
-            let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
-            let metadata = manifest.metadata;
-            assert_eq!(metadata.localizations.len(), 1, "{}", metadata.id);
-            let chinese = metadata.localizations.get("zh-CN").unwrap();
-            for locale in ["zh-CN", "zh_CN", "ZH-cn"] {
-                assert_eq!(metadata.view_locale(locale), "zh-CN");
-                assert_eq!(
-                    metadata.localized_copy(locale),
-                    (chinese.name.as_str(), chinese.description.as_str()),
-                );
-            }
-            for locale in [
-                "en-US", "en-GB", "zh-TW", "zh-HK", "zh-MO", "zh-Hant", "ar-SA", "vi-VN", "pt-BR",
-                "ko-KR", "fr-FR", "de-DE", "",
-            ] {
-                assert_eq!(metadata.view_locale(locale), "en-US");
-                assert_eq!(
-                    metadata.localized_copy(locale),
-                    (metadata.name.as_str(), metadata.description.as_str()),
-                    "{} fallback for {locale}",
-                    metadata.id,
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn key_sounds_plugin_identity_and_copy_cover_keyboard_and_mouse() {
-        let manifest: crate::PluginManifest =
-            serde_json::from_slice(include_bytes!("../../../plugins/key-sounds/plugin.json"))
-                .unwrap();
-        let metadata = manifest.metadata;
-        assert_eq!(metadata.id, "com.bongocat.key-sounds");
-        assert_eq!(metadata.entry, "bongocat-key-sounds");
-        assert_eq!(
-            metadata.localized_copy("en-US"),
-            (
-                "Key Sounds",
-                "Adds lively sound feedback to keyboard and mouse actions, making every interaction more fun."
-            ),
-        );
-        assert_eq!(
-            metadata.localized_copy("zh-CN"),
-            (
-                "按键音效",
-                "为键盘和鼠标操作添加生动的声音反馈，让每次交互更有趣。"
-            ),
-        );
-    }
-
-    /// Which plugins the installed application may offer is the catalog's own
-    /// `app_versions` range, so a bundled manifest declares a lower bound and no
-    /// upper one: a plugin written against this app keeps working in the next
-    /// release instead of disappearing from the center.
-    #[test]
-    fn bundled_manifests_accept_supported_app_versions_without_an_upper_bound() {
-        for bytes in [
-            include_bytes!("../../../plugins/pomodoro/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/key-sounds/plugin.json").as_slice(),
-            include_bytes!("../../../plugins/input-source/plugin.json").as_slice(),
-        ] {
-            let manifest: crate::PluginManifest = serde_json::from_slice(bytes).unwrap();
-            let requirement = VersionReq::parse(&manifest.metadata.app_versions).unwrap();
-            for (app, supported) in [
-                ("2.3.0", false),
-                ("2.3.1", true),
-                ("2.4.0", true),
-                ("3.0.0", true),
-                ("99.0.0", true),
-            ] {
-                assert_eq!(
-                    requirement.matches(&Version::parse(app).unwrap()),
-                    supported,
-                    "{} application compatibility for {app}",
-                    manifest.metadata.id,
-                );
-            }
-        }
-    }
-
     fn package(id: &str, version: &str, app_versions: &str) -> Vec<u8> {
-        let mut manifest: crate::PluginManifest =
-            serde_json::from_slice(include_bytes!("../../../plugins/pomodoro/plugin.json"))
-                .unwrap();
-        manifest.metadata.id = id.into();
-        manifest.metadata.version = version.into();
-        manifest.metadata.app_versions = app_versions.into();
+        let manifest = crate::PluginManifest {
+            metadata: bongocat_plugin_sdk::PluginMetadata {
+                id: id.into(),
+                name: "Test plugin".into(),
+                description: "A test fixture plugin.".into(),
+                version: version.into(),
+                app_versions: app_versions.into(),
+                protocol_version: bongocat_plugin_sdk::PROTOCOL_VERSION,
+                entry: "plugin".into(),
+                icon: bongocat_plugin_sdk::PluginIcon::Emoji("A".into()),
+                capabilities: Vec::new(),
+                localizations: Default::default(),
+            },
+        };
         let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         archive
             .start_file(
@@ -330,7 +257,7 @@ mod tests {
                     protocol_version: manifest.metadata.protocol_version,
                     icon: manifest.metadata.icon,
                     icon_url: "https://example.com/a.png".into(),
-                    downloads: Default::default(),
+                    downloads: [("macos-aarch64".into(), filename.to_string())].into(),
                     sha256: Some(catalog::sha256_of(&bytes)),
                     homepage: None,
                 });
@@ -351,6 +278,7 @@ mod tests {
         assert_eq!(offers[1].metadata.id, "org.test.b");
         assert!(!directory.path().join(crate::PACKAGES_DIRECTORY).exists());
         assert!(offers[0].read(&AtomicBool::new(false)).is_ok());
+        assert_eq!(offers[0].icon_url, "https://example.com/a.png");
         let mut replaced = package("org.test.a", "1.1.0", ">=2");
         // ZIP readers accept trailing data, so this changes the digest while
         // leaving the manifest identity the catalog validates.
