@@ -1,6 +1,6 @@
 # BongoCat 贡献指南
 
-[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+[English](CONTRIBUTING.md) | 简体中文
 
 感谢你帮助改进 BongoCat。请确保贡献范围集中、表达清楚，并有可重复的验证结果。
 

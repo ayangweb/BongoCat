@@ -1,6 +1,6 @@
 # Contributing to BongoCat
 
-[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+English | [简体中文](CONTRIBUTING.zh-CN.md)
 
 Thank you for helping improve BongoCat. Please keep contributions focused, understandable, and
 supported by repeatable verification.
