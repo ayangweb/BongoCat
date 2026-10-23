@@ -19,6 +19,23 @@
 - Bundle ID 固定 `com.ayangweb.bongo-cat`。Development 与 Production 共用数据结构、使用不同存储根；开发构建不得读取、写入或锁住生产数据。
 - 不引入 Tauri、WebView、Node.js、JavaScript 或第二套 UI framework。
 
+### 1.1 独立插件仓库
+
+- 官方插件、插件 SDK、插件打包、签名与 Tag Release 的唯一来源是
+  `https://github.com/ayangweb/BongoCat-Plugins`。本仓库只保留插件宿主、Plugin Center、安装与生命周期、存储和 overlay 集成。
+- 完整的人类协作流程、联合调试命令和发布边界见 `CONTRIBUTING.md` 与 `CONTRIBUTING.zh-CN.md`；处理插件相关任务前必须阅读对应章节。
+- 不需要把插件源码放进本仓库。`just dev`、`just dev-smoke` 和 `just plugin-tests` 会优先使用
+  `BONGOCAT_PLUGINS_ROOT`；未设置时，`tools/dev_plugins.py` 会把插件仓库克隆到
+  `target/plugin-dev/BongoCat-Plugins`，检出 `Cargo.toml` 中 SDK 固定的完整 revision，并只构建当前主机平台。
+- 修改官方插件实现、插件 UI 或插件业务逻辑时，在独立的 `BongoCat-Plugins` 仓库创建分支和 PR，不要把插件源码复制回本仓库。有写权限的维护者可以直接克隆上游；其他开发者必须先 fork `BongoCat-Plugins`，从 `upstream/master` 建分支，推送到自己的 fork 后向上游开 PR。联合调试时显式设置
+  `BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins`，指向实际使用的上游或 fork checkout；该路径允许包含未提交的插件改动，自动管理的克隆则必须保持干净。
+- 只修改官方插件实现时，不提升本仓库的 SDK revision，也不要求先发布插件 Tag 或 Release；本仓库通过 Git revision 使用 SDK，与插件发布版本相互独立。
+- 修改插件 SDK、进程协议或宿主接口时，先在插件仓库完成并合并 SDK 改动，再在本仓库把
+  `bongocat-plugin-sdk` 的 `rev` 更新为新的完整 40 位 commit SHA，同步 `Cargo.lock`，并运行
+  `just check` 与带插件 checkout 的 `just plugin-tests`。不得使用分支、Tag 或未固定 revision。
+- 插件 PR 尚未合并时，如需联调未发布的 SDK，可仅在本地临时把 `bongocat-plugin-sdk` 指向插件 checkout 的 `path`，或指向贡献者 fork 的完整 commit；这类依赖修改和对应的 `Cargo.lock` 变化不得提交。插件改动合并后，本仓库必须改回上游仓库的完整 commit SHA。
+- 未经用户明确要求，不得在任一仓库 commit、push、打插件 Tag、创建插件 Release 或修改签名配置。
+
 ## 2. 任务流程
 
 ### 2.1 实现决策阶梯（ADR-0030）
