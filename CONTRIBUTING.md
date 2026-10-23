@@ -53,6 +53,90 @@ The plugin build requires the same Rust toolchain and `just`; the orchestration
 script requires Python 3 and Git. No plugin release, plugin signing key, or
 application release is involved.
 
+### Plugin repository and joint debugging
+
+Official plugins and the plugin SDK are maintained in the independent
+[`BongoCat-Plugins`](https://github.com/ayangweb/BongoCat-Plugins) repository.
+When changing only plugin behavior, plugin UI, or plugin business logic, create a
+branch and pull request in that repository. Do not copy plugin source back into
+this repository, and do not update this repository's SDK revision.
+
+Maintainers with write access may clone `ayangweb/BongoCat-Plugins` directly.
+Other developers must first fork `BongoCat-Plugins` on GitHub, clone their fork,
+and add the upstream repository as a remote:
+
+```text
+git clone https://github.com/<your-name>/BongoCat-Plugins.git
+cd BongoCat-Plugins
+git remote add upstream https://github.com/ayangweb/BongoCat-Plugins.git
+git fetch upstream
+git switch -c fix/plugin-topic upstream/master
+```
+
+After validating the change, push the branch to the fork and open a pull request
+against the upstream repository:
+
+```text
+git push -u origin fix/plugin-topic
+```
+
+On GitHub, open a pull request from `<your-name>:fix/plugin-topic` to
+`ayangweb/BongoCat-Plugins:master`. Do not push commits directly to the upstream
+repository or use a pull request to modify upstream `master`.
+
+The application repository follows the same access rules: maintainers may clone
+the upstream directly, while other developers must fork `ayangweb/BongoCat`,
+branch from upstream `master`, push to their fork, and open a pull request
+against the upstream repository.
+
+#### Plugin-only changes
+
+These changes do not require modifying application dependencies. Point the
+application's plugin path at your plugin fork checkout to develop and run the
+full plugin tests with uncommitted plugin changes:
+
+```text
+BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
+BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just plugin-tests
+```
+
+An explicitly named plugin checkout may contain uncommitted changes. The
+automatic `target/plugin-dev/BongoCat-Plugins` checkout managed by `just dev`
+must stay clean and remains pinned to the SDK revision declared in `Cargo.toml`.
+
+#### SDK, protocol, or host-interface changes
+
+These changes affect both repositories and require two pull requests, with the
+plugin-repository change merged first. Until the plugin pull request is merged,
+you may temporarily point the application's SDK dependency at the local plugin
+checkout to verify that both sides agree on the protocol:
+
+```toml
+[workspace.dependencies]
+bongocat-plugin-sdk = { path = "../BongoCat-Plugins/crates/bongocat-plugin-sdk" }
+```
+
+The path above is an example relative to the application repository; adjust it
+for your checkout. You may also temporarily use a full commit from your fork.
+Such dependency changes and the corresponding `Cargo.lock` changes are for local
+integration testing only and must not be committed to the application pull
+request.
+
+After the plugin-repository change is merged, restore the dependency to the
+upstream repository and pin `rev` to the merged full 40-character commit SHA:
+
+```toml
+[workspace.dependencies]
+bongocat-plugin-sdk = { git = "https://github.com/ayangweb/BongoCat-Plugins", rev = "<full-upstream-commit-sha>" }
+```
+
+Then run `cargo update --workspace` to synchronize `Cargo.lock`, run `just check`,
+and run `just plugin-tests` against the merged plugin checkout. The application
+must not merge a commit from a contributor's fork; it must use a full revision
+merged in the upstream repository. The application consumes the SDK through a
+Git revision, so this step does not require a plugin Tag or Release; plugin
+releases remain independent in the plugin repository.
+
 When building on Windows, ensure you use the MSVC toolchain (of the form
 `stable-x86_64-pc-windows-**msvc**`, not `stable-x86_64-pc-windows-**gnu**`). This project depends
 on Live2D Cubism Core, whose Windows distribution is only available in MSVC format (`.lib`), so MSVC
