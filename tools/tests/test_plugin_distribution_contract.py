@@ -18,6 +18,7 @@ RELEASE_IDENTITY = (
     ROOT / "crates" / "bongocat-update" / "src" / "runtime" / "release_identity.rs"
 )
 RUNTIME_MOD = ROOT / "crates" / "bongocat-update" / "src" / "runtime" / "mod.rs"
+PLUGIN_CATALOG = ROOT / "crates" / "bongocat-plugin-manager" / "src" / "catalog.rs"
 APP_SOURCE = ROOT / "crates" / "bongocat-app" / "src" / "dev_plugins.rs"
 DEV_PLUGINS = ROOT / "tools" / "dev_plugins.py"
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -121,6 +122,10 @@ class PluginDistributionContractTests(unittest.TestCase):
         self.assertLess(
             source.index("BuildEnvironment::Development"),
             source.index("BuildEnvironment::Production"),
+        )
+        self.assertIn(
+            'pub const CATALOG_NAME: &str = "latest.json";',
+            read(PLUGIN_CATALOG),
         )
 
     def test_development_entry_points_prepare_a_local_catalog(self):

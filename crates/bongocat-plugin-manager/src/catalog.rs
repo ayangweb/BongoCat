@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
 use thiserror::Error;
 
-pub const CATALOG_NAME: &str = "plugins.json";
+pub const CATALOG_NAME: &str = "latest.json";
 pub const MAX_CATALOG_BYTES: usize = 1024 * 1024;
 pub const MAX_DOWNLOAD_BYTES: usize = 16 * 1024 * 1024;
 
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn icon_assets_use_the_same_official_or_proxied_base_as_packages() {
-        let official = "https://github.com/example/BongoCat/releases/latest/download/plugins.json";
+        let official = "https://github.com/example/BongoCat/releases/latest/download/latest.json";
         let entry = CatalogEntry {
             id: "org.test.a".into(),
             name: "A".into(),

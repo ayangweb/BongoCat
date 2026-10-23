@@ -42,7 +42,7 @@ directory for the application. The automatic clone is detached at the same
 full revision as the application's SDK dependency; an explicitly named checkout
 remains available for testing unreleased plugin work. The application itself
 still never builds or vendors official plugins. Production ignores local
-directories and reads the signed `plugins.json` from the latest release of
+directories and reads the signed `latest.json` from the latest release of
 `BongoCat-Plugins`.
 
 Plugin releases are triggered only by `v*` tags in `BongoCat-Plugins`. The

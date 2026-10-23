@@ -131,7 +131,7 @@ Rust 2024 edition application
   主应用不包含插件源码。
   Development 启动后由产品自身的安装目录发现可用插件，不自动安装或重新安装已卸载的插件。
   生产环境从
-  `BongoCat-Plugins` 的签名 `plugins.json` 发现列表；两个环境复用插件中心的安装、更新、启用、
+  `BongoCat-Plugins` 的签名 `latest.json` 发现列表；两个环境复用插件中心的安装、更新、启用、
   禁用和卸载路径。
   清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。
   番茄时钟、按键音效、输入法状态均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。

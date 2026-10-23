@@ -64,8 +64,8 @@ the three supported platform runners and updates the assets on the existing late
 product Release; it never creates a separate Release that could hide `latest.json`
 from the application. Product releases carry the current catalog and referenced
 versioned ZIPs forward, so each newly-latest Release retains both updater protocols.
-The plugin catalog remains `plugins.json`, because both
-runtimes request assets from `releases/latest/download/*`. Each target runner
+The plugin catalog is published as `latest.json`, because each runtime requests
+assets from `releases/latest/download/*`. Each target runner
 executes `just release-plugins <target>`, which validates Cargo package metadata,
 plugin manifest identity/version/protocol/app compatibility, archive contents and
 executable mode. The publish job requires all three target directories, verifies
@@ -75,7 +75,7 @@ versioned ZIPs without overwrite before replacing the signed catalog last.
 `SIGNING_PRIVATE_KEY` and `SIGNING_PRIVATE_KEY_PASSWORD` are the only release
 secrets; the publish job uses `GITHUB_TOKEN` with `contents: write`.
 
-`just plugin-catalog <output/plugins.json> <platform> <package-directory> ...`
+`just plugin-catalog <output/latest.json> <platform> <package-directory> ...`
 remains the local assembly primitive. It assembles distinct per-platform ZIP
 asset names and signs canonical catalog bytes with the existing signing inputs;
 the production wrapper adds the complete-matrix, history and signature gates but
