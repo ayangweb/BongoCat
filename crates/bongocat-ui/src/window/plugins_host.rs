@@ -971,17 +971,46 @@ mod tests {
 
     const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
+    fn host_target() -> (&'static str, &'static str) {
+        #[cfg(target_os = "macos")]
+        {
+            return if cfg!(target_arch = "aarch64") {
+                ("aarch64-apple-darwin", "macos-aarch64")
+            } else {
+                ("x86_64-apple-darwin", "macos-x86_64")
+            };
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return ("x86_64-pc-windows-msvc", "windows-x86_64");
+        }
+        #[allow(unreachable_code)]
+        ("", "")
+    }
+
     /// A plugin store holding the checked-in pomodoro package, installed from a
     /// Development catalog the same way a downloaded package is.
     fn store_with_pomodoro() -> Option<(PluginService, tempfile::TempDir)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("plugins/pomodoro");
-        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        let binary = ["debug", "release"]
-            .iter()
-            .map(|profile| target.join(profile).join(BINARY_FILE))
-            .find(|candidate| candidate.is_file())?;
+        let workspace = std::path::PathBuf::from(std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?);
+        let root = workspace.join("plugins/pomodoro");
+        let (triple, platform) = host_target();
+        let binary = [
+            workspace
+                .join("target")
+                .join(triple)
+                .join("release")
+                .join(BINARY_FILE),
+            workspace
+                .join("target")
+                .join(triple)
+                .join("debug")
+                .join(BINARY_FILE),
+            workspace.join("target/release").join(BINARY_FILE),
+            workspace.join("target/debug").join(BINARY_FILE),
+        ]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .or_else(|| panic!("BONGOCAT_PLUGIN_TEST_ROOT is set but {BINARY_FILE} was not built"))?;
         let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
@@ -1003,14 +1032,11 @@ mod tests {
         // Development catalog's single entry and installed from it.
         let catalog = tempfile::tempdir().ok()?;
         let manifest = bongocat_plugin_manager::install::inspect_package(&bytes).ok()?;
-        std::fs::write(
-            catalog.path().join(format!(
-                "{}-{}.zip",
-                manifest.metadata.id, manifest.metadata.version
-            )),
-            &bytes,
-        )
-        .ok()?;
+        let package_name = format!(
+            "{}-{}-{platform}.zip",
+            manifest.metadata.id, manifest.metadata.version
+        );
+        std::fs::write(catalog.path().join(&package_name), &bytes).ok()?;
         let icon = catalog.path().join(format!("{}.png", manifest.metadata.id));
         std::fs::copy(root.join("resources/icon.png"), &icon).ok()?;
         std::fs::write(
@@ -1026,7 +1052,7 @@ mod tests {
                     protocol_version: manifest.metadata.protocol_version,
                     icon: manifest.metadata.icon,
                     icon_url: icon.display().to_string(),
-                    downloads: Default::default(),
+                    downloads: [(platform.into(), package_name)].into(),
                     sha256: Some(bongocat_plugin_manager::sha256_of(&bytes)),
                     homepage: None,
                 }],
@@ -1796,8 +1822,7 @@ mod tests {
                         .status(http_client::StatusCode::OK)
                         .header("content-type", "image/png")
                         .body(http_client::AsyncBody::from(
-                            include_bytes!("../../../../plugins/pomodoro/resources/icon.png")
-                                .as_slice(),
+                            include_bytes!("../../../../resources/icons/tray-macos.png").as_slice(),
                         ))
                         .unwrap())
                 })
@@ -1821,10 +1846,7 @@ mod tests {
     #[gpui_kit::test]
     fn a_development_icon_is_read_as_a_file_not_as_an_embedded_asset(cx: &mut TestAppContext) {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .unwrap()
-            .join("plugins/pomodoro/resources/icon.png");
+            .join("../../resources/icons/tray-macos.png");
         assert!(path.is_file());
         let mut card = sample_card();
         card.icon_url = Some(path.display().to_string());

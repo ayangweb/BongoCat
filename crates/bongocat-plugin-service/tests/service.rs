@@ -23,14 +23,26 @@ fn plugin_package() -> Option<Vec<u8>> {
 }
 
 fn plugin_package_with_manifest(edit: impl FnOnce(&mut serde_json::Value)) -> Option<Vec<u8>> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("plugins/pomodoro");
-    let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-    let binary = ["debug", "release"]
-        .iter()
-        .map(|profile| target.join(profile).join(BINARY_FILE))
-        .find(|candidate| candidate.is_file())?;
+    let workspace = std::path::PathBuf::from(std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?);
+    let root = workspace.join("plugins/pomodoro");
+    let triple = host_target_triple();
+    let binary = [
+        workspace
+            .join("target")
+            .join(triple)
+            .join("release")
+            .join(BINARY_FILE),
+        workspace
+            .join("target")
+            .join(triple)
+            .join("debug")
+            .join(BINARY_FILE),
+        workspace.join("target/release").join(BINARY_FILE),
+        workspace.join("target/debug").join(BINARY_FILE),
+    ]
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+    .or_else(|| panic!("BONGOCAT_PLUGIN_TEST_ROOT is set but {BINARY_FILE} was not built"))?;
     let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
@@ -50,6 +62,23 @@ fn plugin_package_with_manifest(edit: impl FnOnce(&mut serde_json::Value)) -> Op
         .ok()?;
     archive.write_all(&std::fs::read(binary).ok()?).ok()?;
     archive.finish().ok().map(|cursor| cursor.into_inner())
+}
+
+fn host_target_triple() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        return if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return "x86_64-pc-windows-msvc";
+    }
+    #[allow(unreachable_code)]
+    ""
 }
 
 /// A plugin that serves no Chinese copy is shown and driven in English.
@@ -458,7 +487,7 @@ fn versioned_package(bytes: &[u8], version: &str, broken: bool) -> Vec<u8> {
     output.finish().unwrap().into_inner()
 }
 
-/// Publish one local package, icon and catalog entry, as `just dev-plugins` does.
+/// Publish one local package, icon and catalog entry for lifecycle tests.
 fn write_local_catalog(directory: &std::path::Path, bytes: &[u8]) {
     use std::io::Read;
 
@@ -547,8 +576,9 @@ fn a_damaged_installed_session_keeps_catalog_backed_recovery_controls() {
 
 #[test]
 fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecycle() {
-    let bytes =
-        plugin_package().expect("build Pomodoro with just dev-plugins before lifecycle tests");
+    let Some(bytes) = plugin_package() else {
+        return;
+    };
     let catalog = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
     write_local_catalog(catalog.path(), &bytes);
@@ -668,8 +698,9 @@ fn local_catalog_install_update_rollback_uninstall_and_restart_share_one_lifecyc
 
 #[test]
 fn first_install_start_failure_keeps_the_package_for_enable_retry() {
-    let bytes =
-        plugin_package().expect("build Pomodoro with just dev-plugins before lifecycle tests");
+    let Some(bytes) = plugin_package() else {
+        return;
+    };
     let catalog = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
     write_local_catalog(catalog.path(), &versioned_package(&bytes, "1.0.0", true));

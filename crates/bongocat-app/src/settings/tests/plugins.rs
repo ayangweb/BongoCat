@@ -7,16 +7,26 @@ use std::io::Write as _;
 const PLUGIN_ID: &str = "com.bongocat.pomodoro";
 
 fn pomodoro_package() -> Option<Vec<u8>> {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let binary = ["debug", "release"]
-        .into_iter()
-        .map(|profile| {
-            workspace
-                .join("target")
-                .join(profile)
-                .join(format!("bongocat-pomodoro{}", std::env::consts::EXE_SUFFIX))
-        })
-        .find(|path| path.is_file())?;
+    let workspace = std::path::PathBuf::from(std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?);
+    let triple = host_target_triple();
+    let file = format!("bongocat-pomodoro{}", std::env::consts::EXE_SUFFIX);
+    let binary = [
+        workspace
+            .join("target")
+            .join(triple)
+            .join("release")
+            .join(&file),
+        workspace
+            .join("target")
+            .join(triple)
+            .join("debug")
+            .join(&file),
+        workspace.join("target/release").join(&file),
+        workspace.join("target/debug").join(&file),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .or_else(|| panic!("BONGOCAT_PLUGIN_TEST_ROOT is set but {file} was not built"))?;
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
     zip.start_file("plugin.json", options).unwrap();
@@ -29,6 +39,23 @@ fn pomodoro_package() -> Option<Vec<u8>> {
         .unwrap();
     zip.write_all(&fs::read(binary).unwrap()).unwrap();
     Some(zip.finish().unwrap().into_inner())
+}
+
+fn host_target_triple() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        return if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return "x86_64-pc-windows-msvc";
+    }
+    #[allow(unreachable_code)]
+    ""
 }
 
 /// Install the package into a service store the way the product does: through

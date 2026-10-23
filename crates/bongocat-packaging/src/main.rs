@@ -72,8 +72,6 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod dev_plugins;
-mod plugin_catalog;
 // Only the macOS disk image has a Finder window to describe, so the encoder is
 // not compiled into any other platform's packaging run.
 #[cfg(target_os = "macos")]
@@ -414,18 +412,6 @@ impl ReleaseTarget {
 
 /// One parsed invocation of the packaging tool.
 enum Invocation {
-    /// Build standalone local plugins into the Development plugin directory.
-    PrepareDevPlugins,
-    PrepareReleasePlugins(ReleaseTarget),
-    ReleasePluginCatalog {
-        output: PathBuf,
-        previous: PathBuf,
-        inputs: Vec<(ReleaseTarget, PathBuf)>,
-    },
-    PluginCatalog {
-        output: PathBuf,
-        inputs: Vec<(ReleaseTarget, PathBuf)>,
-    },
     /// Build and package one release target.
     Package(Options),
     /// Merge the per-target fragments into the shared release manifest.
@@ -455,19 +441,6 @@ usage: cargo run -p bongocat-packaging -- [options]
 Builds the Production product and packages the host platform release artifacts.
 
 options:
-  --prepare-release-plugins <triple>
-                           build validated plugins for a release target into
-                           target/release-plugins/<platform>
-  --release-plugin-catalog <file> <previous-directory> <platform> <directory> ...
-                           validate all release targets and previous signed
-                           versions, sign and verify with the application's key
-  --prepare-dev-plugins    build local plugins into ZIP packages under
-                           target/plugins; installing them is the Development
-                           product's own lifecycle. Takes no other option and
-                           never modifies app bundles or the product's storage
-  --plugin-catalog <file> <platform> <directory> [<platform> <directory> ...]
-                           assemble and sign plugin ZIPs for GitHub releases;
-                           requires SIGNING_PRIVATE_KEY; does not publish
   --target <triple>        one of aarch64-apple-darwin,
                             x86_64-apple-darwin, x86_64-pc-windows-msvc;
                             defaults to the host target
@@ -499,81 +472,6 @@ environment:
                            and the passphrase used to unlock it when signing";
 
     fn parse(arguments: Vec<String>) -> Result<Self> {
-        if arguments
-            .first()
-            .is_some_and(|arg| arg == "--prepare-release-plugins")
-        {
-            if arguments.len() != 2 {
-                return failure("--prepare-release-plugins requires exactly one target triple");
-            }
-            return Ok(Self::PrepareReleasePlugins(ReleaseTarget::parse(
-                &arguments[1],
-            )?));
-        }
-        if arguments
-            .first()
-            .is_some_and(|arg| arg == "--release-plugin-catalog")
-        {
-            if arguments.len() < 5 || arguments.len().is_multiple_of(2) {
-                return failure(
-                    "--release-plugin-catalog <output> <previous-directory> <platform> <directory> ...",
-                );
-            }
-            let parsed = Self::parse(
-                [
-                    vec!["--plugin-catalog".into(), arguments[1].clone()],
-                    arguments[3..].to_vec(),
-                ]
-                .concat(),
-            )?;
-            let Self::PluginCatalog { output, inputs } = parsed else {
-                unreachable!();
-            };
-            return Ok(Self::ReleasePluginCatalog {
-                output,
-                previous: PathBuf::from(&arguments[2]),
-                inputs,
-            });
-        }
-        if arguments
-            .iter()
-            .any(|argument| argument == "--plugin-catalog")
-        {
-            if arguments
-                .first()
-                .is_none_or(|argument| argument != "--plugin-catalog")
-                || arguments.len() < 4
-                || !arguments.len().is_multiple_of(2)
-            {
-                return failure(
-                    "--plugin-catalog <output> <platform> <package-directory> [<platform> <package-directory> ...]",
-                );
-            }
-            let mut inputs = Vec::new();
-            for pair in arguments[2..].chunks_exact(2) {
-                let target = ReleaseTarget::ALL
-                    .into_iter()
-                    .find(|target| target.manifest_platform() == pair[0])
-                    .ok_or("unknown plugin platform")?;
-                if pair[1].starts_with("--") {
-                    return failure("plugin catalog inputs cannot be build options");
-                }
-                inputs.push((target, PathBuf::from(&pair[1])));
-            }
-            return Ok(Self::PluginCatalog {
-                output: PathBuf::from(&arguments[1]),
-                inputs,
-            });
-        }
-        if arguments
-            .iter()
-            .any(|argument| argument == "--prepare-dev-plugins")
-        {
-            if arguments.len() != 1 {
-                return failure("--prepare-dev-plugins takes no other option");
-            }
-            return Ok(Self::PrepareDevPlugins);
-        }
         let mut target = None;
         let mut environment = None;
         let mut formats = None;
@@ -735,28 +633,6 @@ fn main() -> std::process::ExitCode {
 /// Runs one parsed invocation, returning its closing line and the files it produced.
 fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
     match invocation {
-        Invocation::PrepareDevPlugins => dev_plugins::prepare(&workspace_root()?)
-            .map(|artifacts| ("Development plugins prepared successfully.", artifacts)),
-        Invocation::PrepareReleasePlugins(target) => {
-            dev_plugins::prepare_release(&workspace_root()?, target)
-                .map(|artifacts| ("Release plugins prepared successfully.", artifacts))
-        }
-        Invocation::ReleasePluginCatalog {
-            output,
-            previous,
-            inputs,
-        } => plugin_catalog::publish_release(
-            &workspace_root()?,
-            &output,
-            &inputs,
-            &previous,
-            &signing_material(),
-        )
-        .map(|artifacts| ("Release plugin catalog verified successfully.", artifacts)),
-        Invocation::PluginCatalog { output, inputs } => {
-            plugin_catalog::publish(&output, &inputs, &signing_material())
-                .map(|artifacts| ("Signed plugin catalog prepared successfully.", artifacts))
-        }
         Invocation::Package(options) => {
             package(options).map(|artifacts| ("Build completed successfully.", artifacts))
         }

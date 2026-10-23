@@ -629,11 +629,18 @@ mod tests {
     use bongocat_plugin_sdk::{Capability, InputActivity};
 
     fn metadata() -> PluginMetadata {
-        serde_json::from_str::<crate::PluginManifest>(include_str!(
-            "../../../plugins/pomodoro/plugin.json"
-        ))
-        .unwrap()
-        .metadata
+        PluginMetadata {
+            id: "com.bongocat.test".into(),
+            name: "Test plugin".into(),
+            description: "A test fixture plugin.".into(),
+            version: "1.0.0".into(),
+            app_versions: ">=2.3.1".into(),
+            protocol_version: bongocat_plugin_sdk::PROTOCOL_VERSION,
+            entry: "plugin".into(),
+            icon: bongocat_plugin_sdk::PluginIcon::Emoji("A".into()),
+            capabilities: Vec::new(),
+            localizations: Default::default(),
+        }
     }
 
     #[test]

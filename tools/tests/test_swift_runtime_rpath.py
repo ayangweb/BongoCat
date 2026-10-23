@@ -42,9 +42,9 @@ def package_dependencies(crate: Path) -> set:
 
 
 def package_paths(root=None) -> dict:
-    """Product crates and independently named plugin directories, by Cargo name."""
+    """Product crates by Cargo name."""
     paths = {}
-    for directory in ([root] if root is not None else [CRATES, ROOT / "plugins"]):
+    for directory in ([root] if root is not None else [CRATES]):
         for crate in directory.iterdir():
             manifest = crate / "Cargo.toml"
             if not manifest.is_file():
@@ -102,9 +102,6 @@ class SwiftRuntimeRpathContractTests(unittest.TestCase):
         self.assertIn("bongocat-app", linking)
         self.assertIn("bongocat-overlay", linking)
         self.assertIn("bongocat-ui", linking)
-        # The input-source plugin links AppKit itself and is built outside the
-        # host workspace, so it must not inherit the host's Swift runtime.
-        self.assertNotIn("bongocat-input-source", linking)
         # A package with no path to the linker must not be dragged in.
         self.assertNotIn("bongocat-log", linking)
 

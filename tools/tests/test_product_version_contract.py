@@ -24,16 +24,6 @@ UPDATE_CAPABILITY_TESTS = (
     ROOT / "crates" / "bongocat-update" / "tests" / "release_manifest_capability.rs"
 )
 PRODUCT_RUNTIME_DOC = ROOT / "docs" / "product-runtime.md"
-# Plugin packages are built, versioned and distributed on their own (see
-# ADR-0090/ADR-0091): a plugin's version is the one its `plugin.json` publishes,
-# the host declares the range it accepts through `app_versions`, and a plugin
-# update has to be able to ship without a product release. They are workspace
-# members only so one `cargo` invocation builds everything, so the product
-# version contract covers the crates under `crates/` and not those under
-# `plugins/`.
-PLUGIN_MEMBER_PREFIX = "plugins/"
-
-
 def read(path):
     return path.read_text(encoding="utf-8")
 
@@ -84,11 +74,7 @@ class ProductVersionContractTests(unittest.TestCase):
         self.assertRegex(version, r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 
     def test_workspace_members_inherit_the_product_version(self):
-        members = [
-            member
-            for member in workspace_members()
-            if not member.startswith(PLUGIN_MEMBER_PREFIX)
-        ]
+        members = workspace_members()
         self.assertTrue(members, "the workspace must contain product crates")
 
         for member in members:
@@ -97,33 +83,6 @@ class ProductVersionContractTests(unittest.TestCase):
                 source = read(manifest)
                 self.assertRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
                 self.assertNotRegex(source, r"(?m)^version\s*=\s*\"")
-
-    def test_plugin_packages_version_themselves(self):
-        plugins = [
-            member
-            for member in workspace_members()
-            if member.startswith(PLUGIN_MEMBER_PREFIX)
-        ]
-        self.assertTrue(plugins, "the workspace must list the independently built plugins")
-
-        for member in plugins:
-            with self.subTest(member=member):
-                manifest = read(ROOT / member / "Cargo.toml")
-                declared = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', manifest)
-                self.assertIsNotNone(
-                    declared, f"{member} must declare its own package version"
-                )
-                # The built binary and the package the center installs have to
-                # report the same version: `plugin.json` is what discovery, the
-                # catalog and an update comparison read.
-                plugin_manifest = json.loads(
-                    read(ROOT / member / "plugin.json")
-                )
-                self.assertEqual(
-                    plugin_manifest["metadata"]["version"],
-                    declared.group(1),
-                    f"{member} must ship the version its package manifest declares",
-                )
 
     def test_lockfile_workspace_packages_match_the_product_version(self):
         expected_version = workspace_package_version()
@@ -134,18 +93,17 @@ class ProductVersionContractTests(unittest.TestCase):
                 source,
             )
         )
-        plugin_names = {
+        workspace_packages = {
             re.search(
-                r'(?m)^name\s*=\s*"([^"]+)"\s*$', read(ROOT / member / "Cargo.toml")
+                r'(?m)^name\s*=\s*"([^"]+)"\s*$',
+                read(ROOT / member / "Cargo.toml"),
             ).group(1)
             for member in workspace_members()
-            if member.startswith(PLUGIN_MEMBER_PREFIX)
         }
         product_packages = {
             name: version
             for name, version in packages.items()
-            if name.startswith("bongocat-")
-            and name not in plugin_names
+            if name in workspace_packages
         }
 
         self.assertTrue(product_packages, "Cargo.lock must contain product packages")

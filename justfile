@@ -11,32 +11,24 @@ default:
     @just --list
 
 # Run the Development product until explicitly quit.
-dev: dev-plugins
-    cargo run --locked -p bongocat-app --release -- --run-seconds 0
+#
+# Official plugins live in the independent BongoCat-Plugins repository.
+# `tools/dev_plugins.py` uses BONGOCAT_PLUGINS_ROOT when set, otherwise clones
+# the repository under target/plugin-dev, builds the host platform's packages,
+# and starts the application with the generated Development catalog:
+#
+#   BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
+dev:
+    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
-dev-smoke: dev-plugins
-    cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+dev-smoke:
+    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 
-# Build independent local plugin packages into Development storage, not the app bundle.
-dev-plugins:
-    cargo run --locked -p bongocat-packaging -- --prepare-dev-plugins
-
-# Assemble signed plugin assets and plugins.json from per-platform package directories.
-plugin-catalog output *inputs:
-    cargo run --locked -p bongocat-packaging -- --plugin-catalog {{output}} {{inputs}}
-
-# Build release plugin ZIPs without bundling them into the application.
-release-plugins target:
-    cargo run --locked -p bongocat-packaging -- --prepare-release-plugins {{target}}
-
-# Validate and render the shared bilingual plugin release notes.
-validate-plugin-changelogs:
-    python3 tools/release-plugin-changelog.py
-
-# Require the complete matrix, immutable previous versions and the application's key.
-release-plugin-catalog output previous *inputs:
-    cargo run --locked -p bongocat-packaging -- --release-plugin-catalog {{output}} {{previous}} {{inputs}}
+# Build the official plugin checkout and run tests that execute its real binaries.
+# Set BONGOCAT_PLUGINS_ROOT to test uncommitted plugin changes.
+plugin-tests:
+    python3 tools/dev_plugins.py -- cargo test --locked --workspace
 
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":
