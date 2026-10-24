@@ -131,11 +131,23 @@ URL or the configured GitHub proxy, exactly as it resolves package downloads.
 An installed card continues to use the catalog URL, so installing, updating or
 uninstalling a package never changes which artwork the card reads.
 
-There is no font or Emoji fallback. Every bundled plugin must declare a local
-PNG, and every catalog offer must resolve to one. A URL that cannot be loaded
-leaves the fixed square empty; it is not replaced by a glyph, a generic icon or
-the installed package's private file. This keeps Development and Production on
-the same presentation path instead of making Development depend on an installed
+The plugin service prefetches Production artwork in the background, after the
+cards themselves are available, and stores one version-keyed PNG under the
+current environment's plugin cache. The download follows the same proxy order
+as packages, is bounded, and replaces the cache file atomically only after the
+bytes are a square 8-bit RGBA PNG. A later snapshot projects the local path, so
+subsequent launches paint from disk without a second image request once the
+catalog arrives. A failed prefetch keeps the remote URL; the package manager,
+not GPUI, remains the owner of retries and proxy fallback.
+
+There is no font or Emoji fallback, and the host never synthesizes a plugin
+identity. Every bundled plugin must declare a local PNG, and every catalog
+offer must resolve to one. While an image loads, the card shows a themed
+`Skeleton` in the same 48px square. A missing or failed image shows the same
+sized, static muted placeholder rather than an endless loading animation or a
+second icon. Neither placeholder is a glyph, a generic business icon or the
+installed package's private file. This keeps Development and Production on the
+same presentation path instead of making Development depend on an installed
 tree.
 
 A card displays a local image in a fixed 48px square frame with
@@ -178,6 +190,10 @@ settings tests verify initialization without windows, all application languages,
 stale and failed commits, disable/enable and restart language propagation.
 Repository tests also pin the single artwork entry and verify every shipped icon
 is a square RGBA PNG with partial-alpha rounded edges.
+Manager tests verify version-keyed icon cache reuse and rejection of malformed,
+non-RGBA and non-square images without replacing a previously valid cache entry.
+UI tests verify the loading skeleton keeps the same 48px footprint and that the
+static fallback is used when an image request fails or no source exists.
 `just check` (fmt, clippy across targets/features, workspace tests, release check)
 and `tools/validate-locales.py` pass.
 macOS `just dev-smoke` also passes bounded startup, settings window destruction

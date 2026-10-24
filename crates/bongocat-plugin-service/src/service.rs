@@ -198,6 +198,8 @@ struct Worker {
     source: PluginSource,
     offers: Vec<AvailablePlugin>,
     job: Option<CatalogJob>,
+    icon_job: Option<IconJob>,
+    icon_prefetch_pending: bool,
     catalog_stop: Arc<AtomicBool>,
     input_activity: Option<Box<dyn Fn() -> InputActivity + Send>>,
     last_input_activity: InputActivity,
@@ -231,6 +233,23 @@ struct CatalogJob {
     result: Receiver<Result<CatalogResult, String>>,
     worker: JoinHandle<()>,
     package: Option<String>,
+}
+
+/// Catalog artwork fetched after the cards themselves are already readable.
+///
+/// The UI can paint a skeleton immediately and switch to the cached path when
+/// this job finishes. Keeping it separate from `CatalogJob` means a slow image
+/// proxy cannot delay package installation or the plugin list.
+struct IconJob {
+    result: Receiver<Vec<CachedIcon>>,
+    worker: JoinHandle<()>,
+}
+
+struct CachedIcon {
+    id: String,
+    version: String,
+    source_url: String,
+    cached_url: String,
 }
 
 /// What a composed layer is a function of, for skipping an unchanged one.
@@ -279,6 +298,8 @@ fn run(
         source,
         offers: Vec::new(),
         job: None,
+        icon_job: None,
+        icon_prefetch_pending: false,
         catalog_stop: Arc::clone(&stop),
         input_activity,
         last_input_activity,
@@ -353,6 +374,7 @@ impl Worker {
         self.refresh_catalog();
         while !stop.load(Ordering::Acquire) {
             self.finish_catalog_job();
+            self.finish_icon_job();
             self.drain_commands();
             if stop.load(Ordering::Acquire) {
                 break;
@@ -367,6 +389,9 @@ impl Worker {
         }
         self.endpoint.close();
         if let Some(job) = self.job.take() {
+            let _ = job.worker.join();
+        }
+        if let Some(job) = self.icon_job.take() {
             let _ = job.worker.join();
         }
         self.manager.shutdown()?;
@@ -427,7 +452,10 @@ impl Worker {
             let _ = job.worker.join();
         }
         match result {
-            Ok(CatalogResult::List(offers)) => self.offers = offers,
+            Ok(CatalogResult::List(offers)) => {
+                self.offers = offers;
+                self.start_icon_prefetch();
+            }
             Ok(CatalogResult::Package { offer, bytes }) => {
                 self.dispatch_input_events();
                 self.dispatch_input_activity();
@@ -445,6 +473,74 @@ impl Worker {
                 self.initialize_plugin_input_activity(&offer.metadata.id);
             }
             Err(error) => self.error = Some(error),
+        }
+    }
+
+    fn start_icon_prefetch(&mut self) {
+        if self.icon_job.is_some() {
+            self.icon_prefetch_pending = true;
+            return;
+        }
+        let offers = self
+            .offers
+            .iter()
+            .filter(|offer| offer.icon_url.starts_with("https://"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if offers.is_empty() {
+            return;
+        }
+        let plugin_dir = self.manager.plugin_dir().to_path_buf();
+        let stop = Arc::clone(&self.catalog_stop);
+        let (sender, result) = sync_channel(1);
+        match thread::Builder::new()
+            .name("bongocat-plugin-icons".into())
+            .spawn(move || {
+                let mut cached = Vec::new();
+                for mut offer in offers {
+                    if stop.load(Ordering::Acquire) {
+                        break;
+                    }
+                    let original = offer.icon_url.clone();
+                    if offer.cache_icon(&plugin_dir, &stop).is_ok() && offer.icon_url != original {
+                        cached.push(CachedIcon {
+                            id: offer.metadata.id,
+                            version: offer.metadata.version,
+                            source_url: original,
+                            cached_url: offer.icon_url,
+                        });
+                    }
+                }
+                let _ = sender.send(cached);
+            }) {
+            Ok(worker) => self.icon_job = Some(IconJob { result, worker }),
+            Err(_) => self.icon_prefetch_pending = false,
+        }
+    }
+
+    fn finish_icon_job(&mut self) {
+        let Some(job) = &self.icon_job else {
+            return;
+        };
+        let cached = match job.result.try_recv() {
+            Ok(cached) => cached,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => Vec::new(),
+        };
+        if let Some(job) = self.icon_job.take() {
+            let _ = job.worker.join();
+        }
+        for cached in cached {
+            if let Some(offer) = self.offers.iter_mut().find(|offer| {
+                offer.metadata.id == cached.id
+                    && offer.metadata.version == cached.version
+                    && offer.icon_url == cached.source_url
+            }) {
+                offer.icon_url = cached.cached_url;
+            }
+        }
+        if std::mem::take(&mut self.icon_prefetch_pending) {
+            self.start_icon_prefetch();
         }
     }
 
@@ -959,6 +1055,8 @@ mod tests {
             source: PluginSource::InstalledOnly,
             offers: Vec::new(),
             job: None,
+            icon_job: None,
+            icon_prefetch_pending: false,
             catalog_stop: Arc::default(),
             input_activity: None,
             last_input_activity: InputActivity::default(),

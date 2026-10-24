@@ -12,7 +12,7 @@
 //! cached state, draws it, and forwards typed commands.
 use super::*;
 use bongocat_plugin_sdk::{ActionIcon, ConfigValue, UiNode};
-use gpui_kit::component::{Sizable as _, tag::Tag};
+use gpui_kit::component::{Sizable as _, skeleton::Skeleton, tag::Tag};
 use gpui_kit::{AnyElement, assets::IconName, base::TestSupportExt as _};
 use plugins_host::{PluginCardView, PluginHubState, PluginInFlight, PluginPackageOperation};
 
@@ -208,7 +208,7 @@ fn card_view(
                 .flex()
                 .items_start()
                 .gap_3()
-                .child(plugin_icon(card))
+                .child(plugin_icon(card, cx))
                 .child(heading)
                 .children(settings_entry),
         )
@@ -352,9 +352,9 @@ fn card_view(
 ///
 /// The catalog supplies a URL in Production and a file path in Development.
 /// Both identify the same PNG and neither depends on whether the package is
-/// installed. A malformed or missing catalog value leaves the square empty
+/// installed. A malformed or missing source shows a static neutral square
 /// rather than substituting a font glyph.
-fn plugin_icon(card: &PluginCardView) -> AnyElement {
+fn plugin_icon(card: &PluginCardView, cx: &App) -> AnyElement {
     let frame = div().size_12().flex_shrink_0();
     let frame_id = SharedString::from(format!("plugin-icon-{}", card.id));
     match card.icon_url.clone() {
@@ -367,13 +367,53 @@ fn plugin_icon(card: &PluginCardView) -> AnyElement {
             } else {
                 ImageSource::from(PathBuf::from(url))
             };
+            let image_id = SharedString::from(format!("plugin-icon-image-{}", card.id));
+            let loading_id = SharedString::from(format!("plugin-icon-loading-{}", card.id));
+            let fallback_id = SharedString::from(format!("plugin-icon-fallback-{}", card.id));
+            let fallback_color = cx.theme().muted;
             frame
                 .id(frame_id)
                 .test_support()
-                .child(img(source).size_full().object_fit(ObjectFit::Contain))
+                .child(
+                    img(source)
+                        .id(image_id)
+                        .size_full()
+                        .object_fit(ObjectFit::Contain)
+                        .with_loading(move || {
+                            div()
+                                .id(loading_id.clone())
+                                .test_support()
+                                .size_12()
+                                .child(Skeleton::new().size_full().rounded_md())
+                                .into_any_element()
+                        })
+                        .with_fallback(move || {
+                            div()
+                                .id(fallback_id.clone())
+                                .test_support()
+                                .size_12()
+                                .rounded_md()
+                                .bg(fallback_color)
+                                .into_any_element()
+                        }),
+                )
                 .into_any_element()
         }
-        None => frame.id(frame_id).test_support().into_any_element(),
+        None => frame
+            .id(frame_id)
+            .test_support()
+            .child(
+                div()
+                    .id(SharedString::from(format!(
+                        "plugin-icon-fallback-{}",
+                        card.id
+                    )))
+                    .test_support()
+                    .size_12()
+                    .rounded_md()
+                    .bg(cx.theme().muted),
+            )
+            .into_any_element(),
     }
 }
 

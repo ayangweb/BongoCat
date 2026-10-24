@@ -924,7 +924,7 @@ mod tests {
         plugin_directory,
     };
     use gpui_kit::{TestAppContext, VisualTestContext, http_client, test::TestWindowExt as _};
-    use std::{future::Future, io::Write as _, pin::Pin, sync::Arc};
+    use std::{future::Future, io::Write as _, pin::Pin, sync::Arc, time::Duration};
 
     #[test]
     fn preview_mailbox_coalesces_hover_and_cancels_stale_options() {
@@ -1784,6 +1784,115 @@ mod tests {
                 assert_eq!(icon.size.width, px(48.));
                 assert_eq!(icon.size.height, px(48.));
             }
+            let fallback = window
+                .find(SharedString::from(
+                    "plugin-icon-fallback-com.example.missing-icon",
+                ))
+                .bounds();
+            assert_eq!(fallback.size.width, px(48.));
+            assert_eq!(fallback.size.height, px(48.));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_slow_release_icon_shows_a_skeleton_in_the_same_square(cx: &mut TestAppContext) {
+        struct PendingHttpClient;
+
+        impl http_client::HttpClient for PendingHttpClient {
+            fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+                None
+            }
+
+            fn proxy(&self) -> Option<&http_client::Url> {
+                None
+            }
+
+            fn send(
+                &self,
+                _request: http_client::Request<http_client::AsyncBody>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http_client::Result<
+                                http_client::Response<http_client::AsyncBody>,
+                            >,
+                        > + Send
+                        + 'static,
+                >,
+            > {
+                Box::pin(std::future::pending())
+            }
+        }
+
+        cx.update(|app| app.set_http_client(Arc::new(PendingHttpClient)));
+        let mut card = sample_card();
+        card.icon_url = Some("https://example.com/slow.png".into());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        // GPUI compares the image's loading start against a real Instant even
+        // though the scheduled notification runs on the test clock.
+        std::thread::sleep(Duration::from_millis(250));
+        visual
+            .cx
+            .executor()
+            .advance_clock(Duration::from_millis(250));
+        visual.run_until_parked();
+        visual.update(|window, _| window.refresh());
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let loading = window
+                .find(SharedString::from("plugin-icon-loading-com.example.card"))
+                .bounds();
+            assert_eq!(loading.size.width, px(48.));
+            assert_eq!(loading.size.height, px(48.));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_release_icon_uses_a_static_fallback(cx: &mut TestAppContext) {
+        struct MissingHttpClient;
+
+        impl http_client::HttpClient for MissingHttpClient {
+            fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+                None
+            }
+
+            fn proxy(&self) -> Option<&http_client::Url> {
+                None
+            }
+
+            fn send(
+                &self,
+                _request: http_client::Request<http_client::AsyncBody>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http_client::Result<
+                                http_client::Response<http_client::AsyncBody>,
+                            >,
+                        > + Send
+                        + 'static,
+                >,
+            > {
+                Box::pin(async {
+                    Ok(http_client::Response::builder()
+                        .status(http_client::StatusCode::NOT_FOUND)
+                        .body(http_client::AsyncBody::default())
+                        .unwrap())
+                })
+            }
+        }
+
+        cx.update(|app| app.set_http_client(Arc::new(MissingHttpClient)));
+        let mut card = sample_card();
+        card.icon_url = Some("https://example.com/missing.png".into());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let fallback = window
+                .find(SharedString::from("plugin-icon-fallback-com.example.card"))
+                .bounds();
+            assert_eq!(fallback.size.width, px(48.));
+            assert_eq!(fallback.size.height, px(48.));
         });
     }
 

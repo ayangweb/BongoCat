@@ -5,7 +5,7 @@ use cargo_packager_updater::semver::{Version, VersionReq};
 use std::{
     collections::BTreeMap,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -42,6 +42,26 @@ enum PackageLocation {
 }
 
 impl AvailablePlugin {
+    /// Replace a remote catalog icon with a persistent local copy.
+    ///
+    /// Development catalogs already point at a package-local file, so they are
+    /// left untouched. Production performs this off the service's UI-facing
+    /// loop; a failure keeps the remote URL so the card can still try it.
+    pub fn cache_icon(&mut self, plugin_dir: &Path, stop: &AtomicBool) -> Result<(), String> {
+        if !self.icon_url.starts_with("https://") {
+            return Ok(());
+        }
+        let cached = crate::icons::cache_remote_icon(
+            plugin_dir,
+            &self.metadata.id,
+            &self.metadata.version,
+            &self.icon_url,
+            stop,
+        )?;
+        self.icon_url = cached.to_string_lossy().into_owned();
+        Ok(())
+    }
+
     pub fn read(&self, stop: &AtomicBool) -> Result<Vec<u8>, String> {
         let bytes = match &self.location {
             PackageLocation::Local(path) => {

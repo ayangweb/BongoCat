@@ -1,6 +1,7 @@
 //! Discovery and lifecycle management for independently distributed plugins.
 #![forbid(unsafe_code)]
 mod catalog;
+mod icons;
 mod loader;
 mod registry;
 mod source;

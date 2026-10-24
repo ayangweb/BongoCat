@@ -12,6 +12,7 @@ use thiserror::Error;
 pub const CATALOG_NAME: &str = "plugins.json";
 pub const MAX_CATALOG_BYTES: usize = 1024 * 1024;
 pub const MAX_DOWNLOAD_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_ICON_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CatalogError {
@@ -209,6 +210,21 @@ pub(crate) fn download_blocking(
     url: &str,
     stop: &std::sync::atomic::AtomicBool,
 ) -> Result<Vec<u8>, CatalogError> {
+    download_bounded_blocking(url, MAX_DOWNLOAD_BYTES, stop)
+}
+
+pub(crate) fn download_icon_blocking(
+    url: &str,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<Vec<u8>, CatalogError> {
+    download_bounded_blocking(url, MAX_ICON_BYTES, stop)
+}
+
+fn download_bounded_blocking(
+    url: &str,
+    limit: usize,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<Vec<u8>, CatalogError> {
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .build()
@@ -235,7 +251,7 @@ pub(crate) fn download_blocking(
             .send()
             .and_then(|response| response.error_for_status());
         if let Ok(response) = result
-            && let Ok(bytes) = bounded_body(response, MAX_DOWNLOAD_BYTES)
+            && let Ok(bytes) = bounded_body(response, limit)
         {
             return Ok(bytes);
         }
