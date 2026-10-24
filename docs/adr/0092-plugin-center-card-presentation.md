@@ -211,14 +211,21 @@ catalog; loading, refreshing and a running package operation keep the disabled
 control on screen because those reasons are temporary and readable.
 
 `Update all` reuses the same per-plugin `InstallAvailable` command, not a second
-installation path. Updates run serially because the service owns one catalog
-download job at a time. A failed plugin does not stop the remaining updates and
-is reported by name in a notification, so the same control can retry the cards
-that still offer an update. The batch is reserved on the GPUI thread, so a
-second click cannot queue another batch, and all card controls stay disabled
-until the last update finishes. `InstallAvailable` acknowledges job submission
-rather than byte delivery, so the window waits for the service's catalog job to
-finish before retiring the card's loading state or starting the next package.
+installation path. The service tracks package jobs by plugin, so manual installs
+and updates for different cards can run at the same time; a second request for
+the same plugin is refused until its job finishes. Lifecycle commands for that
+plugin (`enable`, `reset data` and `uninstall`) are blocked by its own job, while
+other plugins remain usable. Catalog discovery has its own job and is not a
+reason to disable install actions on cards that are already visible.
+
+Batch updates themselves run serially: the window waits for each selected
+card's job before starting the next one. A failed plugin does not stop the
+remaining updates and is reported by name in a notification, so the same control
+can retry the cards that still offer an update. The batch is reserved on the
+GPUI thread, so a second click cannot queue another batch, and all card controls
+stay disabled until the last update finishes. `InstallAvailable` acknowledges
+job submission rather than byte delivery, so the window waits only for that
+card's `installing` flag, not the catalog's `loading` flag.
 
 The footer now wraps as one unit: the switch and the command group may move onto
 separate lines, while the command group keeps whole icon buttons on each line

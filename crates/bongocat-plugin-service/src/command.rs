@@ -38,6 +38,11 @@ pub struct PluginCard {
     pub version: Option<String>,
     pub available_version: Option<String>,
     pub update_available: bool,
+    /// Whether this plugin's package download/install job is still running.
+    ///
+    /// Installation is tracked per plugin so a slow package cannot make every
+    /// other card look busy or reject an unrelated install command.
+    pub installing: bool,
     /// The controls the plugin publishes for the model window.
     pub actions: Vec<UiNode>,
     /// The controls the plugin publishes for the center.

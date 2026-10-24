@@ -113,8 +113,10 @@ fn card_view(
 ) -> impl IntoElement {
     // The center is busy only while it has nothing to show: what a plugin is
     // still publishing is the plugin's own state, not the catalog's.
+    let install_pending =
+        state.pending_package(&card.id, PluginPackageOperation::Install) || card.installing;
     let busy = (state.loading && state.cards.is_empty())
-        || state.pending_package(&card.id, PluginPackageOperation::Install)
+        || install_pending
         || state.refreshing()
         || state.updating_all();
     let installed = card.version.is_some();
@@ -251,7 +253,6 @@ fn card_view(
     if !installed || card.update_available {
         let install_view = view.clone();
         let id = card.id.clone();
-        let pending = state.pending_package(&id, PluginPackageOperation::Install);
         actions = actions.child(
             Button::new(SharedString::from(format!("plugin-install-{}", card.id)))
                 .icon(if installed {
@@ -267,8 +268,8 @@ fn card_view(
                         "plugins.install"
                     },
                 ))
-                .loading(pending)
-                .disabled(busy || pending || state.loading || state.updating_all())
+                .loading(install_pending)
+                .disabled(busy || state.updating_all())
                 .on_click(move |_, _, cx| {
                     let id = id.clone();
                     install_view.update(cx, |view, cx| view.install_plugin_available(&id, cx));
@@ -498,8 +499,13 @@ impl SettingsView {
     /// Install or update one entry the catalog offers.
     pub(super) fn install_plugin_available(&mut self, id: &str, cx: &mut Context<Self>) {
         let state = self.plugin_host.snapshot();
-        if state.loading
-            || state.updating_all()
+        let already_installing = state
+            .cards
+            .iter()
+            .find(|card| card.id == id)
+            .is_some_and(|card| card.installing);
+        if state.updating_all()
+            || already_installing
             || state.pending_package(id, PluginPackageOperation::Install)
         {
             return;

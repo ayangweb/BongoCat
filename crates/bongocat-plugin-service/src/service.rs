@@ -21,6 +21,7 @@ use bongocat_plugin_manager::{
 };
 use bongocat_plugin_sdk::{ConfigValue, InputActivity, PluginOutput, UiNode};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -197,7 +198,8 @@ struct Worker {
     manager: PluginManager,
     source: PluginSource,
     offers: Vec<AvailablePlugin>,
-    job: Option<CatalogJob>,
+    catalog_job: Option<CatalogJob>,
+    install_jobs: BTreeMap<String, InstallJob>,
     icon_job: Option<IconJob>,
     icon_prefetch_pending: bool,
     catalog_stop: Arc<AtomicBool>,
@@ -222,17 +224,19 @@ struct Worker {
     shutdown_reply: Option<PluginReply<()>>,
 }
 
-enum CatalogResult {
-    List(Vec<AvailablePlugin>),
-    Package {
-        offer: Box<AvailablePlugin>,
-        bytes: Vec<u8>,
-    },
-}
 struct CatalogJob {
-    result: Receiver<Result<CatalogResult, String>>,
+    result: Receiver<Result<Vec<AvailablePlugin>, String>>,
     worker: JoinHandle<()>,
-    package: Option<String>,
+}
+
+struct InstallPayload {
+    offer: Box<AvailablePlugin>,
+    bytes: Vec<u8>,
+}
+
+struct InstallJob {
+    result: Receiver<Result<InstallPayload, String>>,
+    worker: JoinHandle<()>,
 }
 
 /// Catalog artwork fetched after the cards themselves are already readable.
@@ -297,7 +301,8 @@ fn run(
         manager,
         source,
         offers: Vec::new(),
-        job: None,
+        catalog_job: None,
+        install_jobs: BTreeMap::new(),
         icon_job: None,
         icon_prefetch_pending: false,
         catalog_stop: Arc::clone(&stop),
@@ -374,6 +379,7 @@ impl Worker {
         self.refresh_catalog();
         while !stop.load(Ordering::Acquire) {
             self.finish_catalog_job();
+            self.finish_install_jobs();
             self.finish_icon_job();
             self.drain_commands();
             if stop.load(Ordering::Acquire) {
@@ -388,7 +394,10 @@ impl Worker {
             thread::park_timeout(LOOP_INTERVAL);
         }
         self.endpoint.close();
-        if let Some(job) = self.job.take() {
+        if let Some(job) = self.catalog_job.take() {
+            let _ = job.worker.join();
+        }
+        for (_, job) in std::mem::take(&mut self.install_jobs) {
             let _ = job.worker.join();
         }
         if let Some(job) = self.icon_job.take() {
@@ -401,10 +410,9 @@ impl Worker {
         Ok(())
     }
 
-    fn start_job(
+    fn start_catalog_job(
         &mut self,
-        package: Option<String>,
-        operation: impl FnOnce() -> Result<CatalogResult, String> + Send + 'static,
+        operation: impl FnOnce() -> Result<Vec<AvailablePlugin>, String> + Send + 'static,
     ) {
         let (sender, result) = sync_channel(1);
         match thread::Builder::new()
@@ -412,19 +420,13 @@ impl Worker {
             .spawn(move || {
                 let _ = sender.send(operation());
             }) {
-            Ok(worker) => {
-                self.job = Some(CatalogJob {
-                    result,
-                    worker,
-                    package,
-                })
-            }
+            Ok(worker) => self.catalog_job = Some(CatalogJob { result, worker }),
             Err(_) => self.error = Some("catalog worker unavailable".into()),
         }
     }
 
     fn refresh_catalog(&mut self) {
-        if self.job.is_some() {
+        if self.catalog_job.is_some() {
             return;
         }
         if matches!(self.source, PluginSource::InstalledOnly) {
@@ -432,15 +434,11 @@ impl Worker {
         }
         let source = self.source.clone();
         let stop = Arc::clone(&self.catalog_stop);
-        self.start_job(None, move || {
-            source
-                .discover(env!("CARGO_PKG_VERSION"), &stop)
-                .map(CatalogResult::List)
-        });
+        self.start_catalog_job(move || source.discover(env!("CARGO_PKG_VERSION"), &stop));
     }
 
     fn finish_catalog_job(&mut self) {
-        let Some(job) = &self.job else {
+        let Some(job) = &self.catalog_job else {
             return;
         };
         let result = match job.result.try_recv() {
@@ -448,31 +446,77 @@ impl Worker {
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => Err("catalog worker failed".into()),
         };
-        if let Some(job) = self.job.take() {
+        if let Some(job) = self.catalog_job.take() {
             let _ = job.worker.join();
         }
         match result {
-            Ok(CatalogResult::List(offers)) => {
+            Ok(offers) => {
                 self.offers = offers;
                 self.start_icon_prefetch();
             }
-            Ok(CatalogResult::Package { offer, bytes }) => {
-                self.dispatch_input_events();
-                self.dispatch_input_activity();
-                // Explicit installs, including reinstalls, auto-start;
-                // updates keep the installed plugin's enable choice.
-                let new_install = self.manager.installed_version(&offer.metadata.id).is_none();
-                if let Err(error) = self.manager.install_verified(&bytes, &offer.digest) {
-                    self.error = Some(error.to_string());
-                } else if new_install
-                    && let Err(error) = self.manager.enable_plugin(&offer.metadata.id)
-                {
-                    // Keep the validated package installed so enable can be retried.
-                    self.error = Some(error.to_string());
-                }
-                self.initialize_plugin_input_activity(&offer.metadata.id);
-            }
             Err(error) => self.error = Some(error),
+        }
+    }
+
+    fn start_install_job(
+        &mut self,
+        id: String,
+        operation: impl FnOnce() -> Result<InstallPayload, String> + Send + 'static,
+    ) -> bool {
+        let (sender, result) = sync_channel(1);
+        match thread::Builder::new()
+            .name("bongocat-plugin-install".into())
+            .spawn(move || {
+                let _ = sender.send(operation());
+            }) {
+            Ok(worker) => {
+                self.install_jobs.insert(id, InstallJob { result, worker });
+                true
+            }
+            Err(_) => {
+                self.error = Some("package worker unavailable".into());
+                false
+            }
+        }
+    }
+
+    fn finish_install_jobs(&mut self) {
+        let completed = self
+            .install_jobs
+            .iter()
+            .filter_map(|(id, job)| match job.result.try_recv() {
+                Ok(result) => Some((id.clone(), result)),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => {
+                    Some((id.clone(), Err("package worker failed".into())))
+                }
+            })
+            .collect::<Vec<_>>();
+        for (id, result) in completed {
+            let Some(job) = self.install_jobs.remove(&id) else {
+                continue;
+            };
+            let _ = job.worker.join();
+            let InstallPayload { offer, bytes } = match result {
+                Ok(payload) => payload,
+                Err(error) => {
+                    self.error = Some(error);
+                    continue;
+                }
+            };
+            self.dispatch_input_events();
+            self.dispatch_input_activity();
+            // Explicit installs, including reinstalls, auto-start; updates keep
+            // the installed plugin's enable choice.
+            let new_install = self.manager.installed_version(&offer.metadata.id).is_none();
+            if let Err(error) = self.manager.install_verified(&bytes, &offer.digest) {
+                self.error = Some(error.to_string());
+            } else if new_install && let Err(error) = self.manager.enable_plugin(&offer.metadata.id)
+            {
+                // Keep the validated package installed so enable can be retried.
+                self.error = Some(error.to_string());
+            }
+            self.initialize_plugin_input_activity(&offer.metadata.id);
         }
     }
 
@@ -635,6 +679,7 @@ impl Worker {
                     version,
                     available_version,
                     update_available,
+                    installing: self.install_jobs.contains_key(&metadata.id),
                     actions: nodes(output, |output| &output.model.nodes),
                     settings: nodes(output, |output| &output.settings.nodes),
                     errors: nodes(output, |output| &output.errors),
@@ -663,6 +708,7 @@ impl Worker {
                 version,
                 available_version: Some(offer.metadata.version.clone()),
                 update_available,
+                installing: self.install_jobs.contains_key(&offer.metadata.id),
                 actions: Vec::new(),
                 settings: Vec::new(),
                 errors: Vec::new(),
@@ -672,7 +718,7 @@ impl Worker {
         PluginCenterSnapshot {
             cards,
             error: self.error.clone(),
-            loading: self.job.is_some(),
+            loading: self.catalog_job.is_some(),
         }
     }
 
@@ -692,18 +738,24 @@ impl Worker {
     }
 
     fn apply(&mut self, command: PluginCommand) {
-        if let Some(package) = self.job.as_ref().and_then(|job| job.package.as_deref()) {
-            match command {
+        let blocked = match &command {
+            PluginCommand::SetEnabled { id, .. }
+            | PluginCommand::Uninstall { id, .. }
+            | PluginCommand::ResetData { id, .. } => self.install_jobs.contains_key(id),
+            _ => false,
+        };
+        if blocked {
+            let reply = match command {
                 PluginCommand::SetEnabled { ref id, reply, .. }
                 | PluginCommand::Uninstall { ref id, reply }
-                | PluginCommand::ResetData { ref id, reply }
-                    if id == package =>
-                {
-                    self.respond(reply, Err(PluginCommandError::Operation));
-                    return;
+                | PluginCommand::ResetData { ref id, reply } => {
+                    debug_assert!(self.install_jobs.contains_key(id));
+                    reply
                 }
-                _ => {}
-            }
+                _ => unreachable!("only lifecycle commands can be blocked"),
+            };
+            self.respond(reply, Err(PluginCommandError::Operation));
+            return;
         }
         match command {
             PluginCommand::ReadCenter { reply } => {
@@ -734,7 +786,7 @@ impl Worker {
                 self.respond(reply, result);
             }
             PluginCommand::InstallAvailable { id, reply } => {
-                if self.job.is_some() {
+                if self.install_jobs.contains_key(&id) {
                     self.respond(reply, Err(PluginCommandError::Operation));
                     return;
                 }
@@ -759,14 +811,18 @@ impl Worker {
                 }
                 self.error = None;
                 let stop = Arc::clone(&self.catalog_stop);
-                self.start_job(Some(id), move || {
+                let job_id = id.clone();
+                if self.start_install_job(job_id, move || {
                     let bytes = offer.read(&stop)?;
-                    Ok(CatalogResult::Package {
+                    Ok(InstallPayload {
                         offer: Box::new(offer),
                         bytes,
                     })
-                });
-                self.respond(reply, Ok(()));
+                }) {
+                    self.respond(reply, Ok(()));
+                } else {
+                    self.respond(reply, Err(PluginCommandError::Operation));
+                }
             }
             PluginCommand::Uninstall { id, reply } => {
                 let result = self
@@ -1043,18 +1099,17 @@ fn operation(error: &PluginManagerError) -> PluginCommandError {
 mod tests {
     use super::*;
 
-    #[test]
-    fn package_downloads_serialize_conflicting_lifecycle_operations() {
-        let store = tempfile::tempdir().unwrap();
+    fn test_worker(store: &tempfile::TempDir) -> Worker {
         let (_, endpoint) = PluginServiceClient::bounded(4);
         let (hud_producer, _) = latest_hud_channel();
         let (_, viewport) = latest_viewport_channel();
         let (_, interactions) = sync_channel(4);
-        let mut worker = Worker {
+        Worker {
             manager: PluginManager::new(store.path().to_path_buf()).unwrap(),
             source: PluginSource::InstalledOnly,
             offers: Vec::new(),
-            job: None,
+            catalog_job: None,
+            install_jobs: BTreeMap::new(),
             icon_job: None,
             icon_prefetch_pending: false,
             catalog_stop: Arc::default(),
@@ -1074,15 +1129,21 @@ mod tests {
             started: Instant::now(),
             last_tick: Duration::ZERO,
             shutdown_reply: None,
-        };
+        }
+    }
+
+    #[test]
+    fn package_downloads_only_block_lifecycle_operations_for_the_same_plugin() {
+        let store = tempfile::tempdir().unwrap();
+        let mut worker = test_worker(&store);
         let id = "com.bongocat.pomodoro";
         let data = worker.manager.data_root(id, true).unwrap();
         std::fs::write(data.join("owned-data"), b"keep").unwrap();
         let (release, wait) = sync_channel(1);
-        worker.start_job(Some(id.into()), move || {
+        assert!(worker.start_install_job(id.into(), move || {
             wait.recv().unwrap();
-            Ok(CatalogResult::List(Vec::new()))
-        });
+            Err("released".into())
+        }));
         let uninstall = || PluginCommand::Uninstall {
             id: id.to_owned(),
             reply: PluginReply(async_channel::bounded(1).0),
@@ -1133,6 +1194,56 @@ mod tests {
         });
         assert!(response.recv_blocking().unwrap().is_ok());
         release.send(()).unwrap();
-        worker.job.take().unwrap().worker.join().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !worker.install_jobs.is_empty() && Instant::now() < deadline {
+            worker.finish_install_jobs();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(worker.install_jobs.is_empty());
+    }
+
+    #[test]
+    fn separate_plugins_can_download_packages_at_the_same_time() {
+        let store = tempfile::tempdir().unwrap();
+        let mut worker = test_worker(&store);
+        let (release_first, wait_first) = sync_channel(1);
+        let (release_second, wait_second) = sync_channel(1);
+        assert!(
+            worker.start_install_job("com.example.first".into(), move || {
+                wait_first.recv().unwrap();
+                Err("released".into())
+            })
+        );
+        assert!(
+            worker.start_install_job("com.example.second".into(), move || {
+                wait_second.recv().unwrap();
+                Err("released".into())
+            })
+        );
+
+        assert_eq!(worker.install_jobs.len(), 2);
+        assert!(!worker.center().loading);
+        assert!(worker.install_jobs.contains_key("com.example.first"));
+        assert!(worker.install_jobs.contains_key("com.example.second"));
+
+        release_first.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !worker.install_jobs.contains_key("com.example.second")
+            || worker.install_jobs.contains_key("com.example.first")
+        {
+            assert!(
+                Instant::now() < deadline,
+                "first package job must finish alone"
+            );
+            worker.finish_install_jobs();
+            thread::sleep(Duration::from_millis(5));
+        }
+        release_second.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !worker.install_jobs.is_empty() && Instant::now() < deadline {
+            worker.finish_install_jobs();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(worker.install_jobs.is_empty());
     }
 }
