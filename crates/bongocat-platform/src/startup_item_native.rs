@@ -7,6 +7,14 @@ const PRODUCT_BUNDLE_IDENTIFIER: &str = "com.ayangweb.bongo-cat";
 pub(super) fn state(
     environment: StartupItemEnvironment,
 ) -> Result<StartupItemState, StartupItemError> {
+    #[cfg(target_os = "windows")]
+    if let Some(enabled) = super::startup_item_windows::state(environment)? {
+        return Ok(if enabled {
+            StartupItemState::Enabled
+        } else {
+            StartupItemState::Disabled
+        });
+    }
     let backend = backend(environment)?;
     match backend.is_enabled() {
         Ok(true) => Ok(StartupItemState::Enabled),
@@ -20,22 +28,35 @@ pub(super) fn set_enabled(
     enabled: bool,
 ) -> Result<StartupItemState, StartupItemError> {
     let backend = backend(environment)?;
-    let current = backend
-        .is_enabled()
-        .map_err(|_| StartupItemError::StateReadFailed)?;
-    if current == enabled {
-        return state(environment);
-    }
-    if enabled {
-        backend.enable().map_err(enable_error)?;
-    } else {
+    #[cfg(target_os = "windows")]
+    {
+        // Replace the published Run registration only after the new task is registered.
+        super::startup_item_windows::set_enabled(environment, enabled)?;
         backend
             .disable()
             .map_err(|_| StartupItemError::DisableFailed)?;
+        state(environment)
     }
-    state(environment)
+    #[cfg(target_os = "macos")]
+    {
+        let current = backend
+            .is_enabled()
+            .map_err(|_| StartupItemError::StateReadFailed)?;
+        if current == enabled {
+            return state(environment);
+        }
+        if enabled {
+            backend.enable().map_err(enable_error)?;
+        } else {
+            backend
+                .disable()
+                .map_err(|_| StartupItemError::DisableFailed)?;
+        }
+        state(environment)
+    }
 }
 
+#[cfg(target_os = "macos")]
 fn enable_error(error: auto_launch::Error) -> StartupItemError {
     match error {
         auto_launch::Error::AppPathDoesntExist(_) | auto_launch::Error::AppPathIsNotAbsolute(_) => {
