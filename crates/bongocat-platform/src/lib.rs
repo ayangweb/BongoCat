@@ -57,6 +57,10 @@ pub use startup_item::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
 };
 mod startup_item_native;
+#[cfg(target_os = "windows")]
+mod startup_item_windows;
+#[cfg(any(target_os = "windows", test))]
+mod startup_task;
 
 mod startup_permission;
 pub use startup_permission::{
