@@ -219,3 +219,91 @@ fn session_options_carry_the_taskbar_button_into_a_replacement_window() {
     // be replaced.
     assert!(!options.requires_window_recreation(projected));
 }
+
+/// "Always on top" has to be a property of the window, not a value written once.
+///
+/// user32 documents the rule that decides membership in the topmost band: a
+/// topmost window that is repositioned after any non-topmost window is no longer
+/// topmost. Nothing reports that transition, and a window that left the band
+/// looks exactly like one whose setting was turned off — it sits behind the next
+/// window the user opens. The guard is the recovery path, so the test drives the
+/// demotion user32 performs and asserts the window comes back.
+#[test]
+fn a_demoted_model_window_returns_to_the_topmost_band() {
+    let canvas = CanvasInfo {
+        width: 2048.0,
+        height: 1188.0,
+        origin_x: 1024.0,
+        origin_y: 594.0,
+        pixels_per_unit: 1024.0,
+    };
+    let window = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+        .expect("create the model window");
+    assert!(window.is_topmost());
+    assert!(window.is_always_on_top());
+
+    // SAFETY: the test owns the live HWND on its creation thread, and the call
+    // only changes the window's place in the Z order.
+    unsafe {
+        SetWindowPos(
+            window.hwnd,
+            Some(HWND_NOTOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        )
+        .expect("demote the model window out of the topmost band");
+    }
+    assert!(!window.is_topmost());
+
+    window.ensure_topmost().expect("restore the topmost band");
+    assert!(window.is_topmost());
+    // A window that never left the band is left exactly where it is.
+    window
+        .ensure_topmost()
+        .expect("re-assert a window already on top");
+    assert!(window.is_topmost());
+}
+
+/// The guard must not fight the setting it enforces.
+///
+/// A user who turns "always on top" off gets an ordinary window, and the frame
+/// tick must not put it back into the band. The stored value is what both the
+/// tick and the show path read, so it has to follow every transition.
+#[test]
+fn turning_always_on_top_off_is_what_the_guard_follows() {
+    let canvas = CanvasInfo {
+        width: 2048.0,
+        height: 1188.0,
+        origin_x: 1024.0,
+        origin_y: 594.0,
+        pixels_per_unit: 1024.0,
+    };
+    let mut window = OverlayWindow::create(
+        OverlaySessionOptions {
+            always_on_top: false,
+            ..OverlaySessionOptions::default()
+        },
+        canvas,
+        None,
+        None,
+        None,
+    )
+    .expect("create the model window");
+    assert!(!window.is_topmost());
+    assert!(!window.is_always_on_top());
+
+    window
+        .set_always_on_top(true)
+        .expect("put the model window on top");
+    assert!(window.is_topmost());
+    assert!(window.is_always_on_top());
+
+    window
+        .set_always_on_top(false)
+        .expect("take the model window off the top");
+    assert!(!window.is_topmost());
+    assert!(!window.is_always_on_top());
+}

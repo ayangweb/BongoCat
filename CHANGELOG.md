@@ -6,6 +6,10 @@
 
 - Added a plugin system and Plugin Center; official plugins are distributed independently from the BongoCat-Plugins repository.
 
+### 🐛 Bug Fixes
+
+- Fixed the model window not staying above other windows on Windows after the setting was enabled, so it could end up behind a browser or a game.
+
 ## 2.3.1 - 2026-10-13
 
 ### 🐛 Bug Fixes

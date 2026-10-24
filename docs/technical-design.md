@@ -818,6 +818,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   才移回显示器内，期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多
   `500ms` 复用一次放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时
   不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
+  `always_on_top` 不是一次性的 `SetWindowPos`：topmost 波段成员资格由 user32 维护，而
+  `SetWindowPos` 明确规定「topmost 窗口被排到任何非 topmost 窗口之后即不再是 topmost」，且该
+  转换没有任何通知。因此窗口在创建/配置变化时进入波段后，`show` 与每帧 tick 都会校验
+  `WS_EX_TOPMOST` 位，丢失时以 `SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE` 重新断言；仍在波段内
+  时只做一次样式读取，不移动、不缩放、不抢焦点，也不与用户已关闭的开关对抗（开关值随窗口状态
+  记录，tick 读同一份）。独占全屏（exclusive fullscreen）应用会接管显示输出，任何普通窗口都无法
+  覆盖，这是 Windows 的限制，不属于该守卫的范围。
 - Renderer：D3D11 + DXGI；桌宠使用 DirectComposition/DWM 与预乘 alpha，普通窗口使用
   不透明 HWND blt swap chain，同时支持 OBS BitBlt 与 Windows Graphics Capture。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。

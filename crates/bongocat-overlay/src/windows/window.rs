@@ -35,6 +35,10 @@ pub(crate) struct OverlayWindow {
 
 pub(crate) struct OverlayWindowState {
     pub(crate) window_mode: bool,
+    /// Whether the window is asked to sit in the topmost band. Kept beside the
+    /// HWND rather than read from the session so `show` can re-assert it without
+    /// the options being plumbed through every caller.
+    pub(crate) always_on_top: bool,
     pub(crate) close_requested: bool,
     pub(crate) last_bounds: Option<OverlayWindowBounds>,
     /// Client geometry before the first native sizing step. A caption move
@@ -128,6 +132,7 @@ impl OverlayWindow {
         let initial_y = bounds.map_or(cursor.y, |value| value.y);
         let mut state = Box::new(OverlayWindowState {
             window_mode: options.window_mode,
+            always_on_top: options.always_on_top,
             close_requested: false,
             last_bounds: None,
             resize_start_bounds: None,
@@ -232,6 +237,14 @@ impl OverlayWindow {
         };
         if !unsafe { IsWindowVisible(self.hwnd) }.as_bool() {
             return Err(OverlayError::new("Win32 overlay did not become visible"));
+        }
+        // `ShowWindow` brings a window back at the top of the band it belongs to,
+        // but it does not put a window back into the topmost band: a window that
+        // lost the band while it was hidden would come back as an ordinary
+        // window. Re-asserting here covers the show path; the frame tick covers
+        // a demotion that happens while the window stays visible.
+        if self._state.always_on_top {
+            self.ensure_topmost()?;
         }
         Ok(())
     }
@@ -366,18 +379,65 @@ impl OverlayWindow {
         Ok(())
     }
 
-    pub(crate) fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
+    pub(crate) fn set_always_on_top(&mut self, always_on_top: bool) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        // SAFETY: the HWND is live and confined to its owner thread. This is
-        // the only in-place z-order transition for the overlay.
+        self.apply_z_order(if always_on_top {
+            HWND_TOPMOST
+        } else {
+            HWND_NOTOPMOST
+        })?;
+        self._state.always_on_top = always_on_top;
+        Ok(())
+    }
+
+    /// Whether the window is currently a member of the topmost band.
+    pub(crate) fn is_topmost(&self) -> bool {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread, and
+        // `GWL_EXSTYLE` only reads this window's own extended style bits.
+        let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } as u32);
+        style.contains(WS_EX_TOPMOST)
+    }
+
+    /// Whether the window is asked to sit in the topmost band.
+    pub(crate) fn is_always_on_top(&self) -> bool {
+        self._state.always_on_top
+    }
+
+    /// Put the window back into the topmost band after it left it.
+    ///
+    /// The band is not a property the product owns. `SetWindowPos` documents the
+    /// rule that decides membership: a topmost window that is repositioned after
+    /// any non-topmost window is no longer topmost, and user32 reports nothing
+    /// when that happens. Nothing in the product repositions the overlay that
+    /// way, but the shell and other applications can, and the result is
+    /// indistinguishable from the user turning the setting off — the model
+    /// window drops behind whatever the user opens next and stays there until
+    /// the setting is toggled. Re-asserting the band is what makes "always on
+    /// top" hold instead of being applied once, and it is a single style read
+    /// for a window that never left.
+    pub(crate) fn ensure_topmost(&self) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        if self.is_topmost() {
+            return Ok(());
+        }
+        self.apply_z_order(HWND_TOPMOST)
+    }
+
+    /// Move the window to the top or back out of the topmost band.
+    ///
+    /// Geometry and activation are suppressed: this is the only z-order
+    /// transition the product makes, and it must never move, resize or focus the
+    /// overlay as a side effect.
+    fn apply_z_order(&self, insert_after: HWND) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread. The
+        // position arguments are all suppressed, so the call only changes the
+        // window's place in the Z order.
         unsafe {
             SetWindowPos(
                 self.hwnd,
-                if always_on_top {
-                    Some(HWND_TOPMOST)
-                } else {
-                    Some(HWND_NOTOPMOST)
-                },
+                Some(insert_after),
                 0,
                 0,
                 0,
