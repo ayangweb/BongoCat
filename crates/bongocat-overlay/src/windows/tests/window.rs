@@ -2,6 +2,7 @@
 //! the desktop.
 
 use super::*;
+use crate::windows::window::window_is_above;
 use bongocat_runtime::OverlaySettings;
 
 #[test]
@@ -306,4 +307,68 @@ fn turning_always_on_top_off_is_what_the_guard_follows() {
         .expect("take the model window off the top");
     assert!(!window.is_topmost());
     assert!(!window.is_always_on_top());
+    window.ensure_topmost().expect("disabled guard is inert");
+    assert!(!window.is_topmost());
+}
+
+#[test]
+fn a_foreground_topmost_window_cannot_leave_the_model_behind_in_the_same_band() {
+    let canvas = CanvasInfo {
+        width: 2048.0,
+        height: 1188.0,
+        origin_x: 1024.0,
+        origin_y: 594.0,
+        pixels_per_unit: 1024.0,
+    };
+    let model = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+        .expect("create model");
+    let mut competitor =
+        OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+            .expect("create simulated fullscreen foreground window");
+    model.show().unwrap();
+    competitor.show().unwrap();
+    let bounds = model.bounds().unwrap();
+    // No SetForegroundWindow: deterministic ordering tests must not steal focus
+    // from the developer or depend on user32's foreground activation permission.
+    for _ in 0..3 {
+        raise_for_test(&competitor);
+        assert!(model.is_topmost());
+        assert!(competitor.is_topmost());
+        assert!(window_is_above(competitor.hwnd, model.hwnd));
+        let foreground = unsafe { GetForegroundWindow() };
+        model.ensure_topmost_above(competitor.hwnd).unwrap();
+        assert!(window_is_above(model.hwnd, competitor.hwnd));
+        assert_eq!(model.bounds().unwrap(), bounds);
+        assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    }
+    // A popup above the model must stay above it when the foreground app is
+    // already below: the guard must not indiscriminately raise every frame.
+    let popup = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+        .expect("create simulated popup");
+    popup.show().unwrap();
+    raise_for_test(&popup);
+    assert!(window_is_above(popup.hwnd, model.hwnd));
+    model.ensure_topmost_above(competitor.hwnd).unwrap();
+    assert!(window_is_above(popup.hwnd, model.hwnd));
+    competitor.set_always_on_top(false).unwrap();
+    model.ensure_topmost_above(competitor.hwnd).unwrap();
+    assert!(window_is_above(popup.hwnd, model.hwnd));
+    assert!(!window_is_above(HWND::default(), model.hwnd));
+    assert!(!window_is_above(model.hwnd, model.hwnd));
+}
+
+fn raise_for_test(window: &OverlayWindow) {
+    // SAFETY: the test owns this live HWND on its creation thread; only z-order changes.
+    unsafe {
+        SetWindowPos(
+            window.hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        )
+        .unwrap();
+    }
 }

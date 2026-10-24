@@ -404,24 +404,23 @@ impl OverlayWindow {
         self._state.always_on_top
     }
 
-    /// Put the window back into the topmost band after it left it.
-    ///
-    /// The band is not a property the product owns. `SetWindowPos` documents the
-    /// rule that decides membership: a topmost window that is repositioned after
-    /// any non-topmost window is no longer topmost, and user32 reports nothing
-    /// when that happens. Nothing in the product repositions the overlay that
-    /// way, but the shell and other applications can, and the result is
-    /// indistinguishable from the user turning the setting off — the model
-    /// window drops behind whatever the user opens next and stays there until
-    /// the setting is toggled. Re-asserting the band is what makes "always on
-    /// top" hold instead of being applied once, and it is a single style read
-    /// for a window that never left.
+    /// Restore both topmost membership and ordering above the foreground app.
     pub(crate) fn ensure_topmost(&self) -> Result<(), OverlayError> {
+        // SAFETY: GetForegroundWindow only reads the desktop's current foreground HWND.
+        self.ensure_topmost_above(unsafe { GetForegroundWindow() })
+    }
+
+    pub(super) fn ensure_topmost_above(&self, foreground: HWND) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        if self.is_topmost() {
+        if !self.is_always_on_top() {
             return Ok(());
         }
-        self.apply_z_order(HWND_TOPMOST)
+        // A fullscreen browser can enter the topmost band without clearing our
+        // WS_EX_TOPMOST bit. Band membership alone says nothing about their order.
+        if !self.is_topmost() || window_is_above(foreground, self.hwnd) {
+            self.apply_z_order(HWND_TOPMOST)?;
+        }
+        Ok(())
     }
 
     /// Move the window to the top or back out of the topmost band.
@@ -531,6 +530,40 @@ impl OverlayWindow {
             .map_err(windows_error("update overlay click-through"))?;
         }
         Ok(())
+    }
+}
+
+pub(super) fn window_is_above(candidate: HWND, model: HWND) -> bool {
+    if candidate.is_invalid() || candidate == model {
+        return false;
+    }
+    // Ordinary foreground windows cannot cover a topmost model. This also
+    // avoids walking the desktop order on the usual, unchanged frame.
+    // SAFETY: the external HWND is only queried, never dereferenced or retained.
+    let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(candidate, GWL_EXSTYLE) } as u32);
+    if !style.contains(WS_EX_TOPMOST) {
+        return false;
+    }
+    let mut order = (candidate, model, false);
+    // SAFETY: EnumWindows invokes the callback synchronously on this thread;
+    // the stack context remains valid until it returns. Early stop is intentional.
+    let _ = unsafe {
+        EnumWindows(
+            Some(compare_window_order),
+            LPARAM(std::ptr::from_mut(&mut order) as isize),
+        )
+    };
+    order.2
+}
+
+unsafe extern "system" fn compare_window_order(hwnd: HWND, context: LPARAM) -> BOOL {
+    // SAFETY: only window_is_above passes this live, exclusive stack context.
+    let order = unsafe { &mut *(context.0 as *mut (HWND, HWND, bool)) };
+    if hwnd == order.0 {
+        order.2 = true;
+        BOOL(0)
+    } else {
+        BOOL(i32::from(hwnd != order.1))
     }
 }
 
