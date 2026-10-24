@@ -1032,6 +1032,7 @@ dependencies = [
  "bongocat-update",
  "cargo-packager",
  "cargo-packager-updater",
+ "image",
  "minisign-verify 0.3.0",
  "serde",
  "serde_json",

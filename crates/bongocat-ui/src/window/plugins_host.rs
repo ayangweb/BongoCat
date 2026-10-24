@@ -135,9 +135,11 @@ impl PluginHubState {
     }
 
     pub(crate) fn package_busy(&self) -> bool {
-        self.in_flight
-            .keys()
-            .any(|command| matches!(command, PluginInFlight::Package { .. }))
+        self.cards.iter().any(|card| card.installing)
+            || self
+                .in_flight
+                .keys()
+                .any(|command| matches!(command, PluginInFlight::Package { .. }))
     }
 
     pub(crate) fn can_update_all(&self) -> bool {
@@ -265,6 +267,7 @@ pub(crate) struct PluginCardView {
     pub(crate) version: Option<String>,
     pub(crate) available_version: Option<String>,
     pub(crate) update_available: bool,
+    pub(crate) installing: bool,
     pub(crate) actions: Vec<bongocat_plugin_sdk::UiNode>,
     pub(crate) settings: Vec<bongocat_plugin_sdk::UiNode>,
     pub(crate) errors: Vec<bongocat_plugin_sdk::PluginError>,
@@ -307,6 +310,7 @@ impl From<PluginCard> for PluginCardView {
             version: card.version,
             available_version: card.available_version,
             update_available: card.update_available,
+            installing: card.installing,
             actions: card.actions,
             settings: card.settings,
             errors: card.errors,
@@ -695,7 +699,7 @@ impl PluginHost {
             .iter()
             .find(|card| card.id == id)
             .is_some_and(|card| card.version.is_some());
-        self.apply_command(
+        self.apply_concurrent_command(
             PluginInFlight::package(id, PluginPackageOperation::Install),
             PluginFailure::Install {
                 plugin: id.to_owned(),
@@ -711,8 +715,12 @@ impl PluginHost {
                 // InstallAvailable acknowledges job submission, not installation.
                 // Wait off the UI thread before retiring loading or starting the next ZIP.
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-                while snapshot.loading {
-                    self.publish(snapshot.into());
+                while snapshot
+                    .cards
+                    .iter()
+                    .find(|card| card.id == id)
+                    .is_some_and(|card| card.installing)
+                {
                     if std::time::Instant::now() >= deadline {
                         return Err(PluginCommandError::Operation);
                     }
@@ -721,9 +729,16 @@ impl PluginHost {
                 }
                 let installed = expected.is_some()
                     && snapshot.cards.iter().any(|card| {
-                        card.id == id && card.version == expected && !card.update_available
+                        card.id == id
+                            && card.version == expected
+                            && !card.update_available
+                            && !card.failed
                     });
-                if !installed || snapshot.error.is_some() {
+                // The service keeps a center-level error for the last failed
+                // operation. Another plugin's concurrent download must not turn
+                // this successful install into a failure, so success is judged
+                // from this card's committed version and state.
+                if !installed {
                     self.publish_reply(
                         snapshot,
                         Some(&PluginFailure::Install {
@@ -866,6 +881,30 @@ impl PluginHost {
             .requests
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.run_command(command_key, failure, command)
+    }
+
+    /// Run a package install without holding the request-order lock.
+    ///
+    /// Installs wait for their own download to finish. Holding the shared lock
+    /// for that wait would stop every other plugin command, including an install
+    /// for a different card. The service tracks each package independently and
+    /// returns the current per-card state, so these calls can overlap safely.
+    fn apply_concurrent_command(
+        &self,
+        command_key: PluginInFlight,
+        failure: PluginFailure,
+        command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
+    ) -> bool {
+        self.run_command(command_key, failure, command)
+    }
+
+    fn run_command(
+        &self,
+        command_key: PluginInFlight,
+        failure: PluginFailure,
+        command: impl FnOnce(&PluginServiceClient) -> Result<PluginCenterSnapshot, PluginCommandError>,
+    ) -> bool {
         // The page marked this command before it dispatched it; this call only
         // retires that mark.
         let Ok(client) = self.client() else {
@@ -924,7 +963,7 @@ mod tests {
         plugin_directory,
     };
     use gpui_kit::{TestAppContext, VisualTestContext, http_client, test::TestWindowExt as _};
-    use std::{future::Future, io::Write as _, pin::Pin, sync::Arc};
+    use std::{future::Future, io::Write as _, pin::Pin, sync::Arc, time::Duration};
 
     #[test]
     fn preview_mailbox_coalesces_hover_and_cancels_stale_options() {
@@ -1211,6 +1250,78 @@ mod tests {
         assert!(host.snapshot().in_flight.is_empty());
     }
 
+    #[test]
+    fn installs_for_different_plugins_wait_independently() {
+        let (client, endpoint) = PluginServiceClient::bounded(4);
+        let host = PluginHost::new(client);
+        let mut first = sample_card();
+        first.id = "com.example.first".into();
+        first.version = None;
+        first.available_version = Some("1.0.0".into());
+        first.update_available = false;
+        first.installing = false;
+        let mut second = first.clone();
+        second.id = "com.example.second".into();
+        host.publish(PluginHubState {
+            cards: vec![first.clone(), second.clone()],
+            loading: false,
+            ..Default::default()
+        });
+
+        let responder = std::thread::spawn(move || {
+            let mut pending = Vec::new();
+            let deadline = std::time::Instant::now() + Duration::from_millis(500);
+            while pending.len() < 2 && std::time::Instant::now() < deadline {
+                match endpoint.try_recv().unwrap() {
+                    Some(PluginCommand::InstallAvailable { id, reply }) => {
+                        pending.push((id, reply));
+                    }
+                    Some(_) => panic!("only install commands are expected"),
+                    None => std::thread::sleep(Duration::from_millis(2)),
+                }
+            }
+            assert_eq!(
+                pending
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .collect::<BTreeSet<_>>(),
+                BTreeSet::from(["com.example.first", "com.example.second"])
+            );
+            for (id, reply) in pending {
+                let mut installed = if id == "com.example.first" {
+                    first.clone()
+                } else {
+                    second.clone()
+                };
+                installed.version = installed.available_version.clone();
+                reply
+                    .respond(Ok(plugin_center_snapshot(installed)))
+                    .unwrap();
+            }
+        });
+        let first_host = host.clone();
+        let first_install = std::thread::spawn(move || {
+            first_host.begin(PluginInFlight::package(
+                "com.example.first",
+                PluginPackageOperation::Install,
+            ));
+            first_host.install_available("com.example.first")
+        });
+        let second_host = host.clone();
+        let second_install = std::thread::spawn(move || {
+            second_host.begin(PluginInFlight::package(
+                "com.example.second",
+                PluginPackageOperation::Install,
+            ));
+            second_host.install_available("com.example.second")
+        });
+
+        responder.join().unwrap();
+        assert!(first_install.join().unwrap());
+        assert!(second_install.join().unwrap());
+        assert!(host.snapshot().in_flight.is_empty());
+    }
+
     #[gpui_kit::test]
     fn plugin_failures_are_painted_as_global_notifications(cx: &mut TestAppContext) {
         let (view, visual) = crate::window::tests::settings_view(cx);
@@ -1287,7 +1398,13 @@ mod tests {
                         active = Some(id);
                         reads = 0;
                         let mut snapshot = plugin_center_snapshots(cards.clone());
-                        snapshot.loading = true;
+                        if let Some(card) = snapshot
+                            .cards
+                            .iter_mut()
+                            .find(|card| Some(&card.id) == active.as_ref())
+                        {
+                            card.installing = true;
+                        }
                         reply.respond(Ok(snapshot)).unwrap();
                     }
                     PluginCommand::ReadCenter { reply } => {
@@ -1297,11 +1414,23 @@ mod tests {
                             let card = cards.iter_mut().find(|card| card.id == id).unwrap();
                             card.version = card.available_version.clone();
                             card.update_available = false;
+                            card.installing = false;
                         }
                         let mut snapshot = plugin_center_snapshots(cards.clone());
-                        snapshot.loading = active.is_some();
+                        if let Some(id) = &active
+                            && let Some(card) =
+                                snapshot.cards.iter_mut().find(|card| &card.id == id)
+                        {
+                            card.installing = true;
+                        }
                         // Installation may succeed while its automatic start fails.
                         if active.is_none() && observed.last().is_some_and(|id| id == "plugin-1") {
+                            let failed = snapshot
+                                .cards
+                                .iter_mut()
+                                .find(|card| card.id == "plugin-1")
+                                .unwrap();
+                            failed.failed = true;
                             snapshot.error = Some("automatic enable failed".into());
                         }
                         reply.respond(snapshot).unwrap();
@@ -1585,6 +1714,7 @@ mod tests {
             version: Some("1.0.0".into()),
             available_version: Some("1.1.0".into()),
             update_available: true,
+            installing: false,
             actions: vec![
                 UiNode::Text {
                     text: "25:00".into(),
@@ -1784,6 +1914,115 @@ mod tests {
                 assert_eq!(icon.size.width, px(48.));
                 assert_eq!(icon.size.height, px(48.));
             }
+            let fallback = window
+                .find(SharedString::from(
+                    "plugin-icon-fallback-com.example.missing-icon",
+                ))
+                .bounds();
+            assert_eq!(fallback.size.width, px(48.));
+            assert_eq!(fallback.size.height, px(48.));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_slow_release_icon_shows_a_skeleton_in_the_same_square(cx: &mut TestAppContext) {
+        struct PendingHttpClient;
+
+        impl http_client::HttpClient for PendingHttpClient {
+            fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+                None
+            }
+
+            fn proxy(&self) -> Option<&http_client::Url> {
+                None
+            }
+
+            fn send(
+                &self,
+                _request: http_client::Request<http_client::AsyncBody>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http_client::Result<
+                                http_client::Response<http_client::AsyncBody>,
+                            >,
+                        > + Send
+                        + 'static,
+                >,
+            > {
+                Box::pin(std::future::pending())
+            }
+        }
+
+        cx.update(|app| app.set_http_client(Arc::new(PendingHttpClient)));
+        let mut card = sample_card();
+        card.icon_url = Some("https://example.com/slow.png".into());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        // GPUI compares the image's loading start against a real Instant even
+        // though the scheduled notification runs on the test clock.
+        std::thread::sleep(Duration::from_millis(250));
+        visual
+            .cx
+            .executor()
+            .advance_clock(Duration::from_millis(250));
+        visual.run_until_parked();
+        visual.update(|window, _| window.refresh());
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let loading = window
+                .find(SharedString::from("plugin-icon-loading-com.example.card"))
+                .bounds();
+            assert_eq!(loading.size.width, px(48.));
+            assert_eq!(loading.size.height, px(48.));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_release_icon_uses_a_static_fallback(cx: &mut TestAppContext) {
+        struct MissingHttpClient;
+
+        impl http_client::HttpClient for MissingHttpClient {
+            fn user_agent(&self) -> Option<&http_client::http::HeaderValue> {
+                None
+            }
+
+            fn proxy(&self) -> Option<&http_client::Url> {
+                None
+            }
+
+            fn send(
+                &self,
+                _request: http_client::Request<http_client::AsyncBody>,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = http_client::Result<
+                                http_client::Response<http_client::AsyncBody>,
+                            >,
+                        > + Send
+                        + 'static,
+                >,
+            > {
+                Box::pin(async {
+                    Ok(http_client::Response::builder()
+                        .status(http_client::StatusCode::NOT_FOUND)
+                        .body(http_client::AsyncBody::default())
+                        .unwrap())
+                })
+            }
+        }
+
+        cx.update(|app| app.set_http_client(Arc::new(MissingHttpClient)));
+        let mut card = sample_card();
+        card.icon_url = Some("https://example.com/missing.png".into());
+        let (_, visual) = card_page(cx, vec![card], 800.);
+        visual.run_until_parked();
+        visual.update(|window, _| {
+            let fallback = window
+                .find(SharedString::from("plugin-icon-fallback-com.example.card"))
+                .bounds();
+            assert_eq!(fallback.size.width, px(48.));
+            assert_eq!(fallback.size.height, px(48.));
         });
     }
 
@@ -1999,6 +2238,50 @@ mod tests {
                     .is_none()
             );
         });
+    }
+
+    #[gpui_kit::test]
+    fn an_install_on_one_card_does_not_disable_another_install(cx: &mut TestAppContext) {
+        let mut first = sample_card();
+        first.id = "com.example.first".into();
+        first.version = None;
+        first.available_version = Some("1.0.0".into());
+        first.update_available = false;
+        first.actions.clear();
+        first.installing = true;
+        let mut second = first.clone();
+        second.id = "com.example.second".into();
+        second.installing = false;
+        let PluginPage {
+            visual, endpoint, ..
+        } = plugin_page(cx, vec![first, second.clone()], 800.);
+
+        let responder = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                match endpoint.try_recv().unwrap() {
+                    Some(PluginCommand::InstallAvailable { id, reply }) => {
+                        assert_eq!(id, "com.example.second");
+                        let mut installed = second;
+                        installed.version = installed.available_version.clone();
+                        installed.installing = false;
+                        reply
+                            .respond(Ok(plugin_center_snapshot(installed)))
+                            .unwrap();
+                        break;
+                    }
+                    Some(_) => panic!("only the second plugin install is expected"),
+                    None if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    None => panic!("the second install button did not dispatch its command"),
+                }
+            }
+        });
+
+        visual.update(|window, cx| window.click("plugin-install-com.example.second", cx));
+        visual.run_until_parked();
+        responder.join().unwrap();
     }
 
     /// Nothing to update is an absent control rather than a dead one.
@@ -2423,6 +2706,7 @@ mod tests {
                     version: card.version,
                     available_version: card.available_version,
                     update_available: card.update_available,
+                    installing: card.installing,
                     actions: card.actions,
                     settings: card.settings,
                     errors: card.errors,

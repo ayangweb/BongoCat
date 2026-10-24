@@ -108,7 +108,8 @@ Start/locale exchange fails. Uninstall clears it for failed as well as running
 entries before retaining their data, so startup cannot resurrect an uninstalled plugin.
 An explicit reinstall enables it as a new installation. Reset restores a previously running process when data deletion fails;
 it reloads only its own package, not unrelated damaged packages. Package downloads
-serialize conflicting install/uninstall/reset/enable requests for their target.
+serialize conflicting install/uninstall/reset/enable requests for their target;
+jobs for different plugins and catalog discovery run independently.
 Service loop drains have finite budgets so a continuously refilled command or
 interaction queue cannot starve ticks and shutdown. Newly enabled, replaced,
 rolled-back or reset counter-based processes receive a fresh input baseline;
