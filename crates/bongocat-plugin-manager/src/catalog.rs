@@ -77,8 +77,12 @@ pub fn parse_catalog(bytes: &[u8], public_key: &str) -> Result<Catalog, CatalogE
     let signed: SignedCatalog = serde_json::from_slice(bytes).map_err(|_| CatalogError::Invalid)?;
     use base64::Engine;
     let decode = |value: &str| -> Result<String, CatalogError> {
+        let compact = value
+            .bytes()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .collect::<Vec<_>>();
         let bytes = base64::engine::general_purpose::STANDARD
-            .decode(value)
+            .decode(compact)
             .map_err(|_| CatalogError::Signature)?;
         String::from_utf8(bytes).map_err(|_| CatalogError::Signature)
     };
@@ -321,6 +325,17 @@ mod signed_tests {
         };
         let mut bytes = serde_json::to_vec(&signed).unwrap();
         assert_eq!(parse_catalog(&bytes, &keys.pk).unwrap().plugins.len(), 0);
+        let wrapped_key = keys
+            .pk
+            .as_bytes()
+            .chunks(60)
+            .map(|line| std::str::from_utf8(line).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            parse_catalog(&bytes, &wrapped_key).unwrap().plugins.len(),
+            0
+        );
         let mut tampered: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         tampered["catalog"]["plugins"] = serde_json::json!([{
             "id": "org.test.a", "name": "A", "description": "", "version": "1.0.0", "app_versions": ">=2", "protocol_version": 1,
