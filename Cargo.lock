@@ -1045,7 +1045,7 @@ dependencies = [
 [[package]]
 name = "bongocat-plugin-sdk"
 version = "0.1.0"
-source = "git+https://github.com/ayangweb/BongoCat-Plugins?rev=89971f44e7d73af8c1aaf38f49aa723589457d8d#89971f44e7d73af8c1aaf38f49aa723589457d8d"
+source = "git+https://github.com/ayangweb/BongoCat-Plugins?rev=c75af662eec3aef21c16db202849eeb961e9c18d#c75af662eec3aef21c16db202849eeb961e9c18d"
 dependencies = [
  "serde",
  "serde_json",
