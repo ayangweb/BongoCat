@@ -8,6 +8,7 @@
 
 ### 🐛 Bug Fixes
 
+- Fixed Windows login startup for applications configured to run as administrator; turn login startup off and on once after upgrading.
 - Fixed always-on-top model windows being covered by other topmost foreground windows on Windows.
 - Fixed the model window not staying above other windows on Windows after the setting was enabled, so it could end up behind a browser or a game.
 
