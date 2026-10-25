@@ -37,6 +37,9 @@ ARM64 目标只增加成本和发布风险。ADR-0010 的 ARM64 结论作废。
 
 ## 决策
 
+目录页扩展例外见 ADR-0098：允许在打包 crate 内维护固定上游 NSIS 模板的最小差异，
+由测试约束基线与扩展范围；其余打包器边界不变。
+
 ### 1. `cargo-packager` 作为唯一打包工具，并以库形式集成
 
 采用 `cargo-packager =0.11.8`（`default-features = false`，仅启用 `rustls-tls`，

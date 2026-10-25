@@ -4,6 +4,7 @@
 
 ### ✨ Features
 
+- The Windows installer now offers a checked-by-default option to create a BongoCat subfolder; existing installation paths are preserved during upgrades.
 - Added a plugin system and Plugin Center; official plugins are distributed independently from the BongoCat-Plugins repository.
 
 ### 🐛 Bug Fixes

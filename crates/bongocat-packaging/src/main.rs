@@ -943,6 +943,7 @@ fn packaging_config(
 /// the repository supplies.
 fn windows_installer(workspace: &Path) -> NsisConfig {
     let mut nsis = NsisConfig::new()
+        .template(workspace.join("crates/bongocat-packaging/installer/installer.nsi"))
         .languages(INSTALLER_LANGUAGES)
         .custom_language_files([("Vietnamese", workspace.join(VIETNAMESE_INSTALLER_STRINGS))])
         .display_language_selector(true);
@@ -2470,6 +2471,12 @@ mod tests {
 
         assert!(nsis.display_language_selector);
         assert_eq!(nsis.install_mode, super::NSISInstallerMode::CurrentUser);
+        assert!(
+            nsis.template
+                .as_ref()
+                .expect("installer template")
+                .is_file()
+        );
         assert_eq!(INSTALLER_LANGUAGES.first(), Some(&"English"));
         assert_eq!(
             nsis.languages.as_deref(),

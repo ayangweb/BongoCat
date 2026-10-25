@@ -1853,7 +1853,11 @@ reset、macOS/WGI bounded stop/join 和 target-scoped compile guard，Windows WG
 
 ### ADR-023：Windows Per-User Installer
 
-Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据。原设计中的
+Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理员权限或触及环境数据。
+打包 crate 使用固定上游模板的目录页扩展（ADR-0098）：全新交互安装默认勾选创建 BongoCat
+子文件夹，目录框表示所选父目录；取消勾选则直接安装到所选目录。重装、升级及显式 `/D`
+路径默认不勾选，保留最终安装路径；静默与 passive 更新不改变路径。
+原设计中的
 「独立 Rust update helper 只接收已验证 artifact」已随 ADR-0029 作废：不再有独立 helper，替换由
 更新库在进程内完成（Windows 上由库运行下载到的安装器），installer 权限、原子替换与 rollback 仍是
 独立发布门禁。
