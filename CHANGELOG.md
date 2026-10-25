@@ -4,17 +4,17 @@
 
 ### ✨ Features
 
-- Added a plugin system and Plugin Center; official plugins are distributed independently from the BongoCat-Plugins repository.
+- Added "Settings → Plugin Center" to manage and use plugins.
+- Added three plugins: Pomodoro Timer, Key Sounds, and Input Method Status.
 
 ### 🐛 Bug Fixes
 
-- Fixed Windows login startup for applications configured to run as administrator; turn login startup off and on once after upgrading.
-- Fixed always-on-top model windows being covered by other topmost foreground windows on Windows.
-- Fixed the model window not staying above other windows on Windows after the setting was enabled, so it could end up behind a browser or a game.
+- Fixed startup not working correctly on Windows when the app runs as administrator.
+- Fixed the model window occasionally being covered by other topmost windows on Windows when always-on-top was enabled.
 
 ### 🎨 Interface
 
-- Added macOS application menus and standard shortcuts for closing windows, quitting, opening settings, minimizing, and hiding the app.
+- Added a standard macOS application menu with keyboard shortcuts for closing windows, quitting the app, opening settings, minimizing windows, and hiding the app.
 
 ## 2.3.1 - 2026-10-13
 
