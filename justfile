@@ -5,6 +5,7 @@
 # recipe; a shell that reports success for a failed child command would let a
 # broken build pass. Unix keeps the default `sh -cu`.
 set windows-shell := ["cmd.exe", "/c"]
+python := if os() == "windows" { "py -3" } else { "python3" }
 
 # List the available tasks.
 default:
@@ -19,16 +20,16 @@ default:
 #
 #   BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
 dev:
-    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 0
+    {{python}} tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
 dev-smoke:
-    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+    {{python}} tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 
 # Build the official plugin checkout and run tests that execute its real binaries.
 # Set BONGOCAT_PLUGINS_ROOT to test uncommitted plugin changes.
 plugin-tests:
-    python3 tools/dev_plugins.py -- cargo test --locked --workspace
+    {{python}} tools/dev_plugins.py -- cargo test --locked --workspace
 
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":

@@ -126,7 +126,11 @@ class PluginDistributionContractTests(unittest.TestCase):
     def test_development_entry_points_prepare_a_local_catalog(self):
         justfile = read(JUSTFILE)
         self.assertIn(
-            "python3tools/dev_plugins.py--cargorun--locked-pbongocat-app--release",
+            "{{python}}tools/dev_plugins.py--cargorun--locked-pbongocat-app--release",
+            "".join(justfile.split()),
+        )
+        self.assertIn(
+            'python:=ifos()=="windows"{"py-3"}else{"python3"}',
             "".join(justfile.split()),
         )
         script = read(DEV_PLUGINS)
