@@ -450,13 +450,8 @@ impl ProductOverlaySession {
         // swap chain and the mask targets follow here, before anything draws
         // against them.
         let minimized = unsafe { IsIconic(self.overlay.window.hwnd) }.as_bool();
-        // Membership in the topmost band is not something the product keeps by
-        // itself: user32 drops a topmost window out of the band as soon as
-        // anything repositions it after a non-topmost window, and reports
-        // nothing when it does. See `OverlayWindow::ensure_topmost`. Checking it
-        // on the frame the window already drives is what turns "always on top"
-        // from a value applied once into a property that holds, and it costs one
-        // style read while nothing has changed.
+        // Recover demotion and a foreground app moving ahead within the topmost
+        // band, without raising on every frame or taking keyboard focus.
         if !minimized && self.overlay.window.is_always_on_top() {
             self.overlay.window.ensure_topmost()?;
         }
