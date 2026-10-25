@@ -826,8 +826,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   `always_on_top` 不是一次性的 `SetWindowPos`：topmost 波段成员资格由 user32 维护，而
   `SetWindowPos` 明确规定「topmost 窗口被排到任何非 topmost 窗口之后即不再是 topmost」，且该
   转换没有任何通知。因此窗口在创建/配置变化时进入波段后，`show` 与每帧 tick 都会校验
-  `WS_EX_TOPMOST` 位，丢失时以 `SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE` 重新断言；仍在波段内
-  时只做一次样式读取，不移动、不缩放、不抢焦点，也不与用户已关闭的开关对抗（开关值随窗口状态
+  `WS_EX_TOPMOST` 位及其与前台 topmost 窗口的实际 Z 顺序；丢失成员资格或前台窗口排到模型之前时，
+  以 `SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE` 重新断言（ADR-0096）。普通前台窗口只需读取样式，
+  topmost 前台窗口通过同步 `EnumWindows` 检查顺序，不逐帧无条件抬升，也不压过本来就在模型上方的
+  菜单或提示。不移动、不缩放、不抢焦点，也不与用户已关闭的开关对抗（开关值随窗口状态
   记录，tick 读同一份）。独占全屏（exclusive fullscreen）应用会接管显示输出，任何普通窗口都无法
   覆盖，这是 Windows 的限制，不属于该守卫的范围。
 - Renderer：D3D11 + DXGI；桌宠使用 DirectComposition/DWM 与预乘 alpha，普通窗口使用
