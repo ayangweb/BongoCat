@@ -23,6 +23,8 @@
 mod binary_tests;
 mod dev_plugins;
 mod gamepad_observer;
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod model_cover;
 mod overlay_placement;
 mod plugin_input;
@@ -708,6 +710,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
+        #[cfg(target_os = "macos")]
+        macos_menu::init(cx);
 
         // The overlay started the process as a menu bar accessory application, so a
         // saved "show Dock icon" preference has to be applied after it, not before.
@@ -1014,6 +1018,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Ok(());
+                        }
+                        #[cfg(target_os = "macos")]
+                        if cx.global::<ProductCoordinator>().product_language != language {
+                            macos_menu::set_language(language, cx);
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         coordinator.product_language = language;
@@ -1715,13 +1723,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             coordinator.frame_ticks,
                         )
                     };
-                    // The window is visible, so the existing toggle request is a
-                    // close request. The coordinator must drop this handle when
-                    // GPUI finishes destroying the window.
-                    cx.global::<ProductCoordinator>()
-                        .main_thread_signals
-                        .request_open_settings();
-                    handle_shortcut_toggle_settings(cx);
+                    // Exercise the macOS menu action through the focused window's
+                    // dispatch path, including its deferred close and UI cleanup.
+                    #[cfg(target_os = "macos")]
+                    window_handle
+                        .update(cx, |_, window, cx| {
+                            window.dispatch_action(Box::new(macos_menu::CloseWindow), cx);
+                        })
+                        .map_err(|error| error.to_string())?;
+                    #[cfg(target_os = "windows")]
+                    {
+                        cx.global::<ProductCoordinator>()
+                            .main_thread_signals
+                            .request_open_settings();
+                        handle_shortcut_toggle_settings(cx);
+                    }
                     Ok((frame_ticks, window_handle))
                 });
                 let (baseline_ticks, original_window) = match baseline {
@@ -1848,7 +1864,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 #[cfg(target_os = "macos")]
-                cx.update(request_product_quit);
+                cx.update(|cx| cx.dispatch_action(&macos_menu::Quit));
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&smoke_shutdown_requested);
             })

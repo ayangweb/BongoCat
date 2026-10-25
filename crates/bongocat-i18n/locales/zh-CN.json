@@ -38,6 +38,24 @@
     "open_settings": "设置",
     "quit": "退出 BongoCat"
   },
+  "application_menu": {
+    "file": "文件",
+    "edit": "编辑",
+    "window": "窗口",
+    "services": "服务",
+    "close": "关闭窗口",
+    "minimize": "最小化",
+    "zoom": "缩放",
+    "hide": "隐藏 BongoCat",
+    "hide_others": "隐藏其他",
+    "show_all": "全部显示",
+    "undo": "撤销",
+    "redo": "重做",
+    "cut": "剪切",
+    "copy": "拷贝",
+    "paste": "粘贴",
+    "select_all": "全选"
+  },
   "startup_permission": {
     "later": "稍后设置",
     "input_monitoring": {

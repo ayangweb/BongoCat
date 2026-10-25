@@ -38,6 +38,24 @@
     "open_settings": "Cài đặt",
     "quit": "Thoát BongoCat"
   },
+  "application_menu": {
+    "file": "Tệp",
+    "edit": "Sửa",
+    "window": "Cửa sổ",
+    "services": "Dịch vụ",
+    "close": "Đóng cửa sổ",
+    "minimize": "Thu nhỏ",
+    "zoom": "Thu phóng",
+    "hide": "Ẩn BongoCat",
+    "hide_others": "Ẩn ứng dụng khác",
+    "show_all": "Hiển thị tất cả",
+    "undo": "Hoàn tác",
+    "redo": "Làm lại",
+    "cut": "Cắt",
+    "copy": "Sao chép",
+    "paste": "Dán",
+    "select_all": "Chọn tất cả"
+  },
   "startup_permission": {
     "later": "Thiết lập sau",
     "input_monitoring": {

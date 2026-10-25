@@ -11,6 +11,10 @@
 - Fixed always-on-top model windows being covered by other topmost foreground windows on Windows.
 - Fixed the model window not staying above other windows on Windows after the setting was enabled, so it could end up behind a browser or a game.
 
+### 🎨 Interface
+
+- Added macOS application menus and standard shortcuts for closing windows, quitting, opening settings, minimizing, and hiding the app.
+
 ## 2.3.1 - 2026-10-13
 
 ### 🐛 Bug Fixes

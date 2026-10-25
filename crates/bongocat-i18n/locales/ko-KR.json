@@ -38,6 +38,24 @@
     "open_settings": "설정",
     "quit": "BongoCat 종료"
   },
+  "application_menu": {
+    "file": "파일",
+    "edit": "편집",
+    "window": "윈도우",
+    "services": "서비스",
+    "close": "윈도우 닫기",
+    "minimize": "최소화",
+    "zoom": "확대/축소",
+    "hide": "BongoCat 가리기",
+    "hide_others": "기타 가리기",
+    "show_all": "모두 보기",
+    "undo": "실행 취소",
+    "redo": "실행 복귀",
+    "cut": "오려두기",
+    "copy": "복사하기",
+    "paste": "붙여넣기",
+    "select_all": "모두 선택"
+  },
   "startup_permission": {
     "later": "나중에 설정",
     "input_monitoring": {
