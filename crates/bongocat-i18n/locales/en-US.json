@@ -38,6 +38,24 @@
     "open_settings": "Settings",
     "quit": "Quit BongoCat"
   },
+  "application_menu": {
+    "file": "File",
+    "edit": "Edit",
+    "window": "Window",
+    "services": "Services",
+    "close": "Close",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "hide": "Hide BongoCat",
+    "hide_others": "Hide Others",
+    "show_all": "Show All",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select All"
+  },
   "startup_permission": {
     "later": "Set Up Later",
     "input_monitoring": {

@@ -38,6 +38,24 @@
     "open_settings": "الإعدادات",
     "quit": "إنهاء BongoCat"
   },
+  "application_menu": {
+    "file": "ملف",
+    "edit": "تحرير",
+    "window": "نافذة",
+    "services": "الخدمات",
+    "close": "إغلاق",
+    "minimize": "تصغير",
+    "zoom": "تكبير/تصغير",
+    "hide": "إخفاء BongoCat",
+    "hide_others": "إخفاء الآخرين",
+    "show_all": "إظهار الكل",
+    "undo": "تراجع",
+    "redo": "إعادة",
+    "cut": "قص",
+    "copy": "نسخ",
+    "paste": "لصق",
+    "select_all": "تحديد الكل"
+  },
   "startup_permission": {
     "later": "الإعداد لاحقًا",
     "input_monitoring": {
