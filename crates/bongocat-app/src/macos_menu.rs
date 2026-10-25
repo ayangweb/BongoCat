@@ -61,7 +61,10 @@ pub(crate) fn set_language(language: bongocat_ui_protocol::SettingsLanguage, cx:
     let label = |key| bongocat_i18n::text(locale, key).to_owned();
     cx.set_menus(vec![
         Menu::new("BongoCat").items([
-            MenuItem::action(label("system_menu.open_settings"), OpenSettings),
+            MenuItem::action(
+                format!("{}…", label("system_menu.open_settings")),
+                OpenSettings,
+            ),
             MenuItem::separator(),
             MenuItem::os_submenu(label("application_menu.services"), SystemMenuType::Services),
             MenuItem::separator(),
