@@ -87,7 +87,7 @@ bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
-bongocat-plugin-sdk = { git = "https://github.com/ayangweb/BongoCat-Plugins", rev = "c75af662eec3aef21c16db202849eeb961e9c18d" }
+bongocat-plugin-sdk = { git = "https://github.com/ayangweb/BongoCat-Plugins", rev = "7a2d4ef3e371aafa68547d61b939d7ff660b51cc" }
 bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
 bongocat-plugin-hud = { path = "crates/bongocat-plugin-hud" }
 bongocat-plugin-service = { path = "crates/bongocat-plugin-service" }
