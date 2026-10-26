@@ -9,7 +9,7 @@ publish.workspace = true
 
 [dependencies]
 bongocat-plugin-sdk.workspace = true
-fontdue = "=0.9.4"
+fontdue = "=0.9.5"
 thiserror.workspace = true
 
 [lints]
