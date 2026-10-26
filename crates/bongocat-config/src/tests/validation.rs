@@ -101,6 +101,16 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is a French locale"
         );
     }
+    // Russian takes the same shape: the copy was written for Russia, and a
+    // machine reporting plain `ru` or another Russian region reaches it on the
+    // primary subtag rather than falling back to English.
+    for locale in ["ru", "ru-RU", "ru_RU", "ru-KZ", "ru-BY"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Russian,
+            "{locale} is a Russian locale"
+        );
+    }
     // Chinese shares the `zh` subtag across two scripts, so it is the one
     // language the primary subtag cannot classify. The script subtag decides
     // when the platform reports one, and the `TW`/`HK`/`MO` region subtags
@@ -139,6 +149,10 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(Language::System.resolve(Language::Korean), Language::Korean);
     assert_eq!(Language::System.resolve(Language::French), Language::French);
+    assert_eq!(
+        Language::System.resolve(Language::Russian),
+        Language::Russian
+    );
     assert_eq!(
         Language::System.resolve(Language::System),
         Language::English
@@ -190,6 +204,14 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(
         Language::English.resolve(Language::French),
+        Language::English
+    );
+    assert_eq!(
+        Language::Russian.resolve(Language::ChineseSimplified),
+        Language::Russian
+    );
+    assert_eq!(
+        Language::English.resolve(Language::Russian),
         Language::English
     );
     assert_eq!(

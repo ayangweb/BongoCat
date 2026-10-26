@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🌍 Localization
+
+- Added Russian.
+
 ## 2.4.0 - 2026-10-26
 
 ### ✨ Features

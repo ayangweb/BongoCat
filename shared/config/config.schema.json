@@ -146,7 +146,8 @@
         "vi-VN",
         "pt-BR",
         "ko-KR",
-        "fr-FR"
+        "fr-FR",
+        "ru-RU"
       ],
       "type": "string"
     },
