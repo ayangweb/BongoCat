@@ -1,4 +1,4 @@
-"""Regression tests for the local plugin checkout orchestration."""
+"""Regression tests for the local plugin build orchestration."""
 
 import importlib.util
 import json
@@ -54,17 +54,35 @@ class DevPluginsTests(unittest.TestCase):
             self.assertFalse((output / "stale.zip").exists())
             self.assertFalse((output / "stale.png").exists())
 
-    def test_failed_clone_does_not_leave_a_half_checkout(self):
-        with tempfile.TemporaryDirectory() as directory:
-            checkout = Path(directory) / "BongoCat-Plugins"
-            checkout.mkdir()
-            (checkout / "partial").write_text("partial")
-            with mock.patch.object(DEV, "DEV_ROOT", Path(directory)), mock.patch.object(
-                DEV, "DEFAULT_CHECKOUT", checkout
-            ), mock.patch.object(DEV.subprocess, "run", side_effect=__import__("subprocess").CalledProcessError(1, "git")):
-                with self.assertRaises(DEV.DevPluginError):
-                    DEV.checkout_pinned_revision("0" * 40, clone=True)
-            self.assertFalse(checkout.exists())
+    def test_build_failure_is_reported_without_running_the_command(self):
+        with mock.patch.object(
+            DEV.subprocess,
+            "run",
+            side_effect=__import__("subprocess").CalledProcessError(1, "cargo"),
+        ), mock.patch.object(DEV, "host_triple", return_value="aarch64-apple-darwin"), mock.patch.object(
+            DEV, "CATALOG_DIRECTORY", Path(tempfile.mkdtemp())
+        ):
+            with self.assertRaises(DEV.DevPluginError):
+                DEV.prepare_catalog()
+
+    def test_catalog_build_uses_the_repository_packager(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append((command, kwargs))
+            catalog = DEV.CATALOG_DIRECTORY / "catalog.json"
+            catalog.write_text('{"plugins": []}', encoding="utf-8")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            DEV, "CATALOG_DIRECTORY", Path(directory)
+        ), mock.patch.object(
+            DEV, "host_triple", return_value="aarch64-apple-darwin"
+        ), mock.patch.object(DEV.subprocess, "run", side_effect=run):
+            triple, catalog = DEV.prepare_catalog()
+        self.assertEqual(triple, "aarch64-apple-darwin")
+        command = commands[0][0]
+        self.assertIn("bongocat-plugin-packaging", command)
+        self.assertEqual(command[-1], str(Path(directory)))
 
 
 if __name__ == "__main__":

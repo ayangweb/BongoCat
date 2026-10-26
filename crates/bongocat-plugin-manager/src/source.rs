@@ -17,8 +17,7 @@ pub enum PluginSource {
         packages: PathBuf,
     },
     Production {
-        owner: String,
-        repository: String,
+        catalog_url: String,
         public_key: String,
         platform: String,
     },
@@ -129,12 +128,11 @@ impl PluginSource {
                 }
             }
             Self::Production {
-                owner,
-                repository,
+                catalog_url,
                 public_key,
                 platform,
             } => {
-                let catalog = catalog::fetch_catalog_blocking(owner, repository, public_key, stop)
+                let catalog = catalog::fetch_catalog_blocking(catalog_url, public_key, stop)
                     .map_err(|error| error.to_string())?;
                 for entry in catalog.plugins {
                     if entry.protocol_version != bongocat_plugin_sdk::PROTOCOL_VERSION {

@@ -12,10 +12,14 @@ pub const RELEASE_REPOSITORY_OWNER: &str = "ayangweb";
 
 pub const RELEASE_REPOSITORY_NAME: &str = "BongoCat";
 
-/// The repository that publishes independently versioned plugin releases.
-pub const PLUGIN_REPOSITORY_OWNER: &str = "ayangweb";
-
-pub const PLUGIN_REPOSITORY_NAME: &str = "BongoCat-Plugins";
+/// The mutable branch that holds only the current signed plugin catalog.
+///
+/// Plugin packages stay in immutable `plugins-v*` Releases; this one fixed
+/// document is what tells an installed application which versions to offer.
+/// Keeping it off `releases/latest` means an application release can never
+/// displace plugin discovery.
+pub const PLUGIN_CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/ayangweb/BongoCat/plugin-catalog/plugins.json";
 
 /// The plugin-owned Minisign public key, base64 of the complete public-key box.
 ///

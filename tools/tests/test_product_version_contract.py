@@ -81,8 +81,18 @@ class ProductVersionContractTests(unittest.TestCase):
             with self.subTest(member=member):
                 manifest = ROOT / member / "Cargo.toml"
                 source = read(manifest)
-                self.assertRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
-                self.assertNotRegex(source, r"(?m)^version\s*=\s*\"")
+                if member == "crates/bongocat-plugin-sdk" or member.startswith(
+                    "plugins/"
+                ):
+                    self.assertRegex(
+                        source,
+                        r'(?m)^version\s*=\s*"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"$',
+                        "the plugin protocol and plugin releases are versioned independently",
+                    )
+                    self.assertNotRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
+                else:
+                    self.assertRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
+                    self.assertNotRegex(source, r"(?m)^version\s*=\s*\"")
 
     def test_lockfile_workspace_packages_match_the_product_version(self):
         expected_version = workspace_package_version()
@@ -99,6 +109,7 @@ class ProductVersionContractTests(unittest.TestCase):
                 read(ROOT / member / "Cargo.toml"),
             ).group(1)
             for member in workspace_members()
+            if member != "crates/bongocat-plugin-sdk" and not member.startswith("plugins/")
         }
         product_packages = {
             name: version

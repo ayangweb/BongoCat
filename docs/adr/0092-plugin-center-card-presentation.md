@@ -98,7 +98,7 @@ the plugin and operation context, then sends one global error notification
 instead of rendering an error text node in the settings panel.
 
 Installed code, not catalog metadata, publishes action labels and icons, so an
-installed package always describes its own controls. `just dev-plugins` only
+installed package always describes its own controls. `just dev` only
 rebuilds the catalog ZIPs; it does not replace installed code. During this
 unreleased PR's fixed 1.0.0 baseline (ADR-0091), testing a rebuilt plugin requires
 uninstalling and installing it through the center, which retains its data. The
@@ -122,7 +122,7 @@ The manager resolves that path against the selected installed version and
 requires the file to exist during install.
 
 Catalog discovery projects a separate `icon_url` for the card. In Development,
-`just dev-plugins` copies each package's artwork to
+`just dev` copies each package's artwork to
 `target/plugins/icons/<plugin-id>/icon.png` and writes that absolute path into
 the generated catalog. Release packaging extracts the same PNG from each plugin
 ZIP, publishes it as the immutable `<plugin-id>-<version>.png` asset, and writes

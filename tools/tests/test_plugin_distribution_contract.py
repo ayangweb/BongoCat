@@ -1,9 +1,7 @@
-"""Keep official plugin distribution outside the application repository.
+"""Contract for single-repository plugin development and publication.
 
-Plugin SDK and official plugins are built, signed and released by
-`ayangweb/BongoCat-Plugins`. The application only hosts plugins and pins the SDK,
-so a copied plugin source or an application-owned plugin release workflow would
-silently reintroduce the coupling the split removes.
+The plugin SDK, official plugins, packaging, signing and plugin Release all
+live in BongoCat.
 """
 
 import base64
@@ -53,7 +51,7 @@ def application_signing_key():
 
 
 class PluginDistributionContractTests(unittest.TestCase):
-    def test_the_sdk_is_pinned_to_a_plugin_repository_revision(self):
+    def test_the_sdk_and_official_plugins_are_workspace_members(self):
         source = read(WORKSPACE)
         dependency = re.search(
             r'^bongocat-plugin-sdk\s*=\s*\{([^}]*)\}\s*$',
@@ -61,47 +59,38 @@ class PluginDistributionContractTests(unittest.TestCase):
             re.MULTILINE,
         )
         self.assertIsNotNone(dependency, "the workspace must depend on the plugin SDK")
-        fields = dict(
-            re.findall(r'(\w+)\s*=\s*"([^"]+)"', dependency.group(1))
+        self.assertIn('path = "crates/bongocat-plugin-sdk"', dependency.group(0))
+        for path in [
+            "crates/bongocat-plugin-sdk",
+            "crates/bongocat-plugin-packaging",
+            "plugins/input-source",
+            "plugins/key-sounds",
+            "plugins/pomodoro",
+        ]:
+            self.assertTrue((ROOT / path).is_dir(), path)
+            self.assertIn(f'"{path}"', source)
+
+    def test_plugin_releases_use_their_own_tag_namespace(self):
+        workflow = read(WORKFLOWS / "plugin-release.yml")
+        self.assertIn('tags:\n      - "plugins-v*"', workflow)
+        self.assertNotIn('tags:\n      - "v*"', workflow)
+        self.assertNotIn("--repository ayangweb/", workflow)
+        self.assertIn(
+            "initializing the first plugin release from current sources", workflow
         )
+        self.assertIn("--latest=false", workflow)
+        self.assertIn("plugin-catalog", workflow)
+        self.assertIn("--release-url", workflow)
+        self.assertIn("releases/download/$RELEASE_TAG", workflow)
+
+        application = read(WORKFLOWS / "release.yml")
+        self.assertIn('tags:\n      - "v*"', application)
+        self.assertNotIn("plugins-v*", application)
         self.assertEqual(
-            fields.get("git"), "https://github.com/ayangweb/BongoCat-Plugins"
-        )
-        self.assertRegex(
-            fields.get("rev", ""),
-            r"^[0-9a-f]{40}$",
-            "the SDK must be pinned to a full Git commit rather than a branch or tag",
-        )
-        self.assertNotIn("path", fields)
-
-    def test_no_official_plugin_source_or_release_pipeline_is_copied_back(self):
-        self.assertFalse((ROOT / "plugins").exists())
-        self.assertFalse((ROOT / "crates" / "bongocat-plugin-sdk").exists())
-        for workflow in WORKFLOWS.glob("*.y*ml"):
-            with self.subTest(workflow=workflow.name):
-                self.assertNotIn("PLUGIN_SIGNING_PRIVATE_KEY", read(workflow))
-                self.assertNotIn("PLUGIN_SIGNING_KEY_PASSWORD", read(workflow))
-        justfile = read(JUSTFILE)
-        for removed in (
-            "dev-plugins",
-            "release-plugins",
-            "plugin-catalog",
-            "release-plugin-catalog",
-        ):
-            self.assertNotIn(removed, justfile)
-
-    def test_plugin_repository_identity_is_separate_from_the_application_release(self):
-        owner = rust_constant("PLUGIN_REPOSITORY_OWNER")
-        repository = rust_constant("PLUGIN_REPOSITORY_NAME")
-        self.assertEqual((owner, repository), ("ayangweb", "BongoCat-Plugins"))
-        self.assertNotEqual(
-            (owner, repository),
-            (
-                rust_constant("RELEASE_REPOSITORY_OWNER"),
-                rust_constant("RELEASE_REPOSITORY_NAME"),
-            ),
+            len(re.findall(r"group: release-publishing", application + workflow)), 2
         )
 
+    def test_plugin_signing_is_separate_from_application_updates(self):
         public_key = base64.b64decode(rust_constant("PLUGIN_RELEASE_SIGNING_KEY"))
         self.assertTrue(
             public_key.startswith(b"untrusted comment: minisign public key: "),
@@ -111,34 +100,41 @@ class PluginDistributionContractTests(unittest.TestCase):
             rust_constant("PLUGIN_RELEASE_SIGNING_KEY"),
             application_signing_key(),
         )
+        workflow = read(WORKFLOWS / "plugin-release.yml")
+        self.assertIn("secrets.PLUGIN_SIGNING_PRIVATE_KEY", workflow)
+        self.assertNotIn("secrets.SIGNING_PRIVATE_KEY", workflow)
+        self.assertNotIn("secrets.RELEASE_SIGNING_KEY", workflow)
 
-    def test_production_and_development_sources_are_environment_isolated(self):
-        source = read(APP_SOURCE)
-        self.assertIn("PLUGIN_REPOSITORY_OWNER", source)
-        self.assertIn("PLUGIN_REPOSITORY_NAME", source)
-        self.assertIn("PLUGIN_RELEASE_SIGNING_KEY", source)
-        self.assertIn("BONGOCAT_PLUGIN_DEV_DIRECTORY", source)
-        self.assertLess(
-            source.index("BuildEnvironment::Development"),
-            source.index("BuildEnvironment::Production"),
+    def test_production_uses_one_fixed_signed_catalog_url(self):
+        self.assertEqual(
+            rust_constant("PLUGIN_CATALOG_URL"),
+            "https://raw.githubusercontent.com/ayangweb/BongoCat/plugin-catalog/plugins.json",
         )
+        source = read(APP_SOURCE)
+        self.assertIn("PLUGIN_CATALOG_URL", source)
+        self.assertNotIn("PLUGIN_REPOSITORY_OWNER", source)
+        self.assertNotIn("PLUGIN_REPOSITORY_NAME", source)
+        self.assertIn("BONGOCAT_PLUGIN_DEV_DIRECTORY", source)
+        catalog = read(ROOT / "crates/bongocat-plugin-manager/src/catalog.rs")
+        self.assertIn("validate_remote_assets", catalog)
+        self.assertIn('starts_with("https://")', catalog)
+        self.assertIn("raw.githubusercontent.com", catalog)
 
-    def test_development_entry_points_prepare_a_local_catalog(self):
+    def test_development_prepares_in_repository_plugins(self):
         justfile = read(JUSTFILE)
+        compact = "".join(justfile.split())
         self.assertIn(
             "python3tools/dev_plugins.py--cargorun--locked-pbongocat-app--release",
-            "".join(justfile.split()),
+            compact,
         )
+        self.assertIn("plugin-buildtarget:", compact)
+        self.assertIn("plugin-tests:", compact)
         script = read(DEV_PLUGINS)
-        self.assertIn("BONGOCAT_PLUGINS_ROOT", script)
         self.assertIn("BONGOCAT_PLUGIN_DEV_DIRECTORY", script)
+        self.assertIn("BONGOCAT_PLUGIN_TEST_ROOT", script)
         self.assertIn("BONGOCAT_PLUGIN_SMOKE_REQUIRE_CARDS", script)
-        self.assertIn("catalog", script)
-        self.assertIn("dev", script)
-        self.assertIn("clone", script)
-        self.assertIn("sdk_revision", script)
-        self.assertIn("checkout_pinned_revision", script)
-        self.assertIn("BONGOCAT_PLUGINS_ROOT", script)
+        self.assertIn("bongocat-plugin-packaging", script)
+        self.assertNotIn("git clone", script)
         self.assertNotIn("/Users/", script)
 
 

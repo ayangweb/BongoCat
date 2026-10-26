@@ -45,7 +45,8 @@ pub struct CatalogEntry {
     /// has to name artwork that exists independently of any installed version.
     /// Production uses an HTTPS URL; Development uses an absolute file path.
     pub icon_url: String,
-    /// Per-platform download paths relative to the catalog URL.
+    /// Per-platform absolute HTTPS download URLs, or local filenames in a
+    /// Development catalog.
     ///
     /// An empty map is a catalog assembled locally without downloads; a
     /// Production entry without one is rejected by the source that reads it.
@@ -99,10 +100,9 @@ pub fn parse_catalog(bytes: &[u8], public_key: &str) -> Result<Catalog, CatalogE
     Ok(signed.catalog)
 }
 
-/// Proxy prefixes first, the official endpoint last, each with a resolver that
-/// converts a repository-relative asset path into that source's URL.
+/// Proxy prefixes first, the official catalog last.
 fn catalog_sources(official: &str) -> Vec<(Option<&'static str>, String)> {
-    let mut sources = GITHUB_PROXY_PREFIXES
+    GITHUB_PROXY_PREFIXES
         .iter()
         .map(|prefix| {
             (
@@ -110,34 +110,23 @@ fn catalog_sources(official: &str) -> Vec<(Option<&'static str>, String)> {
                 format!("{}/{official}", prefix.trim_end_matches('/')),
             )
         })
-        .collect::<Vec<_>>();
-    sources.push((None, official.to_owned()));
-    sources
+        .chain(std::iter::once((None, official.to_owned())))
+        .collect()
 }
 
-/// Turn a catalog's release-relative asset names into absolute URLs.
-///
-/// The catalog is published beside the assets it names, so every entry carries a
-/// relative path and `official` is the release it was read from. A proxied read
-/// names the same absolute URLs behind that proxy.
-fn resolve_downloads(
-    mut entry: CatalogEntry,
-    proxy: Option<&'static str>,
-    official: &str,
-) -> CatalogEntry {
-    let base = official
-        .strip_suffix(&format!("/{CATALOG_NAME}"))
-        .unwrap_or(official);
-    let absolute = |value: &str| format!("{base}/{}", value.trim_start_matches('/'));
-    let proxied = |value: String| match proxy {
-        Some(prefix) => format!("{}/{value}", prefix.trim_end_matches('/')),
-        None => value,
-    };
-    for value in entry.downloads.values_mut() {
-        *value = proxied(absolute(value));
+fn validate_remote_assets(entry: &CatalogEntry) -> Result<(), CatalogError> {
+    if !entry.icon_url.starts_with("https://")
+        || entry
+            .downloads
+            .values()
+            .any(|value| !value.starts_with("https://"))
+        || entry.sha256.as_ref().is_none_or(|digest| {
+            digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+    {
+        return Err(CatalogError::Invalid);
     }
-    entry.icon_url = proxied(absolute(&entry.icon_url));
-    entry
+    Ok(())
 }
 
 pub fn sha256_of(bytes: &[u8]) -> String {
@@ -150,19 +139,19 @@ pub fn sha256_of(bytes: &[u8]) -> String {
 
 /// Blocking transport for the catalog IO worker, not the runtime/UI executor.
 pub(crate) fn fetch_catalog_blocking(
-    owner: &str,
-    repository: &str,
+    catalog_url: &str,
     key: &str,
     stop: &std::sync::atomic::AtomicBool,
 ) -> Result<Catalog, CatalogError> {
-    let official =
-        format!("https://github.com/{owner}/{repository}/releases/latest/download/{CATALOG_NAME}");
+    if !catalog_url.starts_with("https://") {
+        return Err(CatalogError::Transport);
+    }
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .build()
         .map_err(|_| CatalogError::Transport)?;
     let mut last = CatalogError::Transport;
-    for (proxy, source) in catalog_sources(&official) {
+    for (_proxy, source) in catalog_sources(catalog_url) {
         if stop.load(std::sync::atomic::Ordering::Acquire) {
             break;
         }
@@ -174,12 +163,10 @@ pub(crate) fn fetch_catalog_blocking(
                 .and_then(|response| response.error_for_status())
                 .map_err(|_| CatalogError::Transport)?;
             let bytes = bounded_body(response, MAX_CATALOG_BYTES)?;
-            let mut catalog = parse_catalog(&bytes, key)?;
-            catalog.plugins = catalog
-                .plugins
-                .into_iter()
-                .map(|entry| resolve_downloads(entry, proxy, &official))
-                .collect();
+            let catalog = parse_catalog(&bytes, key)?;
+            for entry in &catalog.plugins {
+                validate_remote_assets(entry)?;
+            }
             Ok(catalog)
         })();
         match result {
@@ -234,7 +221,9 @@ fn download_bounded_blocking(
         .find_map(|prefix| url.strip_prefix(&format!("{}/", prefix.trim_end_matches('/'))))
         .unwrap_or(url);
     let mut sources = vec![url.to_owned()];
-    if official.starts_with("https://github.com/") {
+    if official.starts_with("https://github.com/")
+        || official.starts_with("https://raw.githubusercontent.com/")
+    {
         for (_, source) in catalog_sources(official) {
             if !sources.contains(&source) {
                 sources.push(source);
@@ -272,8 +261,8 @@ mod tests {
     }
 
     #[test]
-    fn icon_assets_use_the_same_official_or_proxied_base_as_packages() {
-        let official = "https://github.com/example/BongoCat/releases/latest/download/plugins.json";
+    fn release_assets_are_absolute_and_remote_entries_are_validated() {
+        let release = "https://github.com/example/BongoCat/releases/download/plugins-v1.0.0";
         let entry = CatalogEntry {
             id: "org.test.a".into(),
             name: "A".into(),
@@ -283,35 +272,25 @@ mod tests {
             app_versions: ">=2".into(),
             protocol_version: 1,
             icon: PluginIcon::LocalImage("resources/icon.png".into()),
-            icon_url: "org.test.a-1.0.0.png".into(),
-            downloads: [("macos-aarch64".into(), "org.test.a-1.0.0.zip".into())].into(),
-            sha256: None,
+            icon_url: format!("{release}/org.test.a-1.0.0.png"),
+            downloads: [(
+                "macos-aarch64".into(),
+                format!("{release}/org.test.a-1.0.0.zip"),
+            )]
+            .into(),
+            sha256: Some("0".repeat(64)),
             homepage: None,
         };
 
-        let official_entry = resolve_downloads(entry.clone(), None, official);
-        assert_eq!(
-            official_entry.icon_url,
-            "https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.png"
-        );
-        assert_eq!(
-            official_entry.downloads["macos-aarch64"],
-            "https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.zip"
-        );
+        validate_remote_assets(&entry).unwrap();
+        let proxied = format!("{}/{}", GITHUB_PROXY_PREFIXES[0], entry.icon_url);
+        assert!(proxied.ends_with("/org.test.a-1.0.0.png"));
 
-        let prefix = GITHUB_PROXY_PREFIXES[0];
-        let proxied_entry = resolve_downloads(entry, Some(prefix), official);
+        let mut missing_digest = entry;
+        missing_digest.sha256 = None;
         assert_eq!(
-            proxied_entry.icon_url,
-            format!(
-                "{prefix}/https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.png"
-            )
-        );
-        assert_eq!(
-            proxied_entry.downloads["macos-aarch64"],
-            format!(
-                "{prefix}/https://github.com/example/BongoCat/releases/latest/download/org.test.a-1.0.0.zip"
-            )
+            validate_remote_assets(&missing_digest),
+            Err(CatalogError::Invalid)
         );
     }
 }

@@ -126,22 +126,18 @@ Rust 2024 edition application
   与 Toggle 可交互，分别发送 Action 与布尔配置修改；Integer、Select 在该窗口只作展示。
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
   HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
-- 插件 SDK、官方插件源码、ZIP 打包、签名、目录生成和 Git Tag Release 全部由独立仓库
-  `ayangweb/BongoCat-Plugins` 维护；主应用只通过固定 Git revision 使用 SDK，不包含官方插件源码
-  或插件发布工作流。Development 的 `just dev` / `just dev-smoke` 通过
-  `tools/dev_plugins.py` 定位 `BONGOCAT_PLUGINS_ROOT`；未设置时克隆插件仓库到
-  `target/plugin-dev/BongoCat-Plugins`，自动 clone 固定在与 SDK 相同的完整 revision，调用其
-  `catalog dev` 生成当前主机平台的本地目录，再以 `BONGOCAT_PLUGIN_DEV_DIRECTORY` 注入应用。
-  显式指定插件仓库路径时不改写该工作树，供开发者测试未发布插件。官方插件仍只由插件仓库构建，
-  主应用不包含插件源码。
+- 插件 SDK、官方插件源码、ZIP 打包、签名工具和插件发布工作流都是本仓库的 workspace 成员；
+  插件仍以独立可执行进程运行，主应用的安装包不包含插件源码或插件资源。Development 的
+  `just dev` / `just dev-smoke` 由 `tools/dev_plugins.py` 直接构建当前主机平台插件到
+  `target/plugin-dev`，再以 `BONGOCAT_PLUGIN_DEV_DIRECTORY` 注入应用。
   Development 启动后由产品自身的安装目录发现可用插件，不自动安装或重新安装已卸载的插件。
-  生产环境从
-  `BongoCat-Plugins` 的签名 `plugins.json` 发现列表；两个环境复用插件中心的安装、更新、启用、
-  禁用和卸载路径。
+  生产环境从 `plugin-catalog` 分支的签名 `plugins.json` 发现列表；两个环境复用插件中心的
+  安装、更新、启用、禁用和卸载路径。
   清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。
   番茄时钟、按键音效、输入法状态均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。
-  Production 不读取本地目录。签名清单与各平台 ZIP 由插件仓库的 Git Tag 流水线组装，未发布签名
-  资源时显示可重试错误，不回退到未签名数据。
+  Production 不读取本地目录。插件 Release 使用 `plugins-v*` tag，并显式保持非 Latest；
+  各平台 ZIP 位于对应不可变 Release，签名 catalog 在 Release 重新下载校验通过后写入
+  `plugin-catalog` 分支。未发布签名资源时显示可重试错误，不回退到未签名数据。
 - 首个验证插件是番茄时钟（#996）：它在模型窗口显示独立倒计时区域，并与插件的开始、暂停、重置
   保持同步。按键音效（#90，英文名 Key Sounds）也作为独立插件维护音频、音量、
   限流和设备生命周期；鼠标音效在新建、重置配置或缺少对应字段时默认开启，保留已保存的关闭选择；runtime

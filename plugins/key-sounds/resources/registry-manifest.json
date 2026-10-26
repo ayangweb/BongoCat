@@ -1,0 +1,556 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-28T12:17:11Z",
+  "soundpacks": {
+    "keyboard": [
+      {
+        "id": "52722920-07ec-45b4-91cc-6f29cad794d2",
+        "metadata": {
+          "name": "SKCM Blue",
+          "brand": "Alps",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/alps/tplai/skcm_blue"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/alps/tplai/skcm_blue/52722920-07ec-45b4-91cc-6f29cad794d2.zip",
+          "size": 87715
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "de401889-0ccb-4522-a213-836aad88c447",
+        "metadata": {
+          "name": "Black ABS",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/black_abs"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/black_abs/de401889-0ccb-4522-a213-836aad88c447.zip",
+          "size": 1973844
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "980c6cc1-7daf-4584-8b0e-643b3a811a6d",
+        "metadata": {
+          "name": "Black PBT",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/black_pbt"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/black_pbt/980c6cc1-7daf-4584-8b0e-643b3a811a6d.zip",
+          "size": 1352214
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "cf535c6d-9cc7-46a0-bf53-af6d3aeef534",
+        "metadata": {
+          "name": "Blue ABS",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/blue_abs"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/blue_abs/cf535c6d-9cc7-46a0-bf53-af6d3aeef534.zip",
+          "size": 1870192
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "ca2d54d7-31d0-4177-b26a-43d99a3bcaaf",
+        "metadata": {
+          "name": "Blue PBT",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/blue_pbt"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/blue_pbt/ca2d54d7-31d0-4177-b26a-43d99a3bcaaf.zip",
+          "size": 1839436
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "186ca33e-9998-4a28-974c-c21ac353c16e",
+        "metadata": {
+          "name": "Brown ABS",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/brown_abs"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/brown_abs/186ca33e-9998-4a28-974c-c21ac353c16e.zip",
+          "size": 1428804
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "3aa3c556-ab47-4ab9-a791-498bf9910bf7",
+        "metadata": {
+          "name": "Brown PBT",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/brown_pbt"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/brown_pbt/3aa3c556-ab47-4ab9-a791-498bf9910bf7.zip",
+          "size": 1823031
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "31071be3-c9ad-44a4-8d38-aaa7fe414a58",
+        "metadata": {
+          "name": "Red ABS",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/red_abs"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/red_abs/31071be3-c9ad-44a4-8d38-aaa7fe414a58.zip",
+          "size": 1895840
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "e05fa018-400e-4d9c-b357-d5467b07650c",
+        "metadata": {
+          "name": "Red PBT",
+          "brand": "Cherry MX",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/cherry_mx/mechvibes/red_pbt"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/cherry_mx/mechvibes/red_pbt/e05fa018-400e-4d9c-b357-d5467b07650c.zip",
+          "size": 1990241
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "4da844a6-346e-4361-84fd-5bc142ff975e",
+        "metadata": {
+          "name": "Holy Panda",
+          "brand": "Drop",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/drop/tplai/holy_panda"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/drop/tplai/holy_panda/4da844a6-346e-4361-84fd-5bc142ff975e.zip",
+          "size": 60283
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "23d8cf7b-f99b-49fc-ae84-3f99dc728ad9",
+        "metadata": {
+          "name": "Alpaca",
+          "brand": "Durock",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/durock/tplai/alpaca"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/durock/tplai/alpaca/23d8cf7b-f99b-49fc-ae84-3f99dc728ad9.zip",
+          "size": 64959
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "7a4c575c-2c5f-49f2-bcd0-966f0ac874a6",
+        "metadata": {
+          "name": "Crystal Purple",
+          "brand": "Everglide",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/everglide/mechvibes/crystal_purple"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/everglide/mechvibes/crystal_purple/7a4c575c-2c5f-49f2-bcd0-966f0ac874a6.zip",
+          "size": 1257830
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "c9f8ec9f-4fe0-414b-87ac-4d5b64be84e0",
+        "metadata": {
+          "name": "Oreo",
+          "brand": "Everglide",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/everglide/mechvibes/oreo"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/everglide/mechvibes/oreo/c9f8ec9f-4fe0-414b-87ac-4d5b64be84e0.zip",
+          "size": 987876
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "b9bfb429-16c6-449f-aa85-5da083696f68",
+        "metadata": {
+          "name": "Ink Black",
+          "brand": "Gateron",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/gateron/tplai/ink_black"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/ink_black/b9bfb429-16c6-449f-aa85-5da083696f68.zip",
+          "size": 53131
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "631754b0-eafe-4b14-b86e-61842f1f195c",
+        "metadata": {
+          "name": "Ink Red",
+          "brand": "Gateron",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/gateron/tplai/ink_red"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/ink_red/631754b0-eafe-4b14-b86e-61842f1f195c.zip",
+          "size": 62498
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "c556e214-5d78-4fc1-a7fe-3eb3f53152ba",
+        "metadata": {
+          "name": "Turquoise Tealios",
+          "brand": "Gateron",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/gateron/tplai/turquoise_tealios"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/gateron/tplai/turquoise_tealios/c556e214-5d78-4fc1-a7fe-3eb3f53152ba.zip",
+          "size": 52894
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "c573d01e-2d20-4844-9286-a9e628ef8f3b",
+        "metadata": {
+          "name": "Box Navy",
+          "brand": "Kailh",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/kailh/tplai/box_navy"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/kailh/tplai/box_navy/c573d01e-2d20-4844-9286-a9e628ef8f3b.zip",
+          "size": 79099
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "f0cc3d8e-5b1e-4412-a3f0-8a4f70912d0e",
+        "metadata": {
+          "name": "Cream",
+          "brand": "NovelKeys",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/novelkeys/tplai/cream"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/novelkeys/tplai/cream/f0cc3d8e-5b1e-4412-a3f0-8a4f70912d0e.zip",
+          "size": 60605
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "fada0d4f-c510-4c19-8cc3-d756c186de8e",
+        "metadata": {
+          "name": "Purple Hybrid PBT",
+          "brand": "Topre",
+          "author": "mechvibes",
+          "supportsKeyUp": false,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/topre/mechvibes/purple_hybrid_pbt"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/topre/mechvibes/purple_hybrid_pbt/fada0d4f-c510-4c19-8cc3-d756c186de8e.zip",
+          "size": 1066740
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/hainguyents13/mechvibes/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "ab2657fe-dc0a-4c75-ab74-81d8f56002b0",
+        "metadata": {
+          "name": "Unknown",
+          "brand": "Topre",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/topre/tplai/unknown"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/topre/tplai/unknown/ab2657fe-dc0a-4c75-ab74-81d8f56002b0.zip",
+          "size": 93496
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "c3f120e1-809f-4265-8167-14d708c99a48",
+        "metadata": {
+          "name": "Unknown",
+          "brand": "Unknown",
+          "author": "webdevcody",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/unknown/webdevcody/unknown"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/unknown/webdevcody/unknown/c3f120e1-809f-4265-8167-14d708c99a48.zip",
+          "size": 571152
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/webdevcody/type-joy/blob/main/LICENSE"
+        }
+      },
+      {
+        "id": "61861d39-1242-41f5-8cf9-5823c472ce28",
+        "metadata": {
+          "name": "Buckling Spring",
+          "brand": "IBM",
+          "author": "tplai",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/ibm/tplai/buckling_spring"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/ibm/tplai/buckling_spring/61861d39-1242-41f5-8cf9-5823c472ce28.zip",
+          "size": 92991
+        },
+        "license": {
+          "type": "MIT",
+          "url": "https://github.com/tplai/kbsim/blob/master/LICENSE.md"
+        }
+      },
+      {
+        "id": "5e02cd62-f79b-43c4-8899-78bbb630a81d",
+        "metadata": {
+          "name": "Quack",
+          "brand": "Quirky",
+          "author": "Freesound Community",
+          "supportsKeyUp": true,
+          "category": "keyboard"
+        },
+        "content": {
+          "path": "keyboard/quirky/freesound_community/quack"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/keyboard/quirky/freesound_community/quack/5e02cd62-f79b-43c4-8899-78bbb630a81d.zip",
+          "size": 23885
+        },
+        "license": {
+          "type": "Pixabay Content License",
+          "url": "https://pixabay.com/pl/service/license-summary/"
+        }
+      }
+    ],
+    "mouse": [
+      {
+        "id": "3222385c-d428-4d98-8ce9-1cbc992c3373",
+        "metadata": {
+          "name": "Orochi V2",
+          "brand": "Razer",
+          "author": "Sadiquecat",
+          "supportsKeyUp": true,
+          "category": "mouse"
+        },
+        "content": {
+          "path": "mouse/razer/sadiquecat/orochi_v2"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/mouse/razer/sadiquecat/orochi_v2/3222385c-d428-4d98-8ce9-1cbc992c3373.zip",
+          "size": 15899
+        },
+        "license": {
+          "type": "CC0",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+        }
+      },
+      {
+        "id": "230f722e-104a-4ce3-ae60-2bb4d8d9691c",
+        "metadata": {
+          "name": "Unknown",
+          "brand": "Unknown",
+          "author": "pixabay",
+          "supportsKeyUp": true,
+          "category": "mouse"
+        },
+        "content": {
+          "path": "mouse/unknown/pixabay/unknown"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/mouse/unknown/pixabay/unknown/230f722e-104a-4ce3-ae60-2bb4d8d9691c.zip",
+          "size": 8886
+        },
+        "license": {
+          "type": "Pixabay Content License",
+          "url": "https://pixabay.com/pl/service/license-summary/"
+        }
+      },
+      {
+        "id": "92996284-89e5-42e7-81e7-5c5c1e25ebf2",
+        "metadata": {
+          "name": "Mamba Elite",
+          "brand": "Razer",
+          "author": "kamillobinski",
+          "supportsKeyUp": true,
+          "category": "mouse"
+        },
+        "content": {
+          "path": "mouse/razer/kamillobinski/mamba_elite"
+        },
+        "download": {
+          "url": "https://github.com/kamillobinski/thock-soundpacks/raw/refs/heads/main/mouse/razer/kamillobinski/mamba_elite/92996284-89e5-42e7-81e7-5c5c1e25ebf2.zip",
+          "size": 27342
+        },
+        "license": {
+          "type": "Proprietary",
+          "url": "https://raw.githubusercontent.com/kamillobinski/thock-soundpacks/refs/heads/dev/mouse/razer/kamillobinski/mamba_elite/LICENSE"
+        }
+      }
+    ]
+  }
+}
