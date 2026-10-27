@@ -592,7 +592,7 @@ mod tests {
             bitmap.width as usize * bitmap.height as usize * 4
         );
         // Premultiplied means no channel may exceed the alpha it belongs to.
-        for pixel in bitmap.pixels.chunks_exact(4) {
+        for pixel in bitmap.pixels.as_chunks::<4>().0.iter() {
             for channel in &pixel[..3] {
                 assert!(*channel <= pixel[3]);
             }

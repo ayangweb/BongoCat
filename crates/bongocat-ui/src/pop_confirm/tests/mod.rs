@@ -75,10 +75,11 @@ fn harness(cx: &mut TestAppContext, with_icon: bool) -> (Entity<Harness>, &mut V
 
 /// A harness whose trigger carries a focus handle.
 ///
-/// The popover binds Enter on its own context to "toggle the surface" and the
-/// buttons bind it to "press me", so which one wins where can only be asked
-/// of a trigger that can hold focus — which is what the model card's delete
-/// control is, and what a control that is only clickable is not.
+/// The popover toggles the surface on Enter while the trigger holds focus, and
+/// inside the content Enter reaches the focused decision instead, so which one
+/// answers can only be asked of a trigger that can hold focus — which is what
+/// the model card's delete control is, and what a control that is only
+/// clickable is not.
 struct KeyboardHarness {
     log: Rc<RefCell<Log>>,
     open: bool,

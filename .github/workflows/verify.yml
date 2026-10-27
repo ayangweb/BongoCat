@@ -63,7 +63,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      # `rust-toolchain.toml` pins 1.97.1, so a bare `cargo` here always resolves
+      # `rust-toolchain.toml` pins 1.99.1, so a bare `cargo` here always resolves
       # to the pinned toolchain and the stable check below silently repeated the
       # minimum one. `+stable` and a separate target directory make the canary
       # real, and keep the two compilers from invalidating each other's cache.
@@ -182,7 +182,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.1
           components: clippy, rustfmt
       - uses: taiki-e/install-action@just
         if: matrix.os == 'macos-latest'
@@ -256,7 +256,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.1
           components: clippy, rustfmt
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
@@ -707,7 +707,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.1
           components: clippy, rustfmt
       - uses: taiki-e/install-action@just
       - name: Cache Cargo artifacts
@@ -876,7 +876,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.1
           components: clippy, rustfmt
       - name: Restore Cargo artifacts
         # Read-only on purpose: this job adds two test harnesses and one overlay

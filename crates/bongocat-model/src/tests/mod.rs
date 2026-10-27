@@ -109,7 +109,9 @@ fn decode_fixture_hex(value: &str) -> Vec<u8> {
         "fixture hex must contain pairs"
     );
     value
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex pair"), 16)
                 .expect("valid fixture hex")

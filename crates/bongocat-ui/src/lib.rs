@@ -4,6 +4,10 @@
 //! modules. The protocol itself lives in `bongocat-ui-protocol`, which has no
 //! GPUI or operating-system dependency.
 
+// GPUI derives expand to `gpui::` paths; alias the Kit so those paths resolve
+// through the same facade the rest of the crate imports.
+extern crate gpui_kit as gpui;
+
 use std::time::{Duration, Instant};
 
 mod external_link;

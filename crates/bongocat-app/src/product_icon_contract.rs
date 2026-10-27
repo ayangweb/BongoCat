@@ -68,7 +68,7 @@ pub(crate) fn validate_ico(bytes: &[u8]) -> Result<(), &'static str> {
         return Err("ico directory exceeds file size");
     }
 
-    for entry in bytes[6..directory_end].chunks_exact(16) {
+    for entry in bytes[6..directory_end].as_chunks::<16>().0.iter() {
         let image_length = u32::from_le_bytes(
             entry[8..12]
                 .try_into()

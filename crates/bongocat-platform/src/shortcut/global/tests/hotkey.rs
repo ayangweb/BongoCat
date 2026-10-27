@@ -14,9 +14,9 @@ fn modifier_bits_and_letter_digit_keys_map_onto_global_hotkeys() {
     assert_eq!(hotkey("Shift+7").key, Code::Digit7);
     assert_eq!(hotkey("0").key, Code::Digit0);
     let meta_o = hotkey("Meta+O");
-    // `HotKey::new` normalizes META onto SUPER; both map to the
+    // `HotKey::new` normalizes SUPER onto META; both map to the
     // platform Cmd/Win modifier inside global-hotkey.
-    assert!(meta_o.mods.contains(Modifiers::SUPER));
+    assert!(meta_o.mods.contains(Modifiers::META));
     assert!(!meta_o.mods.contains(Modifiers::CONTROL));
 }
 

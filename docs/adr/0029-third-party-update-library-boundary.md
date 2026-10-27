@@ -35,7 +35,7 @@ detached Ed25519 清单签名、Development/Production channel 绑定、单调 `
 
 - `self_update 1.3.0`（MIT，Rust 1.88+）提供下载、tar/zip 解压、`zipsign` 归档签名校验、
   单文件自身替换、macOS `.app` 整包 rename 交换（含 stash 与 best-effort 回滚）以及进程重启。
-  项目 toolchain 为 `1.97.1`，满足要求；`deny.toml` 允许 MIT 且只允许 crates.io registry。
+  项目 toolchain 为 `1.99.1`，满足要求；`deny.toml` 允许 MIT 且只允许 crates.io registry。
 - `UpdateConfig` 与 `ReleaseUpdate` 均为 **sealed**，外部无法自行实现，只能通过后端 builder
   构造。接入自有发行源需实现其 `ReleaseSource` trait 并使用 `backends::custom`，或使用内置
   `github` / `gitlab` / `gitea` / `s3` / `manifest` 后端。

@@ -398,7 +398,9 @@ impl StatusIcon {
         }
         let mut base = None;
         let neutral = pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|pixel| pixel[3] > 16)
             .all(|pixel| {
                 let first = *base.get_or_insert(pixel[0]);

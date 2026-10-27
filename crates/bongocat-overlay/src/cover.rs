@@ -102,7 +102,11 @@ impl CapturedFrame {
         let mut pixels = vec![0_u8; pixel_len(width, height)?];
         for (row, destination) in pixels.chunks_exact_mut(row_bytes).enumerate() {
             let source = &bytes[row * row_pitch..row * row_pitch + row_bytes];
-            for (pixel, destination) in source.chunks_exact(4).zip(destination.chunks_exact_mut(4))
+            for (pixel, destination) in source
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(destination.as_chunks_mut::<4>().0.iter_mut())
             {
                 let alpha = pixel[3];
                 let (red, green, blue) = if alpha == 0 {
@@ -439,7 +443,14 @@ mod tests {
         assert_eq!(content_bounds(&frame), Some((4, 6, 8, 8)));
         let cropped = crop(&frame, content_bounds(&frame).expect("content"));
         assert_eq!((cropped.width, cropped.height), (8, 8));
-        assert!(cropped.pixels.chunks_exact(4).all(|pixel| pixel[3] == 255));
+        assert!(
+            cropped
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 255)
+        );
     }
 
     #[test]

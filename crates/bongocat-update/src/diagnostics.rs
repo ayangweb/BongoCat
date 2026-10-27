@@ -228,7 +228,7 @@ impl UpdateDiagnosticsTracker {
 
 fn increment(counter: &AtomicU64) {
     counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             Some(value.saturating_add(1))
         })
         .expect("update diagnostic counter update always succeeds");

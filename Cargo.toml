@@ -34,13 +34,13 @@ members = [
 [workspace.package]
 version = "2.4.0"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.99"
 license = "Apache-2.0"
 repository = "https://github.com/ayangweb/BongoCat"
 publish = false
 
 [workspace.dependencies]
-arboard = { version = "=3.6.1", default-features = false }
+arboard = { version = "=3.7.0", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
@@ -51,13 +51,13 @@ clap = { version = "=4.6.7", default-features = false, features = ["std", "help"
 dirs = "=7.0.0"
 embed-resource = "=3.0.12"
 flate2 = "=1.1.10"
-global-hotkey = "=0.8.0"
-gpui-kit = "=0.7.3"
-gpui-pre-reqwest-client = { version = "=0.3.9", default-features = false }
+global-hotkey = "=0.9.0"
+gpui-kit = { version = "=0.8.1", features = ["gpui-fast"] }
+gpui-pre-reqwest-client = { version = "=0.3.10", default-features = false }
 gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "c7e97f54e9e4b10ff89d3527560a22f6817329ea", default-features = false }
 rust-i18n = "=4.2.4"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-libc = "=0.2.190"
+libc = "=0.2.191"
 minisign = "=0.10.0"
 muda = { version = "=0.21.2", default-features = false }
 objc2 = "=0.6.5"
@@ -68,12 +68,12 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 opener = { version = "=0.9.0", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
 permission-flow = { git = "https://github.com/ayangweb/permission-flow", rev = "fad0354d960cf775ac332e6375916f7cc6424c7b" }
-plist = "=1.10.1"
+plist = "=1.10.3"
 proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
 rodio = { version = "=0.23.0", default-features = false, features = ["playback", "flac"] }
-schemars = { version = "=1.2.2", features = ["derive"] }
+schemars = { version = "=1.2.3", features = ["derive"] }
 semver = "=1.0.28"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
@@ -86,7 +86,7 @@ tray-icon = { version = "=0.26.1", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
 windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Environment", "Win32_System_Registry", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging"] }
-zip = { version = "=9.0.2", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2"] }
 
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-input = { path = "crates/bongocat-input" }

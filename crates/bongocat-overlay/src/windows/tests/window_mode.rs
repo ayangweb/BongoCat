@@ -95,11 +95,16 @@ fn window_mode_captures_opaque_picture_and_keeps_hwnd_on_model_switch() {
     }
     let rgb = capture_bitblt(hwnd, bounds.width, bounds.height);
     assert!(
-        rgb.chunks_exact(3).any(|pixel| pixel == [0, 255, 0]),
+        rgb.as_chunks::<3>()
+            .0
+            .iter()
+            .any(|pixel| pixel == &[0, 255, 0]),
         "BitBlt includes key background"
     );
     assert!(
-        rgb.chunks_exact(3)
+        rgb.as_chunks::<3>()
+            .0
+            .iter()
             .map(|pixel| [pixel[0], pixel[1], pixel[2]])
             .collect::<std::collections::BTreeSet<_>>()
             .len()

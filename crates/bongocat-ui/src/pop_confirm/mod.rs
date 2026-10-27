@@ -16,7 +16,6 @@
 use std::rc::Rc;
 
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::{
     Icon, Selectable, Sizable as _, Size,
     button::{Button, ButtonVariant, ButtonVariants as _},
@@ -230,13 +229,12 @@ pub(crate) fn sentence(id: &ElementId, title: &SharedString, icon: Option<(Icon,
 
 /// One of the surface's two decisions, wired to a press and to the keyboard.
 ///
-/// A press is the obvious path; the keyboard one is not. The popover binds Enter
-/// and Space on its own key context to "toggle the surface", and gpui dispatches
-/// an action *before* it dispatches `on_key_down`, so a key handler on the button
-/// would never run: the surface would close without reporting anything, which is
-/// indistinguishable from a decline. The action is claimed on the wrapper, which
-/// sits between the focused control and the popover's own handler — the only
-/// position in the dispatch path that is reached first.
+/// A press is the obvious path; the keyboard one is why the handler sits on the
+/// `Button` rather than the wrapper. GPUI Kit's popover deliberately leaves Enter
+/// and Space on its content to the focused control, and a focused `Button` turns
+/// those activation keys into its own click. A handler on the wrapper would only
+/// ever see a pointer press, so the keyboard would decline nothing and accept
+/// nothing.
 pub(crate) fn deciding_button<T: Into<ElementId>>(
     id: T,
     label: SharedString,
@@ -251,25 +249,12 @@ pub(crate) fn deciding_button<T: Into<ElementId>>(
     if let Some(variant) = variant {
         button = button.with_variant(variant);
     }
-    let on_click = {
+    let state = cx.entity();
+    let button = button.on_click(move |_: &gpui_kit::ClickEvent, window, cx| {
         let report = report.clone();
-        cx.listener(move |state, _: &gpui_kit::ClickEvent, window, cx| {
-            decide(state, window, cx, report.as_ref());
-        })
-    };
-    let on_confirm = {
-        let report = report.clone();
-        cx.listener(move |state, _: &Confirm, window, cx| {
-            cx.stop_propagation();
-            decide(state, window, cx, report.as_ref());
-        })
-    };
-    div()
-        .id(id)
-        .test_support()
-        .on_click(on_click)
-        .on_action(on_confirm)
-        .child(button)
+        state.update(cx, |state, cx| decide(state, window, cx, report.as_ref()));
+    });
+    div().id(id).test_support().child(button)
 }
 
 /// Report a decision and close the surface.

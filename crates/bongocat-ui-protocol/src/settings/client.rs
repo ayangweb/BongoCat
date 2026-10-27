@@ -1063,7 +1063,7 @@ impl SettingsClient {
     pub(crate) fn prepare_model_import(&self) -> Result<PreparedModelImport, SettingsError> {
         let operation_id = self
             .next_operation_id
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
             })
             .map(SettingsOperationId)

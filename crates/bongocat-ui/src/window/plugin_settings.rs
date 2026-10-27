@@ -35,7 +35,7 @@ fn status_icon_image(
     let mut tinted;
     let pixels = if let Some(tint) = tint {
         tinted = pixels.to_vec();
-        for pixel in tinted.chunks_exact_mut(4) {
+        for pixel in tinted.as_chunks_mut::<4>().0.iter_mut() {
             pixel[..3].copy_from_slice(&tint);
         }
         tinted.as_slice()

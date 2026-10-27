@@ -58,8 +58,10 @@ fn the_png_recode_preserves_every_visible_pixel_and_shrinks_the_file() {
     assert_eq!(before.dimensions(), after.dimensions());
     for (index, (before, after)) in before
         .as_raw()
-        .chunks_exact(4)
-        .zip(after.as_raw().chunks_exact(4))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(after.as_raw().as_chunks::<4>().0.iter())
         .enumerate()
     {
         if before[3] == 0 {

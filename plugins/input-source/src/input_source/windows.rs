@@ -534,7 +534,7 @@ fn rasterize(icon: HICON) -> Option<Vec<u8>> {
     let (width, height) = (width as u32, height as u32);
     let color = dib_bits(info.hbmColor, width, height, 32)?;
     let mask = dib_bits(info.hbmMask, width, height, 1)?;
-    let has_alpha = color.chunks_exact(4).any(|pixel| pixel[3] != 0);
+    let has_alpha = color.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0);
     let mut pixels = Vec::with_capacity((width * height * 4) as usize);
     for y in 0..height {
         for x in 0..width {
@@ -701,7 +701,7 @@ fn fit_icon(pixels: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
 /// Whether anything would be drawn. A fully transparent icon is not artwork and
 /// must not take the slot from the language badge.
 fn visible(pixels: &[u8]) -> bool {
-    pixels.chunks_exact(4).any(|pixel| pixel[3] != 0)
+    pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0)
 }
 
 /// The localized name behind an indirect resource reference such as
@@ -930,14 +930,14 @@ mod tests {
         // A 64x64 icon that is fully opaque red becomes a 32x32 icon that is
         // still fully opaque red: the box filter averages coverage, not color.
         let mut pixels = vec![0u8; 64 * 64 * 4];
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0.iter_mut() {
             pixel.copy_from_slice(&[255, 0, 0, 255]);
         }
 
         let fitted = fit_icon(&pixels, 64, 64).unwrap();
 
         assert_eq!(fitted.len(), 32 * 32 * 4);
-        for pixel in fitted.chunks_exact(4) {
+        for pixel in fitted.as_chunks::<4>().0.iter() {
             assert_eq!(pixel, &[255, 0, 0, 255]);
         }
     }
@@ -947,7 +947,7 @@ mod tests {
         // A boundary that splits a source box in half: the edge pixel keeps the
         // full hue at half alpha instead of fading towards black.
         let mut pixels = vec![0u8; 64 * 64 * 4];
-        for (index, pixel) in pixels.chunks_exact_mut(4).enumerate() {
+        for (index, pixel) in pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             let column = index % 64;
             pixel.copy_from_slice(&[0, 0, 255, if column < 31 { 255 } else { 0 }]);
         }

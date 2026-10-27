@@ -49,7 +49,7 @@ manifest 绕过。
 - `ed25519-dalek = 3.0.0`（BSD-3-Clause）提供纯 Rust Ed25519 严格验签；关闭默认 zeroize feature，
   只启用 verifier 所需 fast 表。维护仓库为 dalek-cryptography，Rust 1.85+。
 - `sha2 = 0.11.0`、`semver = 1.0.28` 和 `url = 2.5.8` 均为当前稳定版，许可证为
-  MIT OR Apache-2.0，支持项目 Rust 1.97。它们分别只位于 digest、版本和 HTTPS 解析边界。
+  MIT OR Apache-2.0，支持项目 Rust 1.99。它们分别只位于 digest、版本和 HTTPS 解析边界。
 - `bongocat-config` 是同一 workspace 的平台无关依赖，只提供不可变的 `StorageLayout` 与
   `BuildEnvironment`，用于把更新 sequence 固定在当前环境的 `updates/` 根；它不向 update
   verifier 暴露配置内容、平台 handle 或 UI 类型。

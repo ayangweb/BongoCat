@@ -94,6 +94,7 @@ fn only_a_failed_launch_reports_and_only_after_the_callback(cx: &mut TestAppCont
     );
 
     visual.run_until_parked();
+    visual.update(|window, cx| window.render_frame(cx));
     assert!(
         visual.update(|window, _| window.try_find("notification").is_some()),
         "a link the platform refused must tell the user"

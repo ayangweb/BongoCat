@@ -15,6 +15,10 @@
 > 后续修订（2026-10-12）：升级到 crates.io 精确 pin `=0.7.3`，GPUI 依赖随之上移到
 > `gpui-pre 0.3.9`（Zed 快照 `93d745668805029476e6d7fbb19652116fed51de`）。仍然只依赖同一个
 > registry 版本，不改变本 ADR 的替换边界。
+>
+> 后续修订（2026-10-27）：升级到 crates.io 精确 pin `=0.8.1`，并启用 `gpui-fast` 后端 feature
+> 用 wgpu 实现取代上游 GPUI。`gpui-pre` 家族上移到 `0.3.10`，工具链随之升到 Rust `1.99.1`。
+> 后端替换、迁移面与验证范围见 ADR-0100；只依赖同一个 registry 版本，本 ADR 的替换边界不变。
 
 ## 背景
 
@@ -24,16 +28,16 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 
 ## 决策
 
-- workspace 只直接依赖 `gpui-kit`，当前为 crates.io 精确 pin `=0.7.3`，并提交完整
-  `cargo update` 后的 `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、`gpui-component`
-  或独立 assets crate，也不使用其它 git source 混装 GPUI。
+- workspace 只直接依赖 `gpui-kit`，当前为 crates.io 精确 pin `=0.8.1` 并启用 `gpui-fast`
+  feature，并提交完整 `cargo update` 后的 `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、
+  `gpui-component` 或独立 assets crate，也不使用其它 git source 混装 GPUI。
 - 代码从 `gpui_kit` 根使用 GPUI 类型，从 `gpui_kit::platform`、`gpui_kit::component` 和
   `gpui_kit::assets` 使用对应层；组件初始化统一调用 `gpui_kit::init`。
-- 当前固定的 `gpui-kit` 使用 Apache-2.0 许可证。它的 GPUI 依赖
-  通过 crates.io `gpui-pre` 同步包交付；当前 lockfile 解析到 `0.3.9`（v0.7.3 起
-  `gpui-kit` 以 `=0.3.9` 精确 pin 该家族，`gpui-pre-reqwest` 仍为 `0.12.15`），包元数据声明
-  Zed `gpui 0.2.2` revision `93d745668805029476e6d7fbb19652116fed51de`。因此项目不再直接
-  覆写 GPUI，但也不把该传递包误记为 crates.io 包名 `gpui = 0.2.2`。
+- 当前固定的 `gpui-kit` 使用 Apache-2.0 许可证。启用 `gpui-fast` 后整套 GPUI 实现由 wgpu 后端的
+  `gpui-fast` 提供（`gpui_kit::*` 与 `gpui_kit::platform` 内部来源随之切换、import 面不变）；
+  `gpui-kit 0.8.1` 仍无条件携带 crates.io `gpui-pre 0.3.10` 家族，包元数据声明 Zed
+  `gpui 0.2.2`。因此项目不再直接覆写 GPUI，但也不把该传递包误记为 crates.io 包名
+  `gpui = 0.2.2`。
 - 2026-09-19：`gpui-kit` 由 `=0.6.1` 升级到 `=0.6.4`（v0.6.2 功能版与 v0.6.4 补丁的
   最新稳定版；无 breaking API 变化），升级范围仍在 `bongocat-ui` 与 `bongocat-app`，
   不改变本 ADR 的替换边界。
@@ -87,9 +91,22 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
   焦点环不再被列表裁剪。两者都是外观变化，不涉及项目代码的 API 迁移面——Dialog 入场动画、
   `TooltipDefaults`、DataTable `header_row_height`、Editor 补全、`InputState::add_selection`
   等均为项目未使用或纯增量能力，源码零改动。
+- 2026-10-27：`gpui-kit` 由 `=0.7.3` 升级到 `=0.8.1`，并启用默认关闭的 `gpui-fast` 后端
+  feature，用 wgpu 实现的 GPUI Fast 取代上游 GPUI。取舍、工具链提升到 Rust `1.99.1` 的原因与
+  验证范围见 ADR-0100；本 ADR 只记录替换边界继续成立：
+  - facade 仍是唯一入口：应用只直接依赖 `gpui-kit`；启用 `gpui-fast` 时 `gpui_kit::*` 改由
+    `gpui_fast` 提供、`gpui_kit::platform` 改由 `gpui_fast_platform` 提供，import 面不变。
+  - `gpui-kit 0.8.1` 仍**无条件**依赖 `gpui-pre 0.3.10`，所以升级前提是工具链满足其用到的
+    `result_option_map_or_default`（Rust 1.98 起稳定），workspace 工具链随之升到 `1.99.1`。
+  - `gpui-base 0.8` 把 Popover 内容的键上下文由 `Popover` 换成 `PopoverContent`，并把内容内的
+    Enter/Space 绑定改为 `NoAction`——内容内的激活交给聚焦控件。`PopConfirm` 的决策因此由包装层
+    的 `on_action` 改为按钮自身的 `on_click`（聚焦的 `Button` 会把 Enter/Space 转成自己的点击）。
+  - gpui 派生宏展开为 `gpui::` 路径，`bongocat-ui` 用 `extern crate gpui_kit as gpui;` 让这些
+    路径解析到同一 facade。
 - `gpui-fast` 是 v0.7.3 新增的可选 feature，启用后整套 GPUI 实现由 `gpui-pre` 换成 wgpu 后端的
-  `gpui-fast`。本 ADR 不启用它：后端替换需要单独的 ADR、双平台实机证据与设置窗口、IME、缩放、
-  窗口重建回归，不能作为依赖升级的附带结果。
+  `gpui-fast`。v0.7.3/v0.8.0 阶段本 ADR 不启用它：后端替换需要单独的 ADR、双平台实机证据与
+  设置窗口、IME、缩放、窗口重建回归，不能作为依赖升级的附带结果。该独立变更已在 2026-10-27
+  由 ADR-0100 落地。
 - GPUI Kit 默认 component/assets feature 正好覆盖当前设置窗口。tree-sitter、decimal、
   inspector 和 test-support 等可选 feature 不启用。其 native facade 还会引入配套 HTTP client
   与 TLS 传递依赖；这些依赖不得进入 BongoCat 的业务 API。

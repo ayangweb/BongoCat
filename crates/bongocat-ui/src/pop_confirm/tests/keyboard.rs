@@ -4,16 +4,15 @@ use super::*;
 
 /// The surface can be opened and answered without a mouse.
 ///
-/// Two Enter handlers meet inside this component: the popover's, which
-/// toggles the surface, and the one each decision claims, which answers it.
-/// The trigger is asked to open the surface the way a keyboard user would;
-/// the decisions are then asked to answer it the same way.
+/// The popover toggles the surface on Enter from its trigger; inside the
+/// content, Enter belongs to the focused control, and each decision's `Button`
+/// turns it into its own click. Every activation is a full press — down and up
+/// — because a button only activates on the key up.
 ///
-/// The decline half is the weaker of the two by nature: the popover's own
-/// handler closes the surface and reports the close, which is exactly what
-/// declining does, so that half pins "Enter does not accidentally accept".
-/// The accept half is the one with teeth — a surface that only closes
-/// reports nothing, so a decision that never runs cannot pass it.
+/// The decline half pins "Enter does not accidentally accept": declining closes
+/// the surface and reports nothing, so the count must stay zero. The accept half
+/// is the one with teeth — a surface that only closes reports nothing, so a
+/// decision that never runs cannot pass it.
 #[gpui_kit::test]
 fn the_keyboard_can_open_and_answer_the_surface(cx: &mut TestAppContext) {
     let (view, visual) = keyboard_harness(cx);
@@ -21,7 +20,7 @@ fn the_keyboard_can_open_and_answer_the_surface(cx: &mut TestAppContext) {
 
     let trigger_focus = view.read_with(visual, |view, _| view.trigger_focus.clone());
     visual.update(|window, cx| window.focus(&trigger_focus, cx));
-    visual.simulate_keystrokes("enter");
+    visual.update(|window, cx| window.press("enter", cx));
     assert!(
         visual.update(|window, _| window.try_find(part("surface")).is_some()),
         "Enter on the focused control must open the surface"
@@ -40,7 +39,7 @@ fn the_keyboard_can_open_and_answer_the_surface(cx: &mut TestAppContext) {
     // that has just opened is not in one yet.
     visual.update(|window, cx| window.render_frame(cx));
     visual.update(|window, cx| window.focus_next(cx));
-    visual.simulate_keystrokes("enter");
+    visual.update(|window, cx| window.press("enter", cx));
     assert_eq!(
         view.read_with(visual, |view, _| view.log.borrow().confirmed),
         0,
@@ -52,7 +51,7 @@ fn the_keyboard_can_open_and_answer_the_surface(cx: &mut TestAppContext) {
     );
 
     visual.update(|window, cx| window.focus(&trigger_focus, cx));
-    visual.simulate_keystrokes("enter");
+    visual.update(|window, cx| window.press("enter", cx));
     visual.update(|window, cx| window.render_frame(cx));
     assert!(
         visual.update(|window, _| window.try_find(part("surface")).is_some()),
@@ -60,7 +59,7 @@ fn the_keyboard_can_open_and_answer_the_surface(cx: &mut TestAppContext) {
     );
     visual.update(|window, cx| window.focus_next(cx));
     visual.update(|window, cx| window.focus_next(cx));
-    visual.simulate_keystrokes("enter");
+    visual.update(|window, cx| window.press("enter", cx));
     assert_eq!(
         view.read_with(visual, |view, _| view.log.borrow().confirmed),
         1,

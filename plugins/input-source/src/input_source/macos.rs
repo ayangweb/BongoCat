@@ -294,7 +294,7 @@ fn rasterize_icon(image: &NSImage) -> Option<Vec<u8>> {
             Some(&cg_image),
         );
         drop(context);
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0.iter_mut() {
             let alpha = u32::from(pixel[3]);
             for channel in &mut pixel[..3] {
                 *channel = (u32::from(*channel) * 255)
@@ -309,7 +309,9 @@ fn rasterize_icon(image: &NSImage) -> Option<Vec<u8>> {
         // platform produced an icon.
         flip_rows(&mut pixels);
         pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[3] != 0)
             .then_some(pixels)
     }

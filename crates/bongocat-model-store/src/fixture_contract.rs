@@ -89,7 +89,9 @@ fn decode_hex(value: &str) -> Vec<u8> {
     let value = value.trim().as_bytes();
     assert!(value.len().is_multiple_of(2), "fixture hex pairs");
     value
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex pair"), 16)
                 .expect("fixture hex")

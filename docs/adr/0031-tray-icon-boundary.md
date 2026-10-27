@@ -44,7 +44,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 
 - `tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）是 crates.io 当日最新稳定版，由 Tauri
   项目维护，同时支持 macOS `NSStatusItem` 与 Windows `Shell_NotifyIcon`，并提供图标、tooltip、
-  菜单、固定 GUID 和显隐 API。当前 toolchain 为 Rust 1.97.1，满足其 MSRV。
+  菜单、固定 GUID 和显隐 API。当前 toolchain 为 Rust 1.99.1，满足其 MSRV。
 - `muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+）是 crates.io 当日最新稳定版，由 Tauri 项目维护；
   `Menu`/`MenuItem`/`CheckMenuItem` 提供菜单构建与动态文本、状态更新，`ContextMenu` 提供 Windows
   HWND 与 macOS `NSView` 的右键弹出 API。它没有可设置的菜单标题，因此既有
