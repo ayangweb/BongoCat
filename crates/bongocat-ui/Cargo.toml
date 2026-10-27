@@ -15,7 +15,6 @@ bongocat-ui-protocol.workspace = true
 bongocat-platform.workspace = true
 bongocat-plugin-sdk.workspace = true
 bongocat-plugin-service.workspace = true
-dirs.workspace = true
 gpui-kit = { workspace = true, features = ["assets"] }
 image.workspace = true
 serde.workspace = true

@@ -7,6 +7,11 @@
 > `windows-input-spike`、`windows-gpui-spikes` 作业；本文第 6、7 条关于
 > spike 的取舍只作历史记录。
 
+> 后续修订（2026-10-27）：PR 验证不再运行 `packaging-smoke`。Bundle、DMG、
+> LaunchServices 与安装包的端到端校验由 tag 或手动触发的 `app-release.yml`
+> 在真实发布构建上完成；PR 保留打包入口的静态契约测试。发布 workflow 会
+> 重新执行 `just build`，因此 PR 删除的是一份不会进入发布产物的重复构建。
+
 ## 背景
 
 `.github/workflows/verify.yml` 此前只有一个 `Test workspace (${{ matrix.os }})` 作业
@@ -64,18 +69,18 @@ PR #1061 的 `product-smoke` 日志直接写了 `Cache not found`，尽管 maste
 `pull_request`**——它读的是 YAML 解析结果而不是文件文本，所以记录这段历史的注释可以照常
 提到 `push`。将来若要重新加回，必须是一个有意识的决定。
 
-### 2. `Test workspace` 拆成四个作业，按产物而非按平台切分
+### 2. `Test workspace` 拆成三个作业，按产物而非按平台切分
 
 | 作业 | 平台 | 内容 |
 | --- | --- | --- |
 | `workspace` | Windows + macOS | fmt、clippy、`cargo test --workspace`、`cargo check --workspace --release`、production feature check、provenance |
 | `product-smoke` | Windows + macOS | `bongocat-app` release 构建与全部默认 feature 的 product/storage smoke |
-| `packaging-smoke` | macOS | `just build` 的两个 bundle smoke 与未知参数拒绝 |
 | `windows-platform-smoke` | Windows | startup item、missing-release recovery、D3D11 模型切换 |
 
 切分依据是**产物是否共享**，不是步骤数量：`just build` 为显式 target triple 构建，与
 `product-smoke` 不共享任何 artifact；storage smoke 必须跑在默认 feature 构建之后，因此
-留在同一个作业里。四个作业的验证集合与拆分前逐条对应，没有任何 smoke 被删除。
+留在同一个作业里。`packaging-smoke` 后来整体移出 PR：它的真实发布构建与发布
+workflow 重复，保留的静态打包契约仍由 `fixtures` 执行。
 
 ### 3. storage-injection 构建与默认构建共用 target 目录
 
@@ -95,7 +100,6 @@ storage 构建之前。
 | `toolchain` | `target/toolchain-stable/`、`target/toolchain-minimum/` | 读写 |
 | `workspace` | `target/debug/`、`target/release/`（只含 `cargo check` 的 metadata） | 读写 |
 | `product-smoke` | `target/release/`（含 codegen） | 读写 |
-| `packaging-smoke` | `target/*/release/`（显式 triple 的产物） | 读写 |
 | `windows-platform-smoke` | `target/release/` | **只读**（`actions/cache/restore`） |
 
 `workspace` 的 `target/release/` 只含两个 `cargo check --release` 产生的 metadata，几百 MB，
@@ -136,14 +140,14 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
    `workspace` 的 `cargo check --workspace --release` 与 product smoke 的真实 release 构建覆盖。
    `spikes/model-package` 的 release check 保留：它没有 smoke，那个检查是它唯一的 release
    信号。`spikes/input-windows` 的两条 `--release` 压力运行也保留，那是 issue #47 的证据。
-3. **packaging smoke 的第二次 `just build`。** 两个 bundle 的差异只有编译进去的
-   `BUILD_ENVIRONMENT` 常量与 bundle 内 provenance 的 `environment` 字段：reopen smoke 断言的
-   是 bundle id、图标、签名和 LaunchServices 握手，两项都不读；environment 到 feature 的映射
-   已由 `tools/tests/test_packaging_contract.py` 静态断言。留下的是"CI 不再端到端启动一个
-   Development bundle"——"bundle 能在 runner 上启动"仍由同作业的 startup-item smoke 覆盖，
-   它按 ADR-0051 必须使用 Production bundle。
+3. **打包 job 的第二次 `just build`。** 先把 Development bundle 的重复构建合并到
+   Production bundle；后续又把整个 PR 打包 job 移出。两个 bundle 的差异只有编译进去的
+   `BUILD_ENVIRONMENT` 常量与 bundle 内 provenance 的 `environment` 字段；environment 到
+   feature 的映射已由 `tools/tests/test_packaging_contract.py` 静态断言。发布 workflow
+   仍会为真实 tag 构建并校验 bundle、DMG 和安装包。
 
-删除 1 与 2 不在关键路径上，只减分钟；删除 3 把 packaging 作业从 18 分钟降到约 14 分钟。
+删除 1 与 2 不在关键路径上，只减分钟；删除 3 先缩短打包作业，随后移除整个 PR
+打包流程，减少一套重复的完整构建。
 
 ### 8. 失败证据契约从固定数字改为按作业推导
 
@@ -194,7 +198,7 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
 - 拆分后的作业各自 `checkout` 并各自 restore 缓存，runner 分钟数会上升；换来的是墙钟
   时间和每个 PR 的反馈速度。
 - 只改文档的改动只跑 `fixtures`，约 16 秒（见决策第 9 条）。
-- 14 个作业各自持有失败证据上传，`retention-days: 7` 与脱敏工具不变。
+- 每个保留的作业各自持有失败证据上传，`retention-days: 7` 与脱敏工具不变。
 - 本 ADR 只改变 CI 的执行方式。`just check`、`just build` 与本地开发流程不变。
 
 ## 已接受的残余风险
@@ -209,8 +213,9 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
    `target/release`（那两个 release check 的 metadata，值 3.3 分钟）。
 3. **master 没有任何独立验证**：只有 PR 触发，master 也没有分支保护。绕过 PR 直接推
    master 不会被验证。这是"只保留 PR 触发"的直接代价。
-4. **`packaging-smoke` 不与 `product-smoke` 共享缓存**：它为显式 triple 单独构建，冷跑时
-   多花约 9 分钟，但该作业不在关键路径上。
+4. **PR 不再端到端验证 macOS bundle、DMG 与 LaunchServices**：真实发布构建只在
+   `app-release.yml` 运行，PR 的残余风险由打包静态契约与发布前实际构建兜底。若发布
+   workflow 失败，应在对应发布任务中单独处理，而不是恢复每个 PR 的全量打包。
 
 ## 验证
 

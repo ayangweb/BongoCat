@@ -399,16 +399,21 @@ jobs:
           }
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
-        # First step to link `bongocat-app` in release in this job, so it pays
-        # for the whole build before its own eight-second run: 8.2 minutes of a
-        # 10 minute budget on a warm cache, and a cold one has no headroom left
-        # at all.
         timeout-minutes: 30
-        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
+        run: |
+          cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release
+          target/release/bongocat-app --run-seconds 8 --settings-window-smoke --models-page-smoke
       - name: Smoke hidden overlay model switching
         if: matrix.os != 'ubuntu-latest'
         timeout-minutes: 5
-        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
+        shell: bash
+        run: |
+          cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release
+          if [ -f target/release/bongocat-app.exe ]; then
+            target/release/bongocat-app.exe --run-seconds 20 --hidden-model-switch-smoke
+          else
+            target/release/bongocat-app --run-seconds 20 --hidden-model-switch-smoke
+          fi
       - name: Smoke Windows single-instance wake
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -548,11 +553,16 @@ jobs:
           }
       - name: Smoke native system menu lifecycle
         if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
-        # `cargo run` may still have work to do before the bounded ten-second run
-        # starts, so this needs a build's budget rather than the two minutes the
-        # steps that only execute an already-built binary get.
+        # The release binary was built by an earlier step; this only runs it.
+        shell: bash
         timeout-minutes: 10
-        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+        run: |
+          cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release
+          if [ -f target/release/bongocat-app.exe ]; then
+            target/release/bongocat-app.exe --run-seconds 10 --system-menu-smoke
+          else
+            target/release/bongocat-app --run-seconds 10 --system-menu-smoke
+          fi
       - name: Build isolated storage smoke executable
         if: matrix.os != 'ubuntu-latest'
         # `storage-test-injection` is a leaf feature of `bongocat-app`, so this
@@ -694,179 +704,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The two packaging smokes each run `just build`, which releases the whole
-  # application for an explicit target triple. That is 13 minutes of the macOS
-  # chain and it shares no artifact with the product smokes, so it runs beside
-  # them instead of after them.
-  packaging-smoke:
-    name: Smoke macOS packaging
-    if: needs.filter-paths.outputs.docs-only != 'true'
-    needs: filter-paths
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.97.1
-          components: clippy, rustfmt
-      - uses: taiki-e/install-action@just
-      - name: Cache Cargo artifacts
-        uses: actions/cache@v6
-        with:
-          # `just build` releases for an explicit target triple, so this job owns
-          # `target/<triple>/` and nothing else. Caching the whole `target/`
-          # would store a second copy of the release tree the smoke jobs own.
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            target/*/release/
-          key: ${{ runner.os }}-packaging-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-packaging-
-      - name: Reject an unknown macOS packaging environment
-        shell: bash
-        run: |
-          if just build --environment unknown --formats app; then
-            echo 'the packaging entry point accepted an unknown build environment' >&2
-            exit 1
-          fi
-          if just build --formats dmg2; then
-            echo 'the packaging entry point accepted an unknown artifact format' >&2
-            exit 1
-          fi
-      - name: Smoke macOS startup item lifecycle
-        run: |
-          just build --formats app
-          app_path=target/package/BongoCat.app
-          install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
-          installed_app="$install_root/BongoCat.app"
-          stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
-          stderr_path="$RUNNER_TEMP/macos-startup-item.stderr.log"
-          cleanup() {
-            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-              -u "$installed_app" >/dev/null 2>&1 || true
-            rm -rf "$install_root"
-          }
-          trap cleanup EXIT
-          ditto "$app_path" "$installed_app"
-          codesign --verify --deep --strict "$installed_app"
-          rm -f "$stdout_path" "$stderr_path"
-          open \
-            -n \
-            -o "$stdout_path" \
-            --stderr "$stderr_path" \
-            "$installed_app" \
-            --args \
-            --startup-item-smoke
-          restored=false
-          for _ in {1..120}; do
-            if grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"; then
-              restored=true
-              break
-            fi
-            if grep -Fq 'Error:' "$stderr_path"; then
-              break
-            fi
-            sleep 0.5
-          done
-          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-          grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
-          test "$restored" = true
-      - name: Smoke macOS application reopen lifecycle
-        # Reuses the Production bundle the startup-item step built, rather than
-        # releasing a second one for `--environment development`. The two
-        # bundles differ only in the compiled `BUILD_ENVIRONMENT` constant and
-        # the `environment` field of the bundle's provenance record: the reopen
-        # assertions below are the bundle id, the icon, the signature and the
-        # LaunchServices handshake, none of which read either, and
-        # `tools/tests/test_packaging_contract.py` already pins the
-        # environment-to-feature mapping. What this gave up is launching a
-        # Development bundle end to end in CI; that a bundle runs at all is still
-        # covered here, because the startup-item smoke above runs this one.
-        timeout-minutes: 30
-        run: |
-          app_path=target/package/BongoCat.app
-          if [ ! -d "$app_path" ]; then
-            echo "the packaging smoke left no bundle to reopen" >&2
-            exit 1
-          fi
-          stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
-          stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
-          rm -f "$stdout_path" "$stderr_path"
-          open \
-            -n \
-            -W \
-            -o "$stdout_path" \
-            --stderr "$stderr_path" \
-            "$app_path" \
-            --args \
-            --run-seconds 10 \
-            --application-reopen-smoke &
-          open_waiter=$!
-
-          ready=0
-          for _ in $(seq 1 150); do
-            if grep -Fq 'bongocat-app: application-reopen primary ready' "$stdout_path" 2>/dev/null; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$open_waiter" 2>/dev/null; then
-              break
-            fi
-            sleep 0.1
-          done
-          if [ "$ready" -ne 1 ]; then
-            cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
-            wait "$open_waiter" || true
-            printf '%s\n' 'macOS product did not reach the application-reopen gate' >&2
-            exit 1
-          fi
-
-          open "$app_path"
-          sleep 0.5
-          pid_path="$RUNNER_TEMP/macos-application-reopen.pids"
-          pgrep -f "$app_path/Contents/MacOS/bongocat-app" > "$pid_path" || true
-          process_count=$(wc -l < "$pid_path" | tr -d ' ')
-          if [ "$process_count" -ne 1 ]; then
-            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
-            wait "$open_waiter" || true
-            printf 'LaunchServices observed %s BongoCat processes after reopen\n' "$process_count" >&2
-            exit 1
-          fi
-
-          set +e
-          wait "$open_waiter"
-          open_status=$?
-          set -e
-          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-          if [ "$open_status" -ne 0 ]; then
-            exit "$open_status"
-          fi
-          grep -Fq \
-            'bongocat-app: application reopen restored the settings window' \
-            "$stdout_path"
-          test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
-            'com.ayangweb.bongo-cat'
-          test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
-            'logo-macos.icns'
-          cmp \
-            resources/icons/logo-macos.icns \
-            "$app_path/Contents/Resources/logo-macos.icns"
-          codesign --verify --deep --strict "$app_path"
-      - name: Collect redacted failure evidence
-        if: ${{ failure() }}
-        shell: bash
-        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted failure evidence
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: failure-evidence-packaging
-          path: ${{ runner.temp }}/bongocat-failure-evidence
-          if-no-files-found: error
-          retention-days: 7
-
   windows-platform-smoke:
     name: Smoke Windows platform release behaviour
     if: needs.filter-paths.outputs.docs-only != 'true'
@@ -896,6 +733,11 @@ jobs:
         run: cargo test --manifest-path Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
       - name: Smoke formal Windows missing-release recovery
         run: cargo test --manifest-path Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
+      # The retired `windows-input-spike` job was the only caller of this
+      # example. Keep the WGI context startup/shutdown evidence on the real
+      # Windows runner without reviving the spike workspace.
+      - name: Smoke Windows gilrs gamepad context startup and shutdown (no-device)
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-platform --example gilrs_gamepad_smoke
       - name: Smoke transactional Windows D3D11 model switching
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
       - name: Collect redacted failure evidence

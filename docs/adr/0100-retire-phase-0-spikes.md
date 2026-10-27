@@ -14,7 +14,7 @@ workspace proceed while those prototypes stayed as separate oracles.
 
 By the 2.4.0 product the same behaviour lives in the product crates: runtime,
 config, model store, input, UI and overlay own the contracts and are covered by
-`cargo test --workspace`, and the `product-smoke`, `packaging-smoke` and
+`cargo test --workspace`, and the `product-smoke` and
 `windows-platform-smoke` jobs exercise the real binaries on both shipped
 platforms. The spikes' only remaining role was duplicate maintenance — every
 dependency bump, config field and key-image rename had to be mirrored — plus
@@ -41,5 +41,8 @@ Delete `spikes/` and all of its wiring:
 - No job runs on Linux any more. Linux was never a shipped target and the
   product workspace does not build there; the platform-neutral contracts are
   covered by the `workspace` job on macOS and Windows.
+- The no-device WGI startup/shutdown evidence that ran inside
+  `windows-input-spike` via `bongocat-platform --example gilrs_gamepad_smoke`
+  moved to `windows-platform-smoke`, on the same Windows runner.
 - Older ADRs (0009, 0038, 0039, 0052, 0054, 0067, 0070, 0074, 0079, 0085) still
   name the retired paths as the record of the decisions taken at the time.

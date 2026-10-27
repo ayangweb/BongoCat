@@ -1087,7 +1087,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1158,7 +1157,6 @@ dependencies = [
  "bongocat-plugin-sdk",
  "bongocat-plugin-service",
  "bongocat-ui-protocol",
- "dirs 7.0.0",
  "gpui-kit",
  "image",
  "serde",
