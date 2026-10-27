@@ -51,10 +51,10 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
             exit 1
           fi
-          # A release is titled after the tag it produces, so the history reads the way
-          # the release page does and a version bump is findable without knowing the
-          # version in advance. Checked before the build because the build is the
-          # expensive part of this job, and a mistitled release should cost seconds.
+          # The release commit is titled after the tag it produces, so the history
+          # reads the way the release page does and a version bump is findable without
+          # knowing the version in advance. Checked before the build because the build
+          # is the expensive part of this job, and a mistitled commit should cost seconds.
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             subject=$(git log -1 --format=%s)
             if [ "$subject" != "chore: release $GITHUB_REF_NAME" ]; then
@@ -383,6 +383,6 @@ jobs:
           ls -la artifacts
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
+            --title "BongoCat ${GITHUB_REF_NAME#v}" \
             --notes-file release-notes.md \
             artifacts/*
