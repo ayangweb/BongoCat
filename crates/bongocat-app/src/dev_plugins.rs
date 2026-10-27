@@ -3,11 +3,11 @@ use bongocat_config::BuildEnvironment;
 use bongocat_plugin_service::PluginSource;
 use std::path::Path;
 
-/// Development-only directory containing the independent repository's packages.
+/// Development-only directory containing locally built plugin packages.
 ///
 /// Production never reads a local directory. Development may name the output of
-/// `BongoCat-Plugins`' packaging tool. With no override, `just dev` prepares the
-/// repository clone and catalog under `target/plugin-dev`.
+/// the in-repository packaging tool. With no override, `just dev` builds the
+/// host-platform packages and catalog under `target/plugin-dev`.
 const DEVELOPMENT_DIRECTORY_VARIABLE: &str = "BONGOCAT_PLUGIN_DEV_DIRECTORY";
 
 pub(crate) fn source() -> PluginSource {
@@ -28,8 +28,7 @@ pub(crate) fn source() -> PluginSource {
             }
         }
         BuildEnvironment::Production => PluginSource::Production {
-            owner: bongocat_update::PLUGIN_REPOSITORY_OWNER.into(),
-            repository: bongocat_update::PLUGIN_REPOSITORY_NAME.into(),
+            catalog_url: bongocat_update::PLUGIN_CATALOG_URL.into(),
             public_key: bongocat_update::PLUGIN_RELEASE_SIGNING_KEY.into(),
             platform: bongocat_update::HOST_TARGET_TRIPLE
                 .manifest_platform()
@@ -51,13 +50,14 @@ mod tests {
                 assert!(packages.ends_with("target/plugin-dev/plugins"));
             }
             PluginSource::Production {
-                owner,
-                repository,
+                catalog_url,
                 platform,
                 public_key,
             } => {
-                assert_eq!(owner, "ayangweb");
-                assert_eq!(repository, "BongoCat-Plugins");
+                assert_eq!(
+                    catalog_url,
+                    "https://raw.githubusercontent.com/ayangweb/BongoCat/plugin-catalog/plugins.json"
+                );
                 assert!(!platform.is_empty());
                 assert!(!public_key.is_empty());
                 assert_ne!(

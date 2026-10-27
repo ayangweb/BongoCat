@@ -1,0 +1,342 @@
+name: Plugin Release
+
+on:
+  push:
+    tags:
+      - "plugins-v*"
+
+# Application and plugin publication never edit the same release state at once.
+concurrency:
+  group: release-publishing
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate plugin release metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - name: Validate tag, ancestry, version, and changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^plugins-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-.+][0-9A-Za-z.+-]+)?$ ]] ||
+            { echo "::error::$tag is not a plugins-v SemVer tag" >&2; exit 1; }
+          version="${tag#plugins-v}"
+          test "$(git rev-list -n 1 "$tag")" = "$(git rev-parse HEAD)" ||
+            { echo "::error::tag must point at the checked-out commit" >&2; exit 1; }
+          git fetch --no-tags --force origin \
+            "+refs/heads/master:refs/remotes/origin/master"
+          git merge-base --is-ancestor "$tag" refs/remotes/origin/master ||
+            { echo "::error::tag must be reachable from master" >&2; exit 1; }
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists; plugin releases are immutable" >&2
+            exit 1
+          fi
+          python3 tools/release_notes.py \
+            --root . \
+            --tag "v$version" \
+            --output plugin-release-notes.md
+          test -s plugin-release-notes.md
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "PLUGIN_VERSION=$version" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate format, lints, tests, and dependency policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo clippy --locked -p bongocat-plugin-sdk -p bongocat-plugin-packaging --all-targets -- -D warnings
+          cargo test --locked -p bongocat-plugin-sdk -p bongocat-plugin-packaging
+          python3 -m unittest discover -s tools/tests -p 'test_*.py'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-release-metadata
+          path: plugin-release-notes.md
+          if-no-files-found: error
+
+  windows-x64:
+    name: Build Windows x64 plugins
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install the target for the pinned toolchain
+        run: rustup target add x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@just
+      - run: just plugin-build x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins-windows-x86_64
+          path: target/plugins/x86_64-pc-windows-msvc/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: Build macOS ${{ matrix.label }} plugins
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Apple Silicon
+            runs_on: xcode-27
+            triple: aarch64-apple-darwin
+            platform: macos-aarch64
+          - label: Intel
+            runs_on: macos-26-intel
+            triple: x86_64-apple-darwin
+            platform: macos-x86_64
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      - name: Install the target for the pinned toolchain
+        run: rustup target add ${{ matrix.triple }}
+      - uses: taiki-e/install-action@just
+      - run: just plugin-build ${{ matrix.triple }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins-${{ matrix.platform }}
+          path: target/plugins/${{ matrix.triple }}/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Sign and publish the plugin release
+    needs:
+      - validate
+      - windows-x64
+      - macos
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - name: Require the plugin-owned signing key
+        env:
+          PLUGIN_SIGNING_PRIVATE_KEY: ${{ secrets.PLUGIN_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${PLUGIN_SIGNING_PRIVATE_KEY:-}" ||
+            { echo "::error::PLUGIN_SIGNING_PRIVATE_KEY is required" >&2; exit 1; }
+          test -s release-trust/plugin.pub
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plugins-*
+          path: plugin-inputs
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-release-metadata
+          path: metadata
+      - name: Find the previous immutable plugin release
+        id: previous
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          previous_tag=$(
+            gh release list \
+              --repo "$GITHUB_REPOSITORY" \
+              --limit 100 \
+              --json tagName,isDraft,publishedAt \
+              --jq '[.[] | select(.isDraft == false and (.tagName | startswith("plugins-v")))]
+                    | sort_by(.publishedAt)
+                    | reverse
+                    | .[0].tagName // ""'
+          )
+          echo "PREVIOUS_TAG=$previous_tag" >> "$GITHUB_ENV"
+          if [ -n "$previous_tag" ]; then
+            mkdir -p previous
+            python3 tools/fetch_release_assets.py \
+              --repository "$GITHUB_REPOSITORY" \
+              --tag "$previous_tag" \
+              --output previous
+            test -s previous/release-state.json
+          elif [ "$RELEASE_TAG" = "plugins-v1.0.0" ]; then
+            echo "initializing the first plugin release from current sources"
+          else
+            echo "::error::the first release must be plugins-v1.0.0" >&2
+            exit 1
+          fi
+      - name: Assemble the immutable plugin matrix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          arguments=(
+            --root .
+            --tag "$RELEASE_TAG"
+            --previous previous
+            --output plugin-assets
+            --release-url "$release_url"
+            --platform macos-aarch64 plugin-inputs/plugins-macos-aarch64
+            --platform macos-x86_64 plugin-inputs/plugins-macos-x86_64
+            --platform windows-x86_64 plugin-inputs/plugins-windows-x86_64
+          )
+          cargo run --locked -p bongocat-plugin-packaging -- catalog assemble "${arguments[@]}"
+      - name: Sign and verify the plugin catalog
+        env:
+          PLUGIN_SIGNING_PRIVATE_KEY: ${{ secrets.PLUGIN_SIGNING_PRIVATE_KEY }}
+          PLUGIN_SIGNING_KEY_PASSWORD: ${{ secrets.PLUGIN_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cargo run --locked -p bongocat-plugin-packaging -- catalog sign \
+            --catalog plugin-assets/catalog.json \
+            --output plugin-assets/plugins.json \
+            --public-key release-trust/plugin.pub
+          cargo run --locked -p bongocat-plugin-packaging -- verify \
+            --catalog plugin-assets/plugins.json \
+            --state plugin-assets \
+            --public-key release-trust/plugin.pub
+          test -s plugin-assets/release-state.json
+      - name: Create a non-latest draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "BongoCat Plugin Bundle ${RELEASE_TAG#plugins-v}" \
+            --notes-file metadata/plugin-release-notes.md \
+            --draft \
+            --latest=false \
+            plugin-assets/*.zip \
+            plugin-assets/*.png \
+            plugin-assets/release-state.json \
+            plugin-assets/plugins.json
+      - name: Verify the draft before exposing it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for required in plugins.json release-state.json; do
+            grep -Fxq "$required" <<<"$assets"
+          done
+          for platform in macos-aarch64 macos-x86_64 windows-x86_64; do
+            grep -q -- "-${platform}.zip$" <<<"$assets"
+          done
+          mkdir -p published-verify
+          python3 tools/fetch_release_assets.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --output published-verify \
+            --draft
+          cargo run --locked -p bongocat-plugin-packaging -- verify \
+            --catalog published-verify/plugins.json \
+            --state published-verify \
+            --public-key release-trust/plugin.pub
+          for asset in plugin-assets/*.zip; do
+            name=${asset##*/}
+            test "$(shasum -a 256 "$asset" | cut -d ' ' -f 1)" = \
+                 "$(shasum -a 256 "published-verify/$name" | cut -d ' ' -f 1)"
+          done
+      - name: Publish without changing repository Latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest=false
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          if [[ "$latest" == plugins-v* || "$latest" != v* ]]; then
+            echo "::error::plugin publication changed repository Latest to $latest" >&2
+            exit 1
+          fi
+      - name: Verify every published download and digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          python3 tools/fetch_release_assets.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --output downloads
+          cargo run --locked -p bongocat-plugin-packaging -- verify \
+            --catalog downloads/plugins.json \
+            --state downloads \
+            --public-key release-trust/plugin.pub
+          for asset in plugin-assets/*.zip; do
+            name=${asset##*/}
+            test "$(shasum -a 256 "$asset" | cut -d ' ' -f 1)" = \
+                 "$(shasum -a 256 "downloads/$name" | cut -d ' ' -f 1)"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-plugin-catalog
+          path: plugin-assets/plugins.json
+          if-no-files-found: error
+
+  catalog:
+    name: Update the signed plugin catalog branch
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: master
+      - name: Commit only the current signed plugin catalog
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin plugin-catalog >/dev/null; then
+            git fetch origin plugin-catalog
+            git switch --force-create plugin-catalog FETCH_HEAD
+          else
+            git switch --orphan plugin-catalog
+            git rm -rf --ignore-unmatch .
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-plugin-catalog
+          path: verified-catalog
+      - name: Publish the catalog branch
+        run: |
+          set -euo pipefail
+          cp verified-catalog/plugins.json plugins.json
+          git add plugins.json
+          if git diff --cached --quiet; then
+            echo "signed plugin catalog is already current"
+          else
+            git commit -m "chore: publish ${GITHUB_REF_NAME} plugin catalog"
+            git push origin HEAD:plugin-catalog
+          fi

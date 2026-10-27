@@ -7,7 +7,7 @@
 > UI 文案的书写规范另见 `docs/localization-copy-conventions.md`；该文 §1.2 明确把
 > `CHANGELOG` 排除在自己的适用范围之外，所以两套规范互不覆盖。
 
-适用范围：两份应用 CHANGELOG；插件仓库维护自己的 CHANGELOG。§1 的固定词表只约束
+适用范围：两份应用 CHANGELOG 与两份插件 CHANGELOG。§1 的固定词表只约束
 **版本条目内**的变更分段标题，
 版本标题（`## <version> - <date>`）另见 §2。
 
@@ -150,7 +150,7 @@ chore: release v2.0.0
 
 ### 3.1 怎么强制
 
-`.github/workflows/release.yml` 的「Check the tag against the single product version
+`.github/workflows/app-release.yml` 的「Check the tag against the single product version
 source」步骤在**构建之前**就断言这件事，所以标题写错只需几秒就失败，而不是等三个平台
 白跑二十分钟：
 

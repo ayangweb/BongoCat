@@ -26,92 +26,19 @@ just build
 just schema
 ```
 
-`just dev` 和 `just dev-smoke` 也会准备官方插件：优先使用
-`BONGOCAT_PLUGINS_ROOT` 指向的本地插件仓库，否则首次运行时把
-`https://github.com/ayangweb/BongoCat-Plugins` 克隆到 `target/plugin-dev`，检出
-`Cargo.toml` 中 SDK 所固定的 revision，只构建当前主机平台，并把生成的本地目录交给应用。
-自动管理的克隆必须保持干净。要在已有插件仓库上开发（包括未提交改动），可显式指定路径：
+官方插件源码、SDK 和插件发布工具都是本仓库的 workspace 成员。`just dev` 和
+`just dev-smoke` 会从 `plugins/` 构建当前主机平台的插件包到 `target/plugin-dev`；
+`just plugin-tests` 则运行包含真实插件进程的工作区测试。
 
-```text
-BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
-```
+### 插件改动与发布
 
-使用 `just plugin-tests` 会在同一插件仓库上运行完整工作区测试，并启用需要真实插件
-进程的用例；不设置插件仓库时，这些用例会显式跳过。需要验证插件仓库中尚未提交的
-改动时，把 `BONGOCAT_PLUGINS_ROOT` 指向同一目录。
+插件行为、界面、SDK 或进程协议的改动都在本仓库完成，并同时补充宿主集成测试。插件仍运行
+在独立进程，应用构建不会链接插件代码，也不会把插件资源打进安装包。
 
-插件构建沿用同一套 Rust 工具链和 `just`，编排脚本还需要 Python 3 与 Git。该开发流程
-不发布插件、不使用插件签名私钥，也不依赖主应用 Release。
-
-### 插件仓库与联合调试
-
-官方插件和插件 SDK 由独立的
-[`BongoCat-Plugins`](https://github.com/ayangweb/BongoCat-Plugins) 仓库维护。只修改插件实现、
-插件界面或插件业务逻辑时，请在插件仓库创建分支和拉取请求，不要把插件源码复制回本仓库，也
-不需要提升本仓库的 SDK revision。
-
-有上游写权限的维护者可以直接克隆 `ayangweb/BongoCat-Plugins`。其他开发者需要先在 GitHub
-上 fork `BongoCat-Plugins`，然后克隆自己的 fork，并把上游添加为 remote：
-
-```text
-git clone https://github.com/<your-name>/BongoCat-Plugins.git
-cd BongoCat-Plugins
-git remote add upstream https://github.com/ayangweb/BongoCat-Plugins.git
-git fetch upstream
-git switch -c fix/plugin-topic upstream/master
-```
-
-修改并验证后，先推送到自己的 fork，再向上游仓库提交拉取请求：
-
-```text
-git push -u origin fix/plugin-topic
-```
-
-在 GitHub 上从 `<your-name>:fix/plugin-topic` 向 `ayangweb/BongoCat-Plugins:master`
-创建拉取请求。不要把提交直接推到上游，也不要通过拉取请求修改上游的 `master`。
-
-主应用仓库遵循同样的权限规则：维护者可以直接克隆上游；其他开发者需要 fork
-`ayangweb/BongoCat`，从上游 `master` 建分支，推送到自己的 fork 后向上游提交拉取请求。
-
-#### 只修改插件实现
-
-这类改动不需要修改主应用依赖。把主应用仓库中的插件路径指向自己的插件 fork checkout，
-即可同时使用未提交的插件改动进行调试和完整插件测试：
-
-```text
-BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just dev
-BONGOCAT_PLUGINS_ROOT=/path/to/BongoCat-Plugins just plugin-tests
-```
-
-显式指定的插件 checkout 可以包含未提交改动；由 `just dev` 自动管理的
-`target/plugin-dev/BongoCat-Plugins` 必须保持干净，并固定在 `Cargo.toml` 声明的 SDK revision。
-
-#### 修改 SDK、进程协议或宿主接口
-
-这类改动会同时影响插件仓库和主应用，需要两个拉取请求，并先合并插件仓库的改动。插件拉取请求
-尚未合并时，可以在主应用本地临时把 SDK 依赖指向插件 checkout，用于验证两端协议是否一致：
-
-```toml
-[workspace.dependencies]
-bongocat-plugin-sdk = { path = "../BongoCat-Plugins/crates/bongocat-plugin-sdk" }
-```
-
-这里的路径是主应用仓库内的本地路径示例，实际路径由开发者自行调整。也可以临时指向贡献者 fork
-的完整 commit。此类依赖修改和对应的 `Cargo.lock` 变化只用于本地联调，不得提交到主应用拉取
-请求。
-
-插件仓库改动合并后，在主应用中把依赖恢复为上游仓库，并把 `rev` 固定为合并后的完整 40 位
-commit SHA：
-
-```toml
-[workspace.dependencies]
-bongocat-plugin-sdk = { git = "https://github.com/ayangweb/BongoCat-Plugins", rev = "<full-upstream-commit-sha>" }
-```
-
-随后执行 `cargo update --workspace` 同步 `Cargo.lock`，运行 `just check`，并用合并后的插件
-checkout 运行 `just plugin-tests`。主应用不能合并到贡献者 fork 的 commit；必须使用上游仓库
-中已合并的完整 revision。主应用通过 Git revision 使用 SDK，因此不要求先创建插件 Tag 或
-Release；插件发布仍由插件仓库独立完成。
+插件 Release 使用 `plugins-v*` tag，与应用 `v*` Release 相互独立；插件 Release 仍不可变，
+并且必须显式非 Latest。`plugins-v1.0.0` 完全由本仓库构建，后续发布沿用相同的版本历史检查：
+插件源码变化后必须提升版本。签名 catalog 只会在重新下载并验证 Release 资源之后，更新到
+专用的 `plugin-catalog` 分支。
 
 在 Windows 上构建时，请确保使用 MSVC 工具链（形如 `stable-x86_64-pc-windows-**msvc**`，
 而非 `stable-x86_64-pc-windows-**gnu**`）。本项目依赖 Live2D Cubism Core，而该库的 Windows 版

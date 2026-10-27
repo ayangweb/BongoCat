@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "id": "com.bongocat.key-sounds",
+    "name": "Key Sounds",
+    "description": "Adds lively sound feedback to keyboard and mouse actions, making every interaction more fun.",
+    "version": "1.0.0",
+    "app_versions": ">=2.3.1",
+    "protocol_version": 1,
+    "entry": "bongocat-key-sounds",
+    "icon": { "type": "local_image", "value": "resources/icon.png" },
+    "capabilities": ["configuration", "input_events_v1", "localized_views_v1"],
+    "localizations": {
+      "zh-CN": {
+        "name": "按键音效",
+        "description": "为键盘和鼠标操作添加生动的声音反馈，让每次交互更有趣。"
+      }
+    }
+  }
+}

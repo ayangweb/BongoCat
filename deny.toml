@@ -37,7 +37,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
-    "https://github.com/ayangweb/BongoCat-Plugins",
     "https://github.com/ayangweb/gilrs",
     "https://github.com/ayangweb/permission-flow",
 ]

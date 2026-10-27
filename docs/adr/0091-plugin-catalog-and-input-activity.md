@@ -56,30 +56,26 @@ boxes, including prehashed signatures, not the naked public-key line. The
 2026-10-15; it is MIT/Apache-2.0, actively maintained, portable safe encoding code,
 and confined to catalog serialization. No third-party type enters a public API.
 The existing rodio 0.23.0 is also confirmed current; its optional Symphonia MP3
-codec is activated only by the independent plugin.
+codec is activated only by the separately built key-sounds plugin.
 
-Production plugin builds and publication use a separate `Plugin Release` workflow,
-so plugin publishing can evolve without rebuilding the application. It builds on
-the three supported platform runners and updates the assets on the existing latest
-product Release; it never creates a separate Release that could hide `latest.json`
-from the application. Product releases carry the current catalog and referenced
-versioned ZIPs forward, so each newly-latest Release retains both updater protocols.
-The plugin catalog remains `plugins.json`, because both
-runtimes request assets from `releases/latest/download/*`. Each target runner
-executes `just release-plugins <target>`, which validates Cargo package metadata,
+Production plugin builds and publication use a separate `Plugin Release` workflow
+triggered by `plugins-v*`; it never rebuilds the application or changes the
+application's `releases/latest`. Each target runner executes
+`just plugin-build <target>`, which validates Cargo package metadata,
 plugin manifest identity/version/protocol/app compatibility, archive contents and
 executable mode. The publish job requires all three target directories, verifies
 the signed catalog with the compiled public key, compares published catalog
 history to reject same-version changes and version regressions, and uploads
-versioned ZIPs without overwrite before replacing the signed catalog last.
-`SIGNING_PRIVATE_KEY` and `SIGNING_PRIVATE_KEY_PASSWORD` are the only release
-secrets; the publish job uses `GITHUB_TOKEN` with `contents: write`.
+versioned ZIPs without overwrite. After re-download verification it publishes the
+signed catalog to the dedicated `plugin-catalog` branch.
+`PLUGIN_SIGNING_PRIVATE_KEY` and `PLUGIN_SIGNING_KEY_PASSWORD` are the only plugin
+release secrets; the publish job uses `GITHUB_TOKEN` with `contents: write`.
 
-`just plugin-catalog <output/plugins.json> <platform> <package-directory> ...`
-remains the local assembly primitive. It assembles distinct per-platform ZIP
-asset names and signs canonical catalog bytes with the existing signing inputs;
-the production wrapper adds the complete-matrix, history and signature gates but
-never uploads anything.
+`just plugin-build <target>` and
+`bongocat-plugin-packaging catalog assemble|sign|verify` remain the local
+primitives. They assemble distinct per-platform ZIP asset names and sign canonical
+catalog bytes; the production workflow adds the complete-matrix, history,
+non-Latest and download verification gates.
 
 Published package versions are immutable; changes intended as an update after
 release must bump the plugin manifest and package version before rebuilding.
@@ -92,10 +88,9 @@ list the same versions, plugins and change sections (`Features`/`Bug Fixes` and
 their Chinese counterparts). Section headings reuse the product changelog's
 emoji vocabulary, including `✨ Features`/`✨ 新功能` and
 `🐛 Bug Fixes`/`🐛 问题修复`; additional existing categories can be reused without
-inventing plugin-specific labels. The independent plugin workflow validates these
-files before building, then inserts the latest bilingual entry into the existing
-product GitHub Release body after the immutable plugin ZIPs and catalog publish;
-rerunning the workflow replaces only its marked block, so notes are not duplicated.
+inventing plugin-specific labels. The plugin release workflow validates these
+files before building and publishes the matching bilingual entry as the plugin
+Release body.
 Config/state and enabled status use a bounded, atomic v1 session envelope outside
 the version directory. The envelope carries a mandatory `schema_version: 1`; a
 session that omits it, claims another one or carries an unknown field is refused

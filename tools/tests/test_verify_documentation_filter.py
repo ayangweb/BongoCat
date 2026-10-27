@@ -35,7 +35,7 @@ FILTER_JOB = "filter-paths"
 # The two jobs that always run.
 #   `filter-paths` produces the answer the others read, so gating it on itself
 #     would leave every dependent without an input.
-#   `fixtures` runs the contract tests, which read `verify.yml` and `release.yml`
+#   `fixtures` runs the contract tests, which read `verify.yml` and `app-release.yml`
 #     themselves, both changelogs, `justfile`, `macos/Info.plist`, `deny.toml`,
 #     `.github/dependabot.yml` and `docs/product-runtime.md` — so a run that skips
 #     it would skip the check that its own filter is still honest.

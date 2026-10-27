@@ -1,10 +1,14 @@
-name: Release
+name: App Release
 
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+
+concurrency:
+  group: release-publishing
+  cancel-in-progress: false
 
 permissions:
   contents: read

@@ -1904,8 +1904,8 @@ fn generate_signing_key(path: &Path) -> Result<Vec<PathBuf>> {
     println!("  Keep it offline and never commit it. In CI it is the value of");
     println!("  the {SIGNING_PRIVATE_KEY_VARIABLE} secret.");
     println!("Public key:  {}", public.display());
-    println!("  Not a secret. Paste this single line into RELEASE_SIGNING_KEY in");
-    println!("  crates/bongocat-update/src/runtime.rs:");
+    println!("  Not a secret. Replace the contents of");
+    println!("  release-trust/app.pub with this single line:");
     println!();
     println!("{}", keypair.pk);
     if passphrase.is_empty() {

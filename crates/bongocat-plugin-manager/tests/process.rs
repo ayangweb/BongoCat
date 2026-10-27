@@ -7,11 +7,10 @@ const BINARY_FILE: &str = "bongocat-pomodoro.exe";
 #[cfg(not(target_os = "windows"))]
 const BINARY_FILE: &str = "bongocat-pomodoro";
 
-/// The checked-out plugin source, explicitly supplied by the independent repo.
+/// The in-repository plugin source supplied by the development orchestrator.
 ///
-/// Set `BONGOCAT_PLUGIN_TEST_ROOT` to the `BongoCat-Plugins` checkout and build
-/// its Pomodoro package before running these cross-process tests. The host
-/// repository owns no official plugin source, so an unset value skips.
+/// `just plugin-tests` sets `BONGOCAT_PLUGIN_TEST_ROOT` and builds the plugin
+/// first. A plain `cargo test` without an explicit built plugin skips.
 fn source() -> Option<std::path::PathBuf> {
     let root = std::env::var_os("BONGOCAT_PLUGIN_TEST_ROOT")?;
     let package = std::path::PathBuf::from(root).join("plugins/pomodoro");

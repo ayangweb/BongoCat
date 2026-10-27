@@ -95,8 +95,8 @@ checks limit host calls, not their own filesystem/network access. Installation m
 explain that trust boundary. Production refuses unsigned catalogs/packages;
 Development scans its explicit local package directory and is not Production.
 
-`just dev` and `just dev-smoke` first invoke `just dev-plugins`: the packaging
-crate independently builds each local package into a ZIP under `target/plugins`,
+`just dev` and `just dev-smoke` first invoke the plugin packaging crate, which
+builds each in-repository local package into a ZIP under `target/plugin-dev`,
 exactly the shape a release ships, and stops there. The build tool never writes
 the application store — the store has one writer, the product's own install
 lifecycle. A Development build discovers those ZIPs after startup and offers
