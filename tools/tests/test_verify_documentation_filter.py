@@ -37,8 +37,8 @@ FILTER_JOB = "filter-paths"
 #     would leave every dependent without an input.
 #   `fixtures` runs the contract tests, which read `verify.yml` and `app-release.yml`
 #     themselves, both changelogs, `justfile`, `macos/Info.plist`, `deny.toml`,
-#     `.github/dependabot.yml` and `docs/product-runtime.md` — so a run that skips
-#     it would skip the check that its own filter is still honest.
+#     and `docs/product-runtime.md` — so a run that skips it would skip the check
+#     that its own filter is still honest.
 ALWAYS_RUN = {FILTER_JOB, "fixtures"}
 
 
@@ -102,7 +102,7 @@ class DocumentationFilterTests(unittest.TestCase):
         the comment explaining *why* these paths are excluded can keep naming
         them.
         """
-        for forbidden in (".github/workflows", "dependabot", "tools/", "crates/"):
+        for forbidden in (".github/workflows", "tools/", "crates/"):
             for entry in changed_paths.DOCUMENTATION_PREFIXES:
                 self.assertFalse(
                     forbidden in entry,

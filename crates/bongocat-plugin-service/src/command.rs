@@ -228,48 +228,6 @@ impl PluginServiceClient {
         )
     }
 
-    pub async fn read_center(&self) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        let (reply, receiver) = async_channel::bounded(1);
-        self.send(PluginCommand::ReadCenter {
-            reply: PluginReply(reply),
-        })
-        .await?;
-        receiver.recv().await.map_err(|_| closed())
-    }
-
-    pub async fn refresh(&self) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        let (reply, receiver) = async_channel::bounded(1);
-        self.send(PluginCommand::Refresh {
-            reply: PluginReply(reply),
-        })
-        .await?;
-        receiver.recv().await.map_err(|_| closed())
-    }
-
-    pub async fn set_enabled(
-        &self,
-        id: &str,
-        enabled: bool,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::SetEnabled {
-            id: id.to_owned(),
-            enabled,
-            reply,
-        })
-        .await
-    }
-
-    pub async fn install_available(
-        &self,
-        id: &str,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::InstallAvailable {
-            id: id.to_owned(),
-            reply,
-        })
-        .await
-    }
-
     pub fn install_available_blocking(
         &self,
         id: &str,
@@ -278,50 +236,6 @@ impl PluginServiceClient {
             id: id.to_owned(),
             reply,
         })
-    }
-
-    pub async fn uninstall(&self, id: &str) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::Uninstall {
-            id: id.to_owned(),
-            reply,
-        })
-        .await
-    }
-
-    pub async fn reset_data(&self, id: &str) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::ResetData {
-            id: id.to_owned(),
-            reply,
-        })
-        .await
-    }
-
-    pub async fn action(
-        &self,
-        plugin: &str,
-        action: &str,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::Action {
-            plugin: plugin.to_owned(),
-            action: action.to_owned(),
-            reply,
-        })
-        .await
-    }
-
-    pub async fn configure(
-        &self,
-        plugin: &str,
-        key: &str,
-        value: ConfigValue,
-    ) -> Result<PluginCenterSnapshot, PluginCommandError> {
-        self.request(|reply| PluginCommand::Configure {
-            plugin: plugin.to_owned(),
-            key: key.to_owned(),
-            value,
-            reply,
-        })
-        .await
     }
 
     /// Ask the service to stop and wait for it to have stopped.
@@ -466,15 +380,6 @@ impl PluginServiceClient {
             .send(command)
             .await
             .map_err(|_| PluginCommandError::ServiceUnavailable)
-    }
-
-    async fn request<T>(
-        &self,
-        command: impl FnOnce(PluginReply<Result<T, PluginCommandError>>) -> PluginCommand,
-    ) -> Result<T, PluginCommandError> {
-        let (reply, receiver) = async_channel::bounded(1);
-        self.send(command(PluginReply(reply))).await?;
-        receiver.recv().await.map_err(|_| closed())?
     }
 }
 
