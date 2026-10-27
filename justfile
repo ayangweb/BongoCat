@@ -34,7 +34,8 @@ plugin-build target:
 plugin-keygen private public:
     cargo run --locked -p bongocat-plugin-packaging -- keygen --private {{private}} --public {{public}}
 
-# Compose the bilingual notes for one plugin release batch.
+# Compose the bilingual notes for one plugin release batch (pass the plugin version,
+# not a v-prefixed Git tag).
 plugin-release-notes tag file:
     python3 tools/release_notes.py --root . --tag {{tag}} --output {{file}}
 
