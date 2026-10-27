@@ -48,22 +48,6 @@ class FailureEvidenceWorkflowTests(unittest.TestCase):
             2,
         )
 
-    def test_macos_spike_evidence_collection_runs_after_all_smokes(self):
-        source = WORKFLOW.read_text(encoding="utf-8")
-        macos_job = source[source.index("  macos-spikes:") : source.index("  windows-input-spike:")]
-        self.assertGreater(
-            macos_job.rfind("Collect redacted failure evidence"),
-            macos_job.rfind("Smoke independent AppKit and Metal overlay"),
-        )
-
-    def test_windows_gpui_evidence_collection_runs_after_overlay_smokes(self):
-        source = WORKFLOW.read_text(encoding="utf-8")
-        windows_job = source[source.index("  windows-gpui-spikes:") :]
-        self.assertGreater(
-            windows_job.rfind("Collect redacted failure evidence"),
-            windows_job.rfind("Smoke independent Win32 and D3D11 overlay"),
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

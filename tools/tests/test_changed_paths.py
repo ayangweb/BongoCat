@@ -60,7 +60,7 @@ class DocumentationOnlyTests(unittest.TestCase):
             "windows/bongocat-app.rc",
             "shared/fixtures/manifest.json",
             "crates/bongocat-i18n/locales/en-US/app.ftl",
-            "spikes/gpui-settings/Cargo.toml",
+            "crates/bongocat-ui/Cargo.toml",
             "tools/validate-locales.py",
             "resources/icons/logo-macos.icns",
             "vendor/cubism/Core.h",

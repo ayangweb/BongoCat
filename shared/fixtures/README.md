@@ -37,7 +37,7 @@ fixtures/
 
 ## Runner 责任
 
-未来 Rust fixture runner 必须：
+`bongocat-runtime` 的 Rust fixture 测试必须：
 
 1. 校验 input 和 expected schema；
 2. 使用可注入时钟按顺序执行事件；
@@ -53,9 +53,9 @@ Platform adapter 的 scan code、系统权限和原始消息另设平台 fixture
 python3 tools/validate-fixtures.py
 python3 tools/validate-json-schema.py
 python3 tools/run-input-fixtures.py
-cargo run --manifest-path spikes/fixture-runner/Cargo.toml --locked
+cargo test --manifest-path Cargo.toml -p bongocat-runtime --test shared_input_fixtures
 ```
 
-`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`spikes/model-package` 使用 Rust 重跑同一异常包 contract，并把三个预置模型的强类型 model3/资源索引与 `preset-model3-index.json` 比较。`validate-json-schema.py` 使用 `tools/requirements.txt` 中固定版本的 `jsonschema`，先检查四份 schema 自身，再验证 input、expected、配置和窗口状态 fixture。
+`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`bongocat-model` / `bongocat-model-store` 的 fixture contract 测试使用产品解析器重跑同一异常包 contract。`validate-json-schema.py` 使用 `tools/requirements.txt` 中固定版本的 `jsonschema`，先检查四份 schema 自身，再验证 input、expected、配置和窗口状态 fixture。
 
-`run-input-fixtures.py` 保留为轻量独立 oracle；`spikes/fixture-runner` 使用 Rust 强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot。Rust runner 还拒绝时间回退、重复/错误类型的 device 生命周期、未连接 gamepad 输入、非有限值、无初始边沿的 repeat 和未知 JSON 字段，并输出字段路径差异。两者都不是产品 runtime，也不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。
+`run-input-fixtures.py` 保留为轻量独立 oracle；`bongocat-runtime` 的 fixture 测试使用产品强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot，同时拒绝时间回退、重复/错误类型的 device 生命周期、未连接 gamepad 输入、非有限值、无初始边沿的 repeat 和未知 JSON 字段。两者都不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。

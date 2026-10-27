@@ -2,6 +2,11 @@
 
 状态：已接受（2026-09-28）
 
+> 后续修订（2026-10-27）：ADR-0100 已退役 `spikes/` 及
+> `contract-spikes`、`model-package-platforms`、`macos-spikes`、
+> `windows-input-spike`、`windows-gpui-spikes` 作业；本文第 6、7 条关于
+> spike 的取舍只作历史记录。
+
 ## 背景
 
 `.github/workflows/verify.yml` 此前只有一个 `Test workspace (${{ matrix.os }})` 作业

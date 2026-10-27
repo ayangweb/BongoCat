@@ -48,7 +48,7 @@ for target in \
     check_release_dependency_tree "$target"
 done
 
-for manifest in Cargo.toml spikes/*/Cargo.toml tools/cubism-bindgen/Cargo.toml; do
+for manifest in Cargo.toml tools/cubism-bindgen/Cargo.toml; do
     printf 'checking dependency policy: %s\n' "$manifest"
     if [ "$manifest" = "Cargo.toml" ]; then
         cargo deny \

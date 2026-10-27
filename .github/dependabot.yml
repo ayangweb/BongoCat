@@ -4,18 +4,6 @@ updates:
   - package-ecosystem: cargo
     directories:
       - /
-      - /spikes/config-store
-      - /spikes/fixture-runner
-      - /spikes/gpui-overlay-macos
-      - /spikes/gpui-settings
-      - /spikes/input-macos
-      - /spikes/input-queue
-      - /spikes/input-state
-      - /spikes/input-windows
-      - /spikes/model-package
-      - /spikes/overlay-lifecycle
-      - /spikes/overlay-windows
-      - /spikes/runtime-contract
       - /tools/cubism-bindgen
       - /tools/cubism-core-probe
     schedule:
