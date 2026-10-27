@@ -232,7 +232,7 @@ jobs:
           set -euo pipefail
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "BongoCat Plugin Bundle ${RELEASE_TAG#plugins-v}" \
+            --title "BongoCat Plugins ${RELEASE_TAG#plugins-v}" \
             --notes-file metadata/plugin-release-notes.md \
             --draft \
             --latest=false \
