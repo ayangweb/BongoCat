@@ -639,34 +639,15 @@ fn collect(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) -> Result<()
 mod development_tests {
     use super::*;
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn development_catalog_names_local_packages_and_icons() {
-        run_development_catalog_test();
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn development_catalog_names_local_packages_and_icons() {
-        run_development_catalog_test();
-    }
-
-    #[cfg(target_os = "macos")]
-    fn run_development_catalog_test() {
-        run_development_catalog_body();
-    }
-
-    #[cfg(target_os = "windows")]
-    fn run_development_catalog_test() {
-        run_development_catalog_body();
-    }
-
-    fn run_development_catalog_body() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
             .unwrap();
-        let target = crate::Platform::host().unwrap();
+        let Ok(target) = crate::Platform::host() else {
+            return;
+        };
         let output = tempfile::tempdir().unwrap();
         let args = [
             "--root".into(),

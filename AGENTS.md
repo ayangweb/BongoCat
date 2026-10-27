@@ -34,6 +34,9 @@
   `plugin-catalog` 分支。
 - 插件版本和历史由 `plugins/release-state.json` 的 Release 资产约束。首个
   `plugins-v1.0.0` 由当前源码完整构建；同版本源码变化必须提升插件版本，不得放宽不可变检查。
+- 插件发布在 `master` 上完成：依次更新插件版本与 `plugins/CHANGELOG*.md` 的发布日期，提交标题
+  必须逐字为 `chore: release plugins-v<version>`，再打同名附注 tag。发布 commit 只包含版本与
+  修订日期等发布元数据；功能修复必须先单独提交。
 - 不得把插件源码或资源加入应用 bundle，也不得把应用更新签名密钥用于插件。未经用户明确
   要求，不得 commit、push、打插件 Tag、创建插件 Release 或修改签名配置。
 

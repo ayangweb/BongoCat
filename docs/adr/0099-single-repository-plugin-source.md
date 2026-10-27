@@ -23,9 +23,15 @@ plugins, packaging, tests and release tooling.
 - Application tags remain `v*`. Plugin tags use `plugins-v*`, and plugin
   Releases are explicitly non-Latest so `releases/latest` continues to identify
   the application update manifest.
+- A plugin tag points at a release commit titled exactly
+  `chore: release plugins-v<version>`. That commit carries only the plugin
+  version and changelog date, so functional changes stay independently
+  reviewable and bisectable.
 - Plugin packages belong to immutable plugin Releases. Production requests the
   signed catalog from the dedicated `plugin-catalog` branch, whose only current
-  payload is `plugins.json` with absolute HTTPS asset URLs.
+  payload is `plugins.json` with absolute HTTPS asset URLs. The branch starts as
+  an empty publication surface and is populated only after the first Release
+  has passed every verification gate.
 - The plugin signing key and public key remain separate from the application
   update key. Their public halves are versioned in
   `release-trust/plugin.pub` and `release-trust/app.pub`, embedded

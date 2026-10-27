@@ -42,6 +42,11 @@ jobs:
             "+refs/heads/master:refs/remotes/origin/master"
           git merge-base --is-ancestor "$tag" refs/remotes/origin/master ||
             { echo "::error::tag must be reachable from master" >&2; exit 1; }
+          subject=$(git log -1 --format=%s)
+          if [ "$subject" != "chore: release $tag" ]; then
+            echo "::error::the commit tagged $tag is titled '$subject'; a plugin release commit must be titled 'chore: release $tag'" >&2
+            exit 1
+          fi
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::release $tag already exists; plugin releases are immutable" >&2
             exit 1

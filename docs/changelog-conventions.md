@@ -179,3 +179,16 @@ git push origin master && git push origin v2.0.0
 just release-notes release-notes.md
 ```
 
+### 3.3 插件发布提交
+
+插件使用同一套发布提交规则，但标签命名空间是 `plugins-v<version>`，标题必须逐字为：
+
+```text
+chore: release plugins-v1.0.0
+```
+
+发布 commit 只更新 `plugins/*/Cargo.toml`、`plugins/*/plugin.json` 中的插件版本，以及
+`plugins/CHANGELOG.md`、`plugins/CHANGELOG.zh-CN.md` 对应条目的日期；功能修复先单独提交。
+随后在 `master` 上打附注 tag `plugins-v<version>` 并推送，流水线会验证 tag、版本、双语
+changelog 和提交标题，再构建三个平台并以非 Latest Release 发布。
+

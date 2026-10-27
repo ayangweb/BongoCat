@@ -76,6 +76,14 @@ class PluginDistributionContractTests(unittest.TestCase):
         self.assertIn(
             "initializing the first plugin release from current sources", workflow
         )
+        self.assertIn(
+            'subject=$(git log -1 --format=%s)',
+            workflow,
+        )
+        self.assertIn(
+            '"$subject" != "chore: release $tag"',
+            workflow,
+        )
         self.assertIn("--latest=false", workflow)
         self.assertIn("plugin-catalog", workflow)
         self.assertIn("--release-url", workflow)
