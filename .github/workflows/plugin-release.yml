@@ -149,7 +149,7 @@ jobs:
           set -euo pipefail
           test -n "${PLUGIN_SIGNING_PRIVATE_KEY:-}" ||
             { echo "::error::PLUGIN_SIGNING_PRIVATE_KEY is required" >&2; exit 1; }
-          test -s config/plugin-release.pub
+          test -s release-trust/plugin.pub
       - uses: actions/download-artifact@v4
         with:
           pattern: plugins-*
@@ -214,11 +214,11 @@ jobs:
           cargo run --locked -p bongocat-plugin-packaging -- catalog sign \
             --catalog plugin-assets/catalog.json \
             --output plugin-assets/plugins.json \
-            --public-key config/plugin-release.pub
+            --public-key release-trust/plugin.pub
           cargo run --locked -p bongocat-plugin-packaging -- verify \
             --catalog plugin-assets/plugins.json \
             --state plugin-assets \
-            --public-key config/plugin-release.pub
+            --public-key release-trust/plugin.pub
           test -s plugin-assets/release-state.json
       - name: Create a non-latest draft release
         env:
@@ -256,7 +256,7 @@ jobs:
           cargo run --locked -p bongocat-plugin-packaging -- verify \
             --catalog published-verify/plugins.json \
             --state published-verify \
-            --public-key config/plugin-release.pub
+            --public-key release-trust/plugin.pub
           for asset in plugin-assets/*.zip; do
             name=${asset##*/}
             test "$(shasum -a 256 "$asset" | cut -d ' ' -f 1)" = \
@@ -289,7 +289,7 @@ jobs:
           cargo run --locked -p bongocat-plugin-packaging -- verify \
             --catalog downloads/plugins.json \
             --state downloads \
-            --public-key config/plugin-release.pub
+            --public-key release-trust/plugin.pub
           for asset in plugin-assets/*.zip; do
             name=${asset##*/}
             test "$(shasum -a 256 "$asset" | cut -d ' ' -f 1)" = \

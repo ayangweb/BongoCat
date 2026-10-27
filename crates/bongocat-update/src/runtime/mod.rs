@@ -34,10 +34,13 @@ use crate::{
 /// Release signing public key used to authenticate downloaded update payloads.
 ///
 /// A minisign public key, encoded exactly as `cargo-packager`'s signer writes it to the
-/// `.pub` file: base64 of the Minisign `PublicKeyBox` text, on one line. Generate the
-/// pair with `just keygen <file>` (or `cargo run -p bongocat-packaging --
+/// `.pub` file: base64 of the Minisign `PublicKeyBox` text. The checked-in
+/// `release-trust/app.pub` file is the source of truth; it is embedded at compile
+/// time rather than read from a runtime-configurable path. Generate the pair with
+/// `just keygen <file>` (or `cargo run -p bongocat-packaging --
 /// --generate-signing-key <file>`), keep the private half out of the repository, and
-/// paste the **public** half here — a public key is not a secret.
+/// replace the **public** half file with the generated value — a public key is not a
+/// secret.
 ///
 /// This is the provisioned release key with ID `DF5E2C9D255DD85E`.
 ///
@@ -47,9 +50,8 @@ use crate::{
 /// This guard is deliberate defence in depth — `cargo-packager-updater` already rejects
 /// an empty public key, because it has to decode one — but it keeps the failure a
 /// stable, path-free code instead of a library error.
-pub const RELEASE_SIGNING_KEY: Option<&str> = Some(
-    "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERGNUUyQzlEMjU1REQ4NUUKUldSZTJGMGxuU3hlMzIyMHdwUldMNTRvRStMb1hJZlI3T2w0TEdFRlI3YXhsa3k0NldGUW5EN20K",
-);
+pub const RELEASE_SIGNING_KEY: Option<&str> =
+    Some(include_str!("../../../../release-trust/app.pub"));
 
 /// Return the configured signing key, treating empty and whitespace-only values as
 /// absent so the fail-closed policy can be tested independently of the shipped key.

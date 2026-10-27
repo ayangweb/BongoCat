@@ -203,7 +203,7 @@ just schema                                             # 从 Rust 类型生成�
 
 - 不在 `Justfile`、CI 或文档中重实现平台判断、目录复制、`Info.plist` 注入、`.app`/`.dmg`/NSIS 组装或版本解析；不重新引入 `scripts/` 或自维护 `.nsi`。
 - 版本号只来自 `[workspace.package].version`；平台与产物集合由 `crates/bongocat-packaging` 声明，并与 `tools/tests/test_packaging_contract.py`、`deny.toml`、`bongocat-update::UpdateTargetTriple` 保持一致。
-- 更新载荷组装与签名属于该 crate，`SIGNING_PRIVATE_KEY` 与 `SIGNING_PRIVATE_KEY_PASSWORD` 是唯一注入点；未设置则跳过签名，release workflow 断言发布构建已签名。签名必须是最后一步，签名后不得改名、重压缩或 strip；私钥不得进入源码、产物或日志，公钥写入 `bongocat-update::RELEASE_SIGNING_KEY`。
+- 更新载荷组装与签名属于该 crate，`SIGNING_PRIVATE_KEY` 与 `SIGNING_PRIVATE_KEY_PASSWORD` 是唯一注入点；未设置则跳过签名，release workflow 断言发布构建已签名。签名必须是最后一步，签名后不得改名、重压缩或 strip；私钥不得进入源码、产物或日志。应用与插件公钥分别以 `release-trust/app.pub`、`release-trust/plugin.pub` 为版本化事实来源，并在编译期嵌入对应常量，不得在运行时从可配置路径读取。
 - 每次 `just build` 只写当前 target 的 fragment（`<os>-<arch>.json`），运行时只请求共享 `latest.json`，多 target 发布必须先执行 `just manifest`；不在 CI 或脚本里拼 manifest JSON。
 - 细节与退出条件见 ADR-0033、ADR-0034 与 `docs/update-signing-guide.md`。
 

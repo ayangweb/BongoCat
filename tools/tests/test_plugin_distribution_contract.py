@@ -20,6 +20,9 @@ APP_SOURCE = ROOT / "crates" / "bongocat-app" / "src" / "dev_plugins.rs"
 DEV_PLUGINS = ROOT / "tools" / "dev_plugins.py"
 WORKFLOWS = ROOT / ".github" / "workflows"
 JUSTFILE = ROOT / "justfile"
+RELEASE_TRUST = ROOT / "release-trust"
+APP_PUBLIC_KEY = RELEASE_TRUST / "app.pub"
+PLUGIN_PUBLIC_KEY = RELEASE_TRUST / "plugin.pub"
 
 
 def read(path):
@@ -38,16 +41,11 @@ def rust_constant(name):
     return "".join(match.group(1).split())
 
 
-def application_signing_key():
-    source = read(RUNTIME_MOD)
-    match = re.search(
-        r'pub const RELEASE_SIGNING_KEY: Option<&str> = Some\(\s*"(.*?)"\s*\);',
-        source,
-        re.DOTALL,
-    )
-    if match is None:
-        raise AssertionError("RELEASE_SIGNING_KEY is not declared")
-    return "".join(match.group(1).split())
+def public_key(path):
+    value = read(path)
+    if value != value.strip():
+        raise AssertionError(f"{path} must contain exactly one key line with no whitespace")
+    return value
 
 
 class PluginDistributionContractTests(unittest.TestCase):
@@ -91,16 +89,33 @@ class PluginDistributionContractTests(unittest.TestCase):
         )
 
     def test_plugin_signing_is_separate_from_application_updates(self):
-        public_key = base64.b64decode(rust_constant("PLUGIN_RELEASE_SIGNING_KEY"))
+        plugin_key = public_key(PLUGIN_PUBLIC_KEY)
+        application_key = public_key(APP_PUBLIC_KEY)
+        self.assertEqual(plugin_key.count("\n"), 0)
+        self.assertEqual(application_key.count("\n"), 0)
+        decoded_plugin_key = base64.b64decode(plugin_key, validate=True)
         self.assertTrue(
-            public_key.startswith(b"untrusted comment: minisign public key: "),
-            "the embedded value must be the base64-encoded Minisign public-key box",
+            decoded_plugin_key.startswith(b"untrusted comment: minisign public key: "),
+            "the plugin key must be the base64-encoded Minisign public-key box",
         )
-        self.assertNotEqual(
-            rust_constant("PLUGIN_RELEASE_SIGNING_KEY"),
-            application_signing_key(),
+        self.assertTrue(
+            base64.b64decode(application_key, validate=True).startswith(
+                b"untrusted comment: minisign public key: "
+            ),
+            "the application key must be the base64-encoded Minisign public-key box",
+        )
+        self.assertNotEqual(plugin_key, application_key)
+        self.assertIn(
+            'include_str!("../../../../release-trust/plugin.pub")',
+            read(RELEASE_IDENTITY),
+        )
+        self.assertIn(
+            'include_str!("../../../../release-trust/app.pub")',
+            read(RUNTIME_MOD),
         )
         workflow = read(WORKFLOWS / "plugin-release.yml")
+        self.assertIn("release-trust/plugin.pub", workflow)
+        self.assertNotIn("config/plugin-release.pub", workflow)
         self.assertIn("secrets.PLUGIN_SIGNING_PRIVATE_KEY", workflow)
         self.assertNotIn("secrets.SIGNING_PRIVATE_KEY", workflow)
         self.assertNotIn("secrets.RELEASE_SIGNING_KEY", workflow)

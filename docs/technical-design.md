@@ -1509,8 +1509,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   macOS bundle 名全部是编译期常量，任何用户配置、CLI 或运行时输入都不能改变它们。Development
   构建的 channel 不允许联网或安装，`check` 与 `install` 在发出任何请求前即失败关闭；Production
   构建从公开发行渠道更新。更新 channel 按环境隔离是 `AGENTS.md` §10 的约束，独立于各 ADR。
-- 签名公钥缺失时失败关闭：`RELEASE_SIGNING_KEY` 已内嵌发布公钥（key ID
-  `DF5E2C9D255DD85E`）；缺失、空串或纯空白时 runtime 在发出任何请求前即返回
+- 签名公钥缺失时失败关闭：应用公钥以 `release-trust/app.pub` 为版本化事实来源，并由
+  `RELEASE_SIGNING_KEY` 在编译期嵌入（key ID `DF5E2C9D255DD85E`）；插件公钥独立位于
+  `release-trust/plugin.pub`，由 `PLUGIN_RELEASE_SIGNING_KEY` 编译期嵌入。运行时绝不从
+  可写配置路径读取公钥。应用公钥缺失、空串或纯空白时 runtime 在发出任何请求前即返回
   `update_signature_key_missing`，绝不静默接受未签名载荷。`UpdateRuntime::is_available()` 仅在
   production channel 与有效公钥同时具备时为真，系统菜单据此决定是否在托盘根中创建「检查更新」入口；该
   门禁产出的是稳定、无路径的错误码，而不是库错误。

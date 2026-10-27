@@ -66,10 +66,12 @@ ADR-0029 把更新栈换成 `self_update 1.3.0`，信任模型为 zipsign ed2551
 ### 2. 信任模型：detached minisign 签名，密钥缺失时失败关闭
 
 `RELEASE_SIGNING_KEY: Option<&str>` 存放 **base64 的 minisign 公钥盒文本**（即
-`cargo packager signer generate-key` 写出的 `.pub` 文件内容）。仓库现已内嵌一把发布公钥
+`cargo packager signer generate-key` 写出的 `.pub` 文件内容）。版本化文件
+`release-trust/app.pub` 是唯一事实来源，并由 `include_str!` 在编译期嵌入该常量
 （key ID `DF5E2C9D255DD85E`），Production 构建的 `UpdateRuntime::is_available()` 因而可以为真。
-公钥为 `None`、空串或纯空白时，runtime 在**发出任何请求之前**返回
-`update_signature_key_missing`；系统菜单不会在没有有效公钥时显示「检查更新」入口。
+公钥文件缺失、为空或纯空白时，构建或 runtime 门禁失败，不会静默接受未签名载荷；runtime 在
+**发出任何请求之前**返回 `update_signature_key_missing`，系统菜单不会在没有有效公钥时显示
+「检查更新」入口。
 
 这条门禁是刻意的第二道防线。库对空 `pubkey` 的行为是解码失败（`Error::Base64` /
 `Minisign`），即 fail-closed 而非 ADR-0029 记录的 `self_update` fail-open；但项目仍保留
@@ -124,7 +126,7 @@ macOS 的归档由 `crates/bongocat-packaging` 用 `tar` + `flate2` 从已完成
 密钥对由**同一个入口**一次性生成：`just keygen <file>`（`crates/bongocat-packaging` 的
 `--generate-signing-key`）。它用同一份精确 pin 的 `cargo-packager` 调 `generate_key` /
 `save_keypair`，因此不需要任何全局 `cargo install`；生成后显式把私钥收紧到 `0600`，并打印公钥
-那一行供填入 `RELEASE_SIGNING_KEY`。生成是离线的运维动作，不在 CI 中执行。
+那一行供写入 `release-trust/app.pub`。生成是离线的运维动作，不在 CI 中执行。
 
 release workflow 反过来**断言**发布构建一定签过名：未配置 secret 时 job 直接失败，
 并在打包后逐项校验载荷、`.sig` 与 manifest 存在且形状正确。这消除了"发布一批无人能更新的

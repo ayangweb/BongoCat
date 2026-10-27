@@ -27,8 +27,11 @@ plugins, packaging, tests and release tooling.
   signed catalog from the dedicated `plugin-catalog` branch, whose only current
   payload is `plugins.json` with absolute HTTPS asset URLs.
 - The plugin signing key and public key remain separate from the application
-  update key. The plugin workflow updates the catalog branch only after it has
-  verified the published package bytes, state and signature.
+  update key. Their public halves are versioned in
+  `release-trust/plugin.pub` and `release-trust/app.pub`, embedded
+  at compile time, and never read from a mutable runtime path. The plugin
+  workflow updates the catalog branch only after it has verified the published
+  package bytes, state and signature.
 - The first plugin Release is `plugins-v1.0.0` and is built entirely from the
   current workspace. Every later release uses the normal assembler and keeps
   the immutable history check, so reusing a version after any future change is
