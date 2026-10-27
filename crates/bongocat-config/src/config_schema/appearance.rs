@@ -83,10 +83,17 @@ pub enum Language {
     // window language still finds their own.
     #[serde(rename = "fr-FR")]
     French,
+    // Russian, the same shape as French: the copy was written for Russia, so
+    // the name is `ru-RU` while `ru` and every other Russian region reach it on
+    // their primary subtag. The endonym `Русский` keeps its Cyrillic spelling in
+    // every catalog and carries no region, so a reader who cannot read the
+    // current window language still finds their own.
+    #[serde(rename = "ru-RU")]
+    Russian,
 }
 
 impl Language {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::System,
         Self::ChineseSimplified,
         Self::ChineseTraditional,
@@ -96,6 +103,7 @@ impl Language {
         Self::Portuguese,
         Self::Korean,
         Self::French,
+        Self::Russian,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -109,6 +117,7 @@ impl Language {
             Self::Portuguese => "pt-BR",
             Self::Korean => "ko-KR",
             Self::French => "fr-FR",
+            Self::Russian => "ru-RU",
         }
     }
 
@@ -116,8 +125,8 @@ impl Language {
     ///
     /// Matching the primary subtag is the RFC 4647 language-subtag fallback:
     /// every region variant of a shipped language reaches the same catalog, so
-    /// `ar-EG`, `vi`, `pt-PT`, `ko` and `fr-CA` land where a user expects instead
-    /// of on the English default. Chinese is the one subtag that cannot decide this
+    /// `ar-EG`, `vi`, `pt-PT`, `ko`, `fr-CA` and `ru-KZ` land where a user expects
+    /// instead of on the English default. Chinese is the one subtag that cannot decide this
     /// alone, because Simplified and Traditional are different written forms
     /// rather than regional variants, so `zh` resolves by script and region
     /// subtag instead.
@@ -135,6 +144,7 @@ impl Language {
             Some(&"pt") => Self::Portuguese,
             Some(&"ko") => Self::Korean,
             Some(&"fr") => Self::French,
+            Some(&"ru") => Self::Russian,
             _ => Self::English,
         }
     }
@@ -149,6 +159,7 @@ impl Language {
                 Self::Portuguese => Self::Portuguese,
                 Self::Korean => Self::Korean,
                 Self::French => Self::French,
+                Self::Russian => Self::Russian,
                 Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
@@ -159,6 +170,7 @@ impl Language {
             Self::Portuguese => Self::Portuguese,
             Self::Korean => Self::Korean,
             Self::French => Self::French,
+            Self::Russian => Self::Russian,
         }
     }
 }

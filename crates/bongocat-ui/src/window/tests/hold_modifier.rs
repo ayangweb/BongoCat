@@ -120,6 +120,7 @@ fn every_prompt_in_the_row_names_the_modifier_the_same_way() {
         (SettingsLanguage::French, "touche de modification"),
         (SettingsLanguage::Vietnamese, "phím sửa"),
         (SettingsLanguage::Arabic, "مفتاح تعديل"),
+        (SettingsLanguage::Russian, "клавишу-модификатор"),
     ];
     for (language, modifier) in noun {
         let locale = language.catalog_locale();

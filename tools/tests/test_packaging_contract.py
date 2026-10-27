@@ -30,6 +30,9 @@ I18N_LOCALES = ROOT / "crates" / "bongocat-i18n" / "locales"
 VIETNAMESE_INSTALLER_STRINGS = (
     ROOT / "crates" / "bongocat-packaging" / "installer" / "Vietnamese.nsh"
 )
+RUSSIAN_INSTALLER_STRINGS = (
+    ROOT / "crates" / "bongocat-packaging" / "installer" / "Russian.nsh"
+)
 JUSTFILE = ROOT / "justfile"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
 APP_PRESET_ROOT = ROOT / "crates" / "bongocat-app" / "src" / "preset_root.rs"
@@ -103,6 +106,7 @@ class PackagingTargetTests(unittest.TestCase):
             "pt-BR": "PortugueseBR",
             "ko-KR": "Korean",
             "fr-FR": "French",
+            "ru-RU": "Russian",
         }
         catalogs = {path.stem for path in I18N_LOCALES.glob("*.json")}
         self.assertEqual(catalogs, set(nsis_languages))
@@ -114,29 +118,49 @@ class PackagingTargetTests(unittest.TestCase):
         self.assertEqual(sorted(languages), sorted(nsis_languages.values()))
         self.assertEqual(languages[0], "English", "English is the fallback language")
 
-        # cargo-packager embeds no strings for Vietnamese, so the repository carries the
-        # messages its installer template looks up.
-        raw = VIETNAMESE_INSTALLER_STRINGS.read_bytes()
-        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), "NSIS needs the UTF-8 BOM")
-        names = re.findall(
-            r"^LangString (\w+) \$\{LANG_VIETNAMESE\} ",
-            raw.decode("utf-8-sig"),
-            re.MULTILINE,
-        )
-        self.assertEqual(
-            sorted(names),
-            sorted(
-                [
-                    "addOrReinstall", "alreadyInstalled", "alreadyInstalledLong",
-                    "appRunning", "appRunningOkKill", "chooseMaintenanceOption",
-                    "choowHowToInstall", "createDesktop", "deleteAppData",
-                    "dontUninstall", "dontUninstallDowngrade", "failedToKillApp",
-                    "newerVersionInstalled", "older", "olderOrUnknownVersionInstalled",
-                    "silentDowngrades", "unableToUninstall", "uninstallApp",
-                    "uninstallBeforeInstalling", "unknown",
-                ]
-            ),
-        )
+        # cargo-packager embeds no strings for Vietnamese and Russian, so the repository
+        # carries the messages its installer template looks up.
+        for path, macro in (
+            (VIETNAMESE_INSTALLER_STRINGS, "${LANG_VIETNAMESE}"),
+            (RUSSIAN_INSTALLER_STRINGS, "${LANG_RUSSIAN}"),
+        ):
+            with self.subTest(language=path.stem):
+                raw = path.read_bytes()
+                self.assertTrue(
+                    raw.startswith(b"\xef\xbb\xbf"), "NSIS needs the UTF-8 BOM"
+                )
+                names = re.findall(
+                    r"^LangString (\w+) " + re.escape(macro) + " ",
+                    raw.decode("utf-8-sig"),
+                    re.MULTILINE,
+                )
+                self.assertEqual(
+                    sorted(names),
+                    sorted(
+                        [
+                            "addOrReinstall",
+                            "alreadyInstalled",
+                            "alreadyInstalledLong",
+                            "appRunning",
+                            "appRunningOkKill",
+                            "chooseMaintenanceOption",
+                            "choowHowToInstall",
+                            "createDesktop",
+                            "deleteAppData",
+                            "dontUninstall",
+                            "dontUninstallDowngrade",
+                            "failedToKillApp",
+                            "newerVersionInstalled",
+                            "older",
+                            "olderOrUnknownVersionInstalled",
+                            "silentDowngrades",
+                            "unableToUninstall",
+                            "uninstallApp",
+                            "uninstallBeforeInstalling",
+                            "unknown",
+                        ]
+                    ),
+                )
 
     def test_windows_installer_is_published_under_the_product_release_name(self):
         # cargo-packager names the NSIS installer after the main binary and

@@ -98,13 +98,14 @@ privileges and writes only HKCU uninstall metadata plus its own product director
 signed only when a signing identity or signing command is configured; without one the release
 workflow reports the unsigned installer as unsuitable for a stable release.
 The wizard opens with a language picker covering exactly the application languages (Simplified and
-Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean, French); it preselects the
-system language and falls back to English. The choice only changes the installer and uninstaller
-text, never the application language setting. NSIS stores it in HKCU, so a machine that already has
-BongoCat installed reuses the stored language without showing the picker, and silent updates never
-show it. `cargo-packager` embeds the installer messages for every language except Vietnamese, whose
-strings live in `crates/bongocat-packaging/installer/Vietnamese.nsh`. Windows install,
-upgrade, uninstall, and rollback smoke remain release gates.
+Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean, French, Russian); it
+preselects the system language and falls back to English. The choice only changes the installer and
+uninstaller text, never the application language setting. NSIS stores it in HKCU, so a machine that
+already has BongoCat installed reuses the stored language without showing the picker, and silent
+updates never show it. `cargo-packager` embeds the installer messages for every language except
+Vietnamese and Russian, whose strings live in `crates/bongocat-packaging/installer/Vietnamese.nsh`
+and `crates/bongocat-packaging/installer/Russian.nsh`. Windows install, upgrade, uninstall, and
+rollback smoke remain release gates.
 
 Preset models are product resources, not user data. macOS loads them from
 `BongoCat.app/Contents/Resources/models`; Windows packages must place them under

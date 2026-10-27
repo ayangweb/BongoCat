@@ -1,27 +1,28 @@
 # ADR-0012: JSON Localization
 
-状态：已接受（2026-09-10；2026-10-06 修订）
+状态：已接受（2026-09-10；2026-10-06、2026-10-26 修订）
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.4` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`zh-TW`、`ar-SA`、`vi-VN`、`pt-BR`、`ko-KR` 与 `fr-FR`。
+BongoCat 使用 `rust-i18n = 4.2.4` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`zh-TW`、`ar-SA`、`vi-VN`、`pt-BR`、`ko-KR`、`fr-FR` 与 `ru-RU`。
 
 **语言命名采用带地区子标签的提名式**，与 `en-US` 一致：一份语言只发一份 catalog，地区子标签提名这份文案所依据的主要变体，并不声称 catalog 未携带的地区特化。`en-US` 本身也是这种名字——它同样服务 `en-GB`。
 
 **解析走 RFC 4647 的 language-subtag fallback**（浏览器 `Intl`、CLDR 与操作系统自身的做法）：
 按 primary subtag 匹配已发布 catalog，`ar`/`ar-EG`/`ar_MA`/`ar-SA` 全部落到 `ar-SA`，`vi` 与
 `vi-VN` 全部落到 `vi-VN`，`pt`/`pt-PT`/`pt-BR` 全部落到 `pt-BR`，`ko` 与 `ko-KR` 全部落到 `ko-KR`，
-`fr`/`fr-CA`/`fr-BE`/`fr-CH` 全部落到 `fr-FR`，`en`/`en-GB` 全部落到 `en-US`。
+`fr`/`fr-CA`/`fr-BE`/`fr-CH` 全部落到 `fr-FR`，`ru` 与各俄语地区标签全部落到 `ru-RU`，
+`en`/`en-GB` 全部落到 `en-US`。
 因此机器实际上报的 tag 几乎总不是 catalog 自身的名字，而 primary subtag 匹配让它们收敛到同一份
 文案，而不是各自回退英文。`pt-BR` 尤其说明这件事的必要性：葡萄牙语没有单一写法，catalog 只发
 一种变体，报 `pt-PT` 的机器读到的也是它。
 
 **语言枚举的变体名按语言本身命名，不带地区**：`Arabic`、`Vietnamese`、`Portuguese`、`Korean`、
-`French` 各自服务整个语言，地区子标签只是提名，`PortugueseBrazil` 这类名字会声称 catalog 并不携带的地区特化。
+`French`、`Russian` 各自服务整个语言，地区子标签只是提名，`PortugueseBrazil` 这类名字会声称 catalog 并不携带的地区特化。
 语言下拉里的名称按 endonym 规则写成本地人自称语言的名字，同样不附地区后缀——`Português` 而不是
 `Português (Brasil)`，`العربية` 而不是 `العربية (السعودية)`，`한국어` 而不是 `한국어(대한민국)`，
-`Français` 而不是 `Français (France)`，对应的 i18n key 也只写 `portuguese`、`arabic`、`korean`、
-`french`。`ChineseSimplified` 是唯一保留限定词的名字，
+`Français` 而不是 `Français (France)`，`Русский` 而不是 `Русский (Россия)`，对应的 i18n key 也只写
+`portuguese`、`arabic`、`korean`、`french`、`russian`。`ChineseSimplified` 是唯一保留限定词的名字，
 因为它命中的确实是脚本分叉：`zh` 下的简繁是两种书写体系。
 
 `zh` 是唯一不能只看 primary subtag 的情形：简繁是不同书写体系而非地区变体，因此两种写法各发

@@ -94,6 +94,10 @@ fn missing_locale_text_falls_back_to_english() {
         "Paramètres de BongoCat"
     );
     assert_eq!(
+        text("ru-RU", "navigation.settings.title"),
+        "Настройки BongoCat"
+    );
+    assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
     );
@@ -143,6 +147,12 @@ fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
         ("fr-CA", "fr-FR"),
         ("fr_BE", "fr-FR"),
         ("fr-CH", "fr-FR"),
+        // Russian is the only Russian catalog, so a machine reporting a bare
+        // `ru` or a Russian region reaches it on the primary subtag.
+        ("ru", "ru-RU"),
+        ("ru-RU", "ru-RU"),
+        ("ru_KZ", "ru-RU"),
+        ("ru-BY", "ru-RU"),
         ("en", "en-US"),
         ("en-GB", "en-US"),
         ("en_AU", "en-US"),
@@ -168,7 +178,7 @@ fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
 /// nothing the product ships.
 #[test]
 fn a_language_the_product_does_not_ship_falls_back_to_the_default() {
-    for locale in ["de-DE", "ja-JP", "ru-RU"] {
+    for locale in ["de-DE", "ja-JP", "it-IT"] {
         assert_eq!(
             text(locale, "navigation.settings.title"),
             text(DEFAULT, "navigation.settings.title"),

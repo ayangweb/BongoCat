@@ -116,6 +116,7 @@ fn plugins_follow_application_language_before_windows_open_and_after_restart() {
         (SettingsLanguage::Portuguese, "Start"),
         (SettingsLanguage::Korean, "Start"),
         (SettingsLanguage::French, "Start"),
+        (SettingsLanguage::Russian, "Start"),
         (SettingsLanguage::System, "Start"),
         (SettingsLanguage::ChineseSimplified, "开始"),
     ] {

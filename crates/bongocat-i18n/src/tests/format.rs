@@ -68,4 +68,12 @@ fn format_text_interpolation_is_available() {
         ),
         "Version actuelle 1.2.3"
     );
+    assert_eq!(
+        format_text(
+            "ru-RU",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "Текущая версия 1.2.3"
+    );
 }
