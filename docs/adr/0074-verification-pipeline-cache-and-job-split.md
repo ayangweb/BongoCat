@@ -162,7 +162,7 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
 2. **门禁在作业级，不在 workflow 级。** 跳过的作业报告为 *skipped*，能满足 required check
    而不会卡住；workflow 级 `paths:` 一个都不匹配时**整个 workflow 都不运行**，required check
    永远不上报，PR 永久等待。`workflow_dispatch` 是"我怀疑跳多了"时的手动全量入口。
-3. **`fixtures` 永远运行。** 它执行的契约测试会读 `verify.yml`、`release.yml`、两份 changelog、
+3. **`fixtures` 永远运行。** 它执行的契约测试会读 `verify.yml`、`app-release.yml`、两份 changelog、
    `justfile`、`macos/Info.plist`、`deny.toml`、`.github/dependabot.yml` 与
    `docs/product-runtime.md`——所以"改文档"不等于"不需要验证"。`.github/workflows/` 也因此
    不在文档白名单里：改流水线必须由这条流水线自己验证。

@@ -150,7 +150,7 @@ chore: release v2.0.0
 
 ### 3.1 怎么强制
 
-`.github/workflows/release.yml` 的「Check the tag against the single product version
+`.github/workflows/app-release.yml` 的「Check the tag against the single product version
 source」步骤在**构建之前**就断言这件事，所以标题写错只需几秒就失败，而不是等三个平台
 白跑二十分钟：
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "app-release.yml"
 PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
 CHANGELOG = ROOT / "CHANGELOG.md"
 CHANGELOG_ZH = ROOT / "CHANGELOG.zh-CN.md"

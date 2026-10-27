@@ -120,7 +120,7 @@ DMG 压缩格式选 `ULMO`（LZFSE）而不是默认的 `UDZO`（zlib）。`UDZO
 
 ### 5. Release workflow 由项目自己描述，原生 runner 构建
 
-新增 `.github/workflows/release.yml`，在 tag 推送时于原生 runner 上运行同一套
+新增 `.github/workflows/app-release.yml`，在 tag 推送时于原生 runner 上运行同一套
 `just build`：
 
 - `windows-latest` → `just build`（NSIS 安装器）

@@ -81,7 +81,7 @@ class DocumentationOnlyTests(unittest.TestCase):
         """
         for path in (
             ".github/workflows/verify.yml",
-            ".github/workflows/release.yml",
+            ".github/workflows/app-release.yml",
             ".github/dependabot.yml",
         ):
             with self.subTest(path=path):

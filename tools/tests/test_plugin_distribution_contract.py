@@ -83,7 +83,7 @@ class PluginDistributionContractTests(unittest.TestCase):
         self.assertIn("--release-url", workflow)
         self.assertIn("releases/download/$RELEASE_TAG", workflow)
 
-        application = read(WORKFLOWS / "release.yml")
+        application = read(WORKFLOWS / "app-release.yml")
         self.assertIn('tags:\n      - "v*"', application)
         self.assertNotIn("plugins-v*", application)
         self.assertEqual(

@@ -37,7 +37,7 @@ WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.
 UPDATE_RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 DEPENDENCY_POLICY = ROOT / "deny.toml"
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
-RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "release.yml"
+RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "app-release.yml"
 
 
 def read(path):

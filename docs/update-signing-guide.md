@@ -188,7 +188,7 @@ minisign 改名后技术上仍可验证通过（代价是丢掉了文件名绑�
 | 谁验证 | 你自己的应用 | 操作系统 |
 
 本仓库两者都还是缺口：打包只做 ad-hoc 签名（`crates/bongocat-packaging/src/main.rs:97` 的
-`ADHOC_SIGNING_IDENTITY = "-"`），`release.yml` 里 Windows Authenticode 目前只打 warning。
+`ADHOC_SIGNING_IDENTITY = "-"`），`app-release.yml` 里 Windows Authenticode 目前只打 warning。
 
 ---
 
@@ -350,10 +350,10 @@ shell history。生成完成后把私钥文件内容放进 `SIGNING_PRIVATE_KEY`
 3. **本地开发一律不签名。** 签名只在发布流水线里发生；本地 `just build` 不设私钥时应当
    **跳过签名**（而不是用一个空密钥签名成功——那是最坏的情况，见 §4.4）。
 
-具体形式（已落地在 `.github/workflows/release.yml`）：
+具体形式（已落地在 `.github/workflows/app-release.yml`）：
 
 ```yaml
-# .github/workflows/release.yml 里新增
+# .github/workflows/app-release.yml 里新增
 - name: Sign the update artifacts
   env:
     SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
@@ -593,7 +593,7 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
    ```
 2. **把公钥编译进去**：`release.pub` 是 32 字节裸数据 → 填进
    `runtime.rs` 的 `RELEASE_SIGNING_KEY`。
-3. **改 CI 的 macOS 归档步骤**（`.github/workflows/release.yml` 的
+3. **改 CI 的 macOS 归档步骤**（`.github/workflows/app-release.yml` 的
    `Package the bundle for publication`）：现在用 `ditto -c -k` 产的是 `.zip`，改成产
    `BongoCat-$version-${{ matrix.arch }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
 4. **加签名步骤**：在 upload 之前，解码私钥、`zipsign sign tar <归档> release.key`。
