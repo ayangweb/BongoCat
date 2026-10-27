@@ -407,7 +407,12 @@ jobs:
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
       - name: Smoke hidden overlay model switching
         if: matrix.os != 'ubuntu-latest'
-        timeout-minutes: 5
+        # gpui-fast-windows 0.1.12 stages and tracks an OUT_DIR shader generated
+        # by its release build script. Cargo can therefore rebuild that crate
+        # and relink the app on the next invocation even though the preceding
+        # Windows product step already built it. The relink exceeded the old
+        # five-minute budget; keep a build-sized ceiling around the bounded run.
+        timeout-minutes: 15
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
       - name: Smoke Windows single-instance wake
         if: matrix.os == 'windows-latest'
