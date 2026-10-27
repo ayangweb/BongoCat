@@ -33,12 +33,6 @@ dimension guard must reject it before image decoding or GPU allocation.
 - Import checks must run before copying files into the environment model store.
 - Rejection must not modify the source package or current active model.
 
-`preset-model3-index.json` is a normalized snapshot of the three tracked preset
-packages. Schema v1 freezes model3 references, cdi3 parameter/group/part counts,
-image dimensions, motion/expression groups, companion image indexes, total
-package size, and unreferenced files. The snapshot contains no model bytes and
-does not claim Cubism runtime compatibility.
-
 Run the repository validator with:
 
 ```text

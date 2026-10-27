@@ -15,8 +15,6 @@ fixtures/
     README.md
     cases.json
     cases/
-    preset-model3-index.json
-    preset-models.json
 ```
 
 配置 schema 的有效/拒绝样本位于 `shared/config/fixtures/`，由同一标准 validator 检查；它们不代表用户数据，也不进入发布产物。
@@ -53,9 +51,9 @@ Platform adapter 的 scan code、系统权限和原始消息另设平台 fixture
 python3 tools/validate-fixtures.py
 python3 tools/validate-json-schema.py
 python3 tools/run-input-fixtures.py
-cargo test --manifest-path Cargo.toml -p bongocat-runtime --test shared_input_fixtures
+cargo test --locked -p bongocat-runtime --test shared_input_fixtures
 ```
 
 `validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`bongocat-model` / `bongocat-model-store` 的 fixture contract 测试使用产品解析器重跑同一异常包 contract。`validate-json-schema.py` 使用 `tools/requirements.txt` 中固定版本的 `jsonschema`，先检查四份 schema 自身，再验证 input、expected、配置和窗口状态 fixture。
 
-`run-input-fixtures.py` 保留为轻量独立 oracle；`bongocat-runtime` 的 fixture 测试使用产品强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot，同时拒绝时间回退、重复/错误类型的 device 生命周期、未连接 gamepad 输入、非有限值、无初始边沿的 repeat 和未知 JSON 字段。两者都不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。
+`run-input-fixtures.py` 保留为轻量独立 oracle；`bongocat-runtime` 的 `shared_input_fixtures` 测试使用产品强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot。两者都不是平台采集测试，Windows/macOS 的真实输入仍由 product smoke 覆盖。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包 fixture 验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。

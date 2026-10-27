@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Phase 0 fixture shape and cross-file invariants."""
+"""Validate shared fixture shape and cross-file invariants."""
 
 from __future__ import annotations
 

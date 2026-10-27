@@ -60,7 +60,6 @@ class DocumentationOnlyTests(unittest.TestCase):
             "windows/bongocat-app.rc",
             "shared/fixtures/manifest.json",
             "crates/bongocat-i18n/locales/en-US/app.ftl",
-            "crates/bongocat-ui/Cargo.toml",
             "tools/validate-locales.py",
             "resources/icons/logo-macos.icns",
             "vendor/cubism/Core.h",
@@ -75,14 +74,12 @@ class DocumentationOnlyTests(unittest.TestCase):
     def test_the_gate_configuration_is_never_treated_as_a_document(self):
         """A change to the pipeline has to be run by the pipeline it alters.
 
-        `.github/workflows/` is where the jobs being filtered live, and
-        `.github/dependabot.yml` is asserted on by a contract test, so neither may
+        `.github/workflows/` is where the jobs being filtered live, so it may not
         reach the documentation allowlist.
         """
         for path in (
             ".github/workflows/verify.yml",
             ".github/workflows/app-release.yml",
-            ".github/dependabot.yml",
         ):
             with self.subTest(path=path):
                 self.assertFalse(self.changed_paths.is_documentation(path))

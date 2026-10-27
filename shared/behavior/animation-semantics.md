@@ -1,6 +1,6 @@
 # Animation and Model Command Semantics
 
-状态：Phase 0 draft
+状态：已接受
 版本：1
 
 ## Commands represented by fixtures

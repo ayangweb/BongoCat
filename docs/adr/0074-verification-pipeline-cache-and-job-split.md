@@ -172,9 +172,9 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
    而不会卡住；workflow 级 `paths:` 一个都不匹配时**整个 workflow 都不运行**，required check
    永远不上报，PR 永久等待。`workflow_dispatch` 是"我怀疑跳多了"时的手动全量入口。
 3. **`fixtures` 永远运行。** 它执行的契约测试会读 `verify.yml`、`app-release.yml`、两份 changelog、
-   `justfile`、`macos/Info.plist`、`deny.toml`、`.github/dependabot.yml` 与
-   `docs/product-runtime.md`——所以"改文档"不等于"不需要验证"。`.github/workflows/` 也因此
-   不在文档白名单里：改流水线必须由这条流水线自己验证。
+   `justfile`、`macos/Info.plist`、`deny.toml` 与 `docs/product-runtime.md`——所以"改文档"
+   不等于"不需要验证"。`.github/workflows/` 也因此不在文档白名单里：改流水线必须由这条
+   流水线自己验证。
 
 `tools/changed-paths.py` 承担判定，`tools/tests/` 里有两条契约测试守护：一条覆盖分类本身
 （含"空改动集判为非文档"这个失败方向），另一条断言 **`verify.yml` 里每个作业必须要么在
