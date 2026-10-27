@@ -734,13 +734,15 @@ fn model_card_actions(
                 "actions.cancel",
             ))
             .trigger(
-                icon_command_button(
-                    "delete-model-control",
-                    delete_label,
-                    gpui_kit::assets::IconName::Trash,
+                icon_command_control(
                     &focus.delete,
                     action_tabs.delete,
-                    !actions.can_delete,
+                    Button::new("delete-model-control")
+                        .danger()
+                        .outline()
+                        .icon(gpui_kit::assets::IconName::Trash)
+                        .tooltip(delete_label)
+                        .disabled(!actions.can_delete),
                 )
                 // The wrapper owns the queryable id; the inner control gets a
                 // derived one so the two registrations cannot be ambiguous.
