@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### 🎨 Interface
+
+- Made the model library delete button easier to recognize as a destructive action.
+
 ### 🌍 Localization
 
 - Added Russian.
