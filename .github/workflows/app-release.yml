@@ -110,23 +110,6 @@ jobs:
           if (-not $json.signature) { throw "fragment carries no signature" }
           if ($json.url -notmatch '^https://github\.com/') { throw "fragment url is not https: $($json.url)" }
           Write-Host "signed update assets for $payload"
-      # Reports rather than enforces, and the name says so: a maintainer scanning
-      # the log must not read a green step named "Require ..." as proof the
-      # installer was signed. The update-signing gate above really does exit 1;
-      # this one cannot, because CI has no Authenticode certificate configured.
-      # Whether a stable release should hard-fail here instead is open — see
-      # ADR-0033.
-      - name: Report Authenticode signature status for a stable release
-        shell: pwsh
-        run: |
-          # Update signing and Authenticode are separate gates: cargo-packager signs the
-          # product binaries and the installer only when a signing command or certificate
-          # is configured, and the Minisign key above does not affect that.
-          $signed = Get-ChildItem -Path "target/package" -Filter "*.exe" -File |
-            Where-Object { (Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -eq 'Valid' }
-          if (-not $signed) {
-            Write-Host "::warning::no valid Authenticode signature found; this installer is not a stable release artifact"
-          }
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows-x64

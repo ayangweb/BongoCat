@@ -9,8 +9,8 @@
 >   安装器改由 `cargo-packager` 的 NSIS 模板与 `install-mode` 配置生成。
 > - "x86 不构建或发布，ARM64 在 Cubism desktop Core 门禁通过前不生成可发布 artifact"：
 >   Windows 现在只有 x64（ADR-0010 已更新）。
-> - "Windows packaging 仅接受已 Authenticode 签名的 payload"：新流水线在未配置签名
->   身份时会生成未签名安装器并输出警告，签名验证降级为 release workflow 的显式门禁。
+> - "Windows packaging 仅接受已 Authenticode 签名的 payload"：本项目没有代码签名证书，
+>   新流水线生成未签名安装器；Authenticode 不属于 release workflow 门禁。
 > - "未来 Rust update helper 只接收 ADR-0021 验证完成的本 target/arch artifact"一句已随
 >   ADR-0029 作废：不再有独立 Rust update helper，替换由 `self_update 1.3.0` 在进程内完成，
 >   其权限边界、原子性与失败恢复未经本项目威胁建模。ADR-0021 已标记「已被 ADR-0029 取代」。
@@ -43,5 +43,5 @@ Windows 首发仍需要固定安装格式，以便明确 installer 权限、卸�
 ## 验证
 
 后续 installer job 必须在干净 Windows 10 1903+ 与 Windows 11 用户 profile 验证安装、升级、卸载、
-签名、环境数据保留、x64 artifact 选择和失败 rollback。这些证据尚未取得，不能宣称 Windows
+环境数据保留、x64 artifact 选择和失败 rollback。这些证据尚未取得，不能宣称 Windows
 package 可发布。

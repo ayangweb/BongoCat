@@ -189,8 +189,9 @@ minisign 改名后技术上仍可验证通过（代价是丢掉了文件名绑�
 | 防的是 | 更新内容不是你发的 | 二进制来源可信、没被篡改、能过 SmartScreen/Gatekeeper |
 | 谁验证 | 你自己的应用 | 操作系统 |
 
-本仓库两者都还是缺口：打包只做 ad-hoc 签名（`crates/bongocat-packaging/src/main.rs:97` 的
-`ADHOC_SIGNING_IDENTITY = "-"`），`app-release.yml` 里 Windows Authenticode 目前只打 warning。
+本仓库只把更新签名作为发布门禁。本项目没有 macOS Developer ID 或 Windows 代码签名证书；
+macOS 使用 ad-hoc 签名，Windows 发布未签名安装器，Developer ID 公证与 Authenticode
+均不属于发布门禁。
 
 ---
 
@@ -501,7 +502,7 @@ if keys.is_empty() {
 
 ```
 编译 → 打包（.app / .dmg / .exe）
-     → macOS: codesign + notarize（.app 必须先真正签名并公证）
+     → macOS: ad-hoc codesign
      → 生成更新归档（macOS: .app.tar.gz；Windows: 复用 .exe）
      → 用正式名字命名
      → 签名（产出 .sig）
@@ -515,8 +516,7 @@ if keys.is_empty() {
 
 1. **签名必须是最后一步。** 签名之后任何字节改动（重新压缩、改名、`strip`）都会让签名失效。
    对 zipsign 而言改名**一定**失效（文件名是签名 context）。
-2. **归档内的 `.app` 必须先完成 codesign + notarize。** 一旦打成 tar.gz，再想签名里面的 `.app`
-   就晚了——解压、签名、重新打包会直接让归档签名失效。实际上"先打包再公证"在流程上根本走不通。
+2. **归档内的 `.app` 必须先完成 ad-hoc codesign。** 归档生成后不得再修改 bundle，否则更新载荷签名失效。
 3. **命名和签名严格分先后。** 先改好名字，再签名。
 
 > 现状（2026-09-14）：合并发生在签名**之后**，但只作用于 manifest——它把各 target 已经签好的
@@ -675,14 +675,14 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
       （release workflow 的 "Require the update signing key" 与 "Verify the signed update assets"）
 - [x] 签名是所有步骤的**最后一步**；签名后不改名、不重新压缩、不 strip
       （`publish_update_assets` 在产物确定后才签名，manifest 的 URL 在签名之后写入）
-- [ ] macOS 的 `.app` 必须在**打 tar.gz 之前**完成 codesign + notarize（公证仍是独立门禁）
+- [x] macOS 的 `.app` 在**打 tar.gz 之前**完成 ad-hoc codesign；不要求 Developer ID 签名或公证
 - [x] 更新载荷名不必再含**完整 target triple**：载荷位置由共享 manifest 的 `platforms` 条目
       给出，不再按资产名匹配（这正是 `asset_for` 退役后的变化）
 - [x] macOS 归档根必须是 `BongoCat.app/`（`write_bundle_archive` 回归 + release workflow 断言）
 - [x] `.dmg` 不作为更新产物（`update_payload` 只取 bundle 或 `.exe`）
 - [x] Windows 的 `resources/` 随安装器一起更新（结构推论，**未在 Windows 实机验证**）
 - [x] `.sig` 只在方案 B 存在；方案 B 已采纳，两平台各一个 `.sig`
-- [ ] 更新签名 ≠ Authenticode / 公证，两件事都要做（Authenticode 仍只打 warning）
+- [x] 更新签名是发布门禁；Developer ID 公证与 Authenticode 明确不要求
 - [ ] 一把钥匙泄露 = 换钥匙 = 必须先发"双钥匙版本"；务必备份私钥
       （**单公钥模型下这条约束更硬**，见 ADR-0034 待验证项 4）
 - [ ] ADR-0029 已丢失的降级防护（`release_sequence`）值得在换实现时补回（**本次未补**）

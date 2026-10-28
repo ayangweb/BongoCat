@@ -181,14 +181,13 @@ const RESOURCE_STAGING_DIRECTORY: &str = "resource-stage";
 /// Ad-hoc signature used when no distribution identity is provisioned.
 ///
 /// It keeps the bundle and disk image integrity verifiable locally and in CI.
-/// Distribution signing, hardened runtime and notarization stay separate release
-/// gates.
+/// Paid OS distribution signing is intentionally not a release gate.
 const ADHOC_SIGNING_IDENTITY: &str = "-";
 /// Overrides the macOS signing identity for release builds.
 ///
 /// Signing certificates cannot be committed, so the release pipeline injects the
-/// real identity through this variable. It is a credential injection point, not
-/// a hidden build step: an unset or empty value keeps the ad-hoc identity.
+/// real identity through this optional variable. It is a credential injection
+/// point, not a hidden build step: an unset or empty value keeps the ad-hoc identity.
 const MACOS_SIGNING_IDENTITY_VARIABLE: &str = "BONGOCAT_MACOS_SIGNING_IDENTITY";
 /// Selected through `--environment`; `production` is the release default.
 const BUILD_ENVIRONMENTS: [&str; 2] = ["development", "production"];

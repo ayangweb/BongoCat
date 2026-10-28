@@ -253,8 +253,8 @@ class PackagingTargetTests(unittest.TestCase):
     def test_a_step_named_require_actually_fails_the_build(self):
         # A step called "Require X" that only warns is worse than no name at all:
         # a maintainer scanning a green log reads it as proof X was enforced. The
-        # update-signing gate really does exit 1; the Authenticode step cannot,
-        # because CI has no certificate configured, so it is named for what it does.
+        # The update-signing gate really does exit 1. OS code signing is not a
+        # release gate and therefore has no Require step in this workflow.
         workflow = read(RELEASE_WORKFLOW)
 
         enforcing = re.findall(r"- name: (Require [^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL)
@@ -266,13 +266,7 @@ class PackagingTargetTests(unittest.TestCase):
                     f"{name} does not fail the build, so it must not be named Require",
                 )
 
-        reporting = re.search(
-            r"- name: (Report Authenticode[^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL
-        )
-        self.assertIsNotNone(reporting, "the Authenticode step must say it reports")
-        self.assertIn("::warning::", reporting.group(2))
-        self.assertNotIn("exit 1", reporting.group(2))
-        self.assertNotIn("Authenticode signatures for a stable release\"", workflow)
+        self.assertNotIn("Authenticode", workflow)
 
     def test_both_build_jobs_name_the_build_step_the_same_way(self):
         # The two jobs run the same operation on different machines, and the

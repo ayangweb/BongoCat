@@ -53,7 +53,7 @@ R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关
 | `aarch64-apple-darwin`    | `Core/lib/macos/arm64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                  | 首发候选；先验证 architecture-specific static library            |
 | `x86_64-apple-darwin`     | `Core/lib/macos/x86_64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                 | 首发候选；需 Intel 实机与发布链验证                              |
 
-`RedistributableFiles.txt` 列出的 Core 文件才是 Proprietary Software License 下的可再分发候选，并要求按 Live2D 提供的原样形式分发。BongoCat 不修改、重打包为另一种库格式或从二进制反向生成源码。最终选择 static 或 dynamic linkage 之前，还要验证代码签名、notarization、更新替换、崩溃符号和最终安装包中的许可文件。
+`RedistributableFiles.txt` 列出的 Core 文件才是 Proprietary Software License 下的可再分发候选，并要求按 Live2D 提供的原样形式分发。BongoCat 不修改、重打包为另一种库格式或从二进制反向生成源码。最终选择 static 或 dynamic linkage 之前，还要验证 ad-hoc 签名、更新替换、崩溃符号和最终安装包中的许可文件；Developer ID 公证不在产品范围内。
 
 ## 3. License Gate
 

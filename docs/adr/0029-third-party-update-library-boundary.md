@@ -172,8 +172,8 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 
 1. 替换机制只在本机以「假安装目标」验证过，**未在真实发行物上验证**。已实测（见上一条）：
    单文件替换、`.app` 整包交换与旧包清理。**未实测**：Windows 上运行中的 exe 被改名替换、
-   安装阶段失败后的回滚、替换后的进程重启、以及从真实 GitHub 发行下载。真实 `.app` 还需
-   签名与公证，当前打包脚本只做 ad-hoc 签名。
+   安装阶段失败后的回滚、替换后的进程重启、以及从真实 GitHub 发行下载。真实 `.app` 使用
+   ad-hoc 签名，不要求 Developer ID 签名或公证。
 2. 未配置真实 endpoint 与签名密钥。`RELEASE_SIGNING_KEY` 为 `None`，因此当前构建
    `update_check_available()` 恒为 `false`，更新入口在 UI 中不显示。
 3. **发行流程尚未产出 `self_update` 可消费的归档。** 读 `self_update 1.3.0` 源码确认的硬性要求：
@@ -208,8 +208,8 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
      `crates/bongocat-update/tests/multi_file_install_capability.rs`。代价是这条路径**不走**
      `update()` 编排，需自行保证暂存目录与目标同文件系统、zipsign 校验仍然执行、以及失败后的
      启动恢复。**本项目尚未实现这条路径。**
-   - macOS 归档需携带已签名并公证的 `.app`；`package-macos.sh` 目前只做 ad-hoc 签名，
-     分发签名与公证仍是独立发布门禁。
+   - macOS 归档携带 ad-hoc 签名的 `.app`；本项目没有 Developer ID 签名证书，
+     Developer ID 签名与公证不属于发布门禁。
 4. **断电/强杀残留的清理策略仍未决定，但残留形态已查实**（读 `self_update 1.3.0`、
    `self-replace 1.5.0` 与 `tempfile` 源码）：
    - 下载与解压暂存使用 `tempfile::TempDir`（默认前缀 `.tmp`）：单文件模式建在**系统临时目录**，

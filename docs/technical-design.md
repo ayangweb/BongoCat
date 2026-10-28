@@ -893,7 +893,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   调用同一棵菜单树，不借用托盘状态项。登录启动在 macOS 13+ Production `.app` 使用
   `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，不回退到
   废弃 API 或自行写 LaunchAgent。
-- 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
+- 发布：ad-hoc 签名、未公证分发限制和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
 
@@ -1607,7 +1607,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 传输有 30 分钟上限：transport 自身无超时，不设界会让 worker 永久阻塞；取值覆盖整条载荷传输。
   下载**不支持取消**——库没有 abort 钩子，真取消只能自研下载与验签，而自研验证层已被 ADR-0029/0034
   删除，因此不提供取消按钮而不是提供一个假的。
-- 真实签名公钥注入、真实发布链路验证、操作系统包签名验证与失败启动恢复仍未完成；在这些证据齐备前
+- 真实更新签名公钥注入、真实发布链路验证与失败启动恢复仍未完成；在这些证据齐备前
   不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的能力损失（归档完整性校验、
   per-platform 资产匹配、公钥轮换窗）与待验证项；ADR-0035 记录了 worker、窗口、发布说明与
   "安装后协调 shutdown 而非安装前"这一处需要维护者复核的取舍。
@@ -1754,7 +1754,7 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 
 ### ADR-011：渐进实现与发布门禁分离
 
-允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、签名和稳定性证据保持 stable 发布门禁。
+允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、更新签名和稳定性证据保持 stable 发布门禁。macOS Developer ID 签名、公证与 Windows Authenticode 不属于发布门禁。
 
 ### ADR-012：有序 Motion 音频服务
 
