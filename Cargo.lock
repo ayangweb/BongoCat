@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-app"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "async-io",
  "atomic-write-file",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-audio"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "rodio",
  "thiserror 2.0.21",
@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-config"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-input",
  "bongocat-storage",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-i18n"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "rust-i18n",
  "serde_json",
@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-input"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "schemars",
  "serde",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-live2d"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-live2d-playback",
  "bongocat-live2d-render",
@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-live2d-playback"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-live2d-render"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-model",
  "bongocat-render",
@@ -928,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-log"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-storage",
  "tempfile",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-model"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "proptest",
  "serde",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-model-store"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-model",
  "bongocat-render",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-overlay"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "block2 0.6.2",
  "bongocat-input",
@@ -988,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-packaging"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "cargo-packager",
  "cargo-packager-updater",
@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-platform"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "arboard",
  "async-io",
@@ -1037,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-plugin-hud"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-plugin-sdk",
  "fontdue",
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-plugin-manager"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "atomic-write-file",
  "base64 0.23.1",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-plugin-packaging"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "base64 0.23.1",
  "bongocat-plugin-sdk",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-plugin-service"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "async-channel",
  "bongocat-plugin-hud",
@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-render"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-input",
  "thiserror 2.0.21",
@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-runtime"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-audio",
  "bongocat-input",
@@ -1139,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-storage"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "atomic-write-file",
  "tempfile",
@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-ui"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "async-channel",
  "bongocat-config",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-ui-protocol"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "async-channel",
  "bongocat-input",
@@ -1176,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-update"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "bongocat-config",
  "cargo-packager",

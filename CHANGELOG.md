@@ -1,14 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2.4.1 - 2026-10-28
 
 ### 🎨 Interface
 
-- Made the model library delete button easier to recognize as a destructive action.
+- Changed the model library delete button to red to make it easier to recognize.
 
 ### 🌍 Localization
 
-- Added Russian.
+- Added Russian localization.
 
 ## 2.4.0 - 2026-10-26
 
