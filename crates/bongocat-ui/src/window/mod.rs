@@ -5,17 +5,19 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
-    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
-    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
-    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    DEFAULT_NETWORK_PORT, ModifierKey, NETWORK_SELF_DEVICE, SettingsBuildEnvironment,
+    SettingsBuildInfo, SettingsClient, SettingsCursorSettings, SettingsError, SettingsErrorCode,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
+    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
+    SettingsModelSourceContent, SettingsMverMode, SettingsNetwork, SettingsNetworkClientSource,
+    SettingsNetworkClientState, SettingsNetworkListenMode, SettingsOperationId, SettingsOverlay,
+    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -80,6 +82,7 @@ mod source;
 use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
 mod models;
+mod multiplayer_page;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
@@ -189,6 +192,12 @@ pub(crate) type LoggingLevelSelectState = SelectState<SearchableVec<&'static str
 
 pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'static str>>;
 
+/// One of the multiplayer page's fixed option lists: which addresses a relay
+/// binds, where a client's address comes from, and the preset addresses it may
+/// be picked from. All three are short lists of translated names, so they share
+/// one state type with the theme and log-level dropdowns.
+pub(crate) type NetworkOptionSelectState = SelectState<SearchableVec<&'static str>>;
+
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
 /// The appearance a settings window paints its first frame with.
@@ -253,6 +262,8 @@ pub struct SettingsView {
     pub(crate) random_behavior_timer_generation: u64,
     pub(crate) logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,
     pub(crate) logging_settings_timer_generation: u64,
+    pub(crate) network_settings_debouncer: crate::SettingsPatchDebouncer<SettingsNetwork>,
+    pub(crate) network_settings_timer_generation: u64,
     pub(crate) flush_pending_requested: bool,
     pub(crate) quit_after_flush: bool,
     pub(crate) model_delete_confirmation: Option<SettingsModelKey>,
@@ -304,6 +315,19 @@ pub struct SettingsView {
     /// come from the model catalog, so they are rebuilt on every snapshot.
     pub(crate) gamepad_connected_model_select: Entity<GamepadModelSelectState>,
     pub(crate) gamepad_disconnected_model_select: Entity<GamepadModelSelectState>,
+    pub(crate) network_listen_mode_select: Entity<NetworkOptionSelectState>,
+    pub(crate) network_client_source_select: Entity<NetworkOptionSelectState>,
+    /// The address a client joins, offered as a choice as well as typed.
+    ///
+    /// Its options name the machine the page is running on, so they are built
+    /// from the configured port on every snapshot rather than held as literals.
+    pub(crate) network_client_url_preset_select: Entity<NetworkOptionSelectState>,
+    /// The device id the "add" row below the displayed devices is typing.
+    ///
+    /// It is view state rather than configuration: the id becomes part of the
+    /// settings only when the user commits it, and until then nothing is sent.
+    pub(crate) network_display_device_input: Entity<InputState>,
+    pub(crate) network_display_device_add_focus: FocusHandle,
     pub(crate) request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
     pub(crate) request_update: SettingsWindowRequest,

@@ -84,6 +84,10 @@ impl SettingsView {
             Some(SettingValue::LoggingSettings { settings, .. }) => Some(*settings),
             _ => None,
         };
+        let sent_network_settings = match value.as_ref() {
+            Some(SettingValue::NetworkSettings { settings, .. }) => Some(settings.clone()),
+            _ => None,
+        };
         cx.spawn(async move |this, cx| {
             let result = match value {
                 None => client.read_snapshot().await,
@@ -154,6 +158,14 @@ impl SettingsView {
                 }) => {
                     client
                         .set_logging_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::NetworkSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_network_settings(expected_config_revision, settings)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -426,6 +438,14 @@ impl SettingsView {
                         view.schedule_logging_settings_flush(cx);
                     }
                 }
+                if result.is_ok()
+                    && let Some(settings) = sent_network_settings.as_ref()
+                {
+                    view.network_settings_debouncer.mark_sent(settings);
+                    if view.network_settings_debouncer.is_pending() {
+                        view.schedule_network_settings_flush(cx);
+                    }
+                }
                 if result.is_err() {
                     if operation == PendingOperation::AppearanceTheme {
                         view.applied_theme = None;
@@ -462,6 +482,9 @@ impl SettingsView {
                     if sent_logging_settings.is_some() {
                         view.schedule_logging_settings_flush(cx);
                     }
+                    if sent_network_settings.is_some() {
+                        view.schedule_network_settings_flush(cx);
+                    }
                 }
                 if sent_check_for_updates_interval.is_none()
                     && view.check_for_updates_interval_debouncer.is_pending()
@@ -473,6 +496,9 @@ impl SettingsView {
                 }
                 if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
                     view.schedule_logging_settings_flush(cx);
+                }
+                if sent_network_settings.is_none() && view.network_settings_debouncer.is_pending() {
+                    view.schedule_network_settings_flush(cx);
                 }
                 if let Some(snapshot) = refreshed
                     && accepts_snapshot_revision(

@@ -437,6 +437,42 @@ impl SettingsView {
 }
 
 impl SettingsView {
+    pub(crate) fn schedule_network_settings_flush(&mut self, cx: &mut Context<Self>) {
+        self.network_settings_timer_generation =
+            self.network_settings_timer_generation.saturating_add(1);
+        let generation = self.network_settings_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.network_settings_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(settings) = view.network_settings_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::NetworkSettings,
+                    Some(SettingValue::NetworkSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+}
+
+impl SettingsView {
     pub(crate) fn flush_pending_setting_patches(&mut self, cx: &mut Context<Self>) {
         if self.pending.is_some() {
             return;
@@ -576,6 +612,15 @@ impl SettingsView {
             self.start_request(
                 PendingOperation::LoggingSettings,
                 Some(SettingValue::LoggingSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(settings) = self.network_settings_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::NetworkSettings,
+                Some(SettingValue::NetworkSettings {
                     expected_config_revision,
                     settings,
                 }),

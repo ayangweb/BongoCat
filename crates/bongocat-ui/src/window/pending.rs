@@ -21,6 +21,7 @@ pub(crate) enum PendingOperation {
     AutomaticUpdateCheck,
     CheckForUpdatesIntervalHours,
     LoggingSettings,
+    NetworkSettings,
     OverlayVisibility,
     OverlaySettings,
     OverlayScale,
@@ -85,6 +86,13 @@ pub(crate) enum SettingValue {
     LoggingSettings {
         expected_config_revision: u64,
         settings: SettingsLogging,
+    },
+    // The three parts of the multiplayer section travel together: the device
+    // this machine calls itself, what it joins and what it serves are one
+    // persisted object, so a change to any of them is one write.
+    NetworkSettings {
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
     },
     OverlayVisible {
         expected_config_revision: u64,

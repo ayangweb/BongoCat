@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "Shortcuts"
     },
+    "multiplayer": {
+      "title": "Multiplayer"
+    },
     "app_system": {
       "title": "App & system"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "Login startup is unavailable on this system",
         "unsupported_os": "Login startup is unavailable on this operating system",
         "unsupported_build": "Login startup is unavailable in development builds"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "The relay and the room are opened while BongoCat starts. Restart BongoCat for a change on this page to take effect.",
+      "device": {
+        "title": "This machine",
+        "id": {
+          "label": "Device id"
+        },
+        "name": {
+          "label": "Display name"
+        }
+      },
+      "display": {
+        "title": "Devices to draw",
+        "self": {
+          "label": "This machine (follow my own input)"
+        },
+        "remove": "Remove",
+        "add": {
+          "label": "Add a device id",
+          "action": "Add"
+        },
+        "empty": "An empty list is fine: a machine can send its input to a room without drawing any of it."
+      },
+      "client": {
+        "title": "Join a room",
+        "enabled": {
+          "label": "Join a room"
+        },
+        "source": {
+          "label": "Address source",
+          "options": {
+            "follow_local": "Follow the relay on this machine",
+            "manual": "Type an address myself"
+          }
+        },
+        "url": {
+          "label": "Address",
+          "preset": {
+            "label": "Address preset"
+          }
+        },
+        "token": {
+          "label": "Room key"
+        },
+        "publish": {
+          "label": "Send my input to the room"
+        }
+      },
+      "server": {
+        "title": "Serve a relay",
+        "enabled": {
+          "label": "Run a relay on this machine"
+        },
+        "listen": {
+          "label": "Listen on",
+          "options": {
+            "local_only": "This machine only",
+            "ipv4": "The local network only",
+            "dual_stack": "The local network and this machine",
+            "custom": "One address I name"
+          }
+        },
+        "address": {
+          "label": "Address"
+        },
+        "port": {
+          "label": "Port"
+        },
+        "token": {
+          "label": "Room key"
+        }
+      },
+      "status": {
+        "title": "Status",
+        "server": {
+          "label": "Relay",
+          "stopped": "Not running"
+        },
+        "client": {
+          "label": "Room",
+          "state": {
+            "off": "Not connected",
+            "connecting": "Connecting…",
+            "connected": "Connected",
+            "reconnecting": "Reconnecting…",
+            "failed": "Connection failed"
+          }
+        },
+        "bound": {
+          "label": "Following",
+          "none": "Nothing yet"
+        }
       }
     }
   },

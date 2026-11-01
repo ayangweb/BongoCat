@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "快速鍵"
     },
+    "multiplayer": {
+      "title": "連線"
+    },
     "app_system": {
       "title": "應用程式與系統"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "目前系統不支援登入時啟動",
         "unsupported_os": "目前作業系統不支援登入時啟動",
         "unsupported_build": "開發版本不支援登入時啟動"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "連線服務會在 BongoCat 啟動時建立，修改後重新啟動 BongoCat 才會生效。",
+      "device": {
+        "title": "本機",
+        "id": {
+          "label": "裝置 ID"
+        },
+        "name": {
+          "label": "顯示名稱"
+        }
+      },
+      "display": {
+        "title": "顯示的裝置",
+        "self": {
+          "label": "本機（跟隨自己的輸入）"
+        },
+        "remove": "移除",
+        "add": {
+          "label": "新增裝置 ID",
+          "action": "新增"
+        },
+        "empty": "清單為空是合法的：一台機器可以只把自己的輸入送到房間，而不顯示任何東西。"
+      },
+      "client": {
+        "title": "用戶端",
+        "enabled": {
+          "label": "加入房間"
+        },
+        "source": {
+          "label": "位址來源",
+          "options": {
+            "follow_local": "跟隨本機的連線服務",
+            "manual": "手動指定位址"
+          }
+        },
+        "url": {
+          "label": "位址",
+          "preset": {
+            "label": "位址預設值"
+          }
+        },
+        "token": {
+          "label": "房間金鑰"
+        },
+        "publish": {
+          "label": "把我的輸入送到房間"
+        }
+      },
+      "server": {
+        "title": "伺服端",
+        "enabled": {
+          "label": "在本機執行連線服務"
+        },
+        "listen": {
+          "label": "監聽方式",
+          "options": {
+            "local_only": "僅本機",
+            "ipv4": "僅區域網路（IPv4）",
+            "dual_stack": "區域網路與本機",
+            "custom": "自訂一個位址"
+          }
+        },
+        "address": {
+          "label": "位址"
+        },
+        "port": {
+          "label": "連接埠"
+        },
+        "token": {
+          "label": "房間金鑰"
+        }
+      },
+      "status": {
+        "title": "狀態",
+        "server": {
+          "label": "連線服務",
+          "stopped": "未執行"
+        },
+        "client": {
+          "label": "房間",
+          "state": {
+            "off": "未連線",
+            "connecting": "連線中…",
+            "connected": "已連線",
+            "reconnecting": "重新連線中…",
+            "failed": "連線失敗"
+          }
+        },
+        "bound": {
+          "label": "正在跟隨",
+          "none": "暫無"
+        }
       }
     }
   },

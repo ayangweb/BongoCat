@@ -50,7 +50,7 @@ fn report_navigation_page(page: SettingsNavigationPage, memory: &SettingsNavigat
     memory.select(page);
 }
 
-fn page_reporter(
+pub(super) fn page_reporter(
     page: SettingsNavigationPage,
     memory: SettingsNavigationMemory,
 ) -> impl Fn(&mut Window, &mut App) -> Div {
@@ -1589,6 +1589,17 @@ impl Render for SettingsView {
                 ),
             ]);
 
+        // The multiplayer page reads the status the process reports as well as
+        // the settings the user chose, so it is built from the snapshot rather
+        // than from the view alone.
+        let multiplayer_page = multiplayer_page::multiplayer_page(
+            &view_entity,
+            snapshot.as_ref(),
+            language,
+            navigation_memory.clone(),
+            editing_blocked,
+        );
+
         // About is the final normal settings destination. Its operational rows
         // use the same SettingGroup contract as the rest of the settings
         // window; the page intentionally stays focused on product information
@@ -1623,6 +1634,7 @@ impl Render for SettingsView {
                 overlay_page,
                 input_interaction_page,
                 shortcuts_page,
+                multiplayer_page,
                 app_system_page,
                 about_page,
             ]);

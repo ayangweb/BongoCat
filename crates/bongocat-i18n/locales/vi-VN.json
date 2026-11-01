@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "Phím tắt"
     },
+    "multiplayer": {
+      "title": "Nhiều máy"
+    },
     "app_system": {
       "title": "Ứng dụng & hệ thống"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "Tính năng mở khi đăng nhập không khả dụng trên hệ thống này",
         "unsupported_os": "Tính năng mở khi đăng nhập không khả dụng trên hệ điều hành này",
         "unsupported_build": "Tính năng mở khi đăng nhập không khả dụng trong bản dựng phát triển"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "Dịch vụ kết nối được tạo khi BongoCat khởi động. Khởi động lại BongoCat để thay đổi trên trang này có hiệu lực.",
+      "device": {
+        "title": "Máy này",
+        "id": {
+          "label": "Mã thiết bị"
+        },
+        "name": {
+          "label": "Tên hiển thị"
+        }
+      },
+      "display": {
+        "title": "Thiết bị được hiển thị",
+        "self": {
+          "label": "Máy này (theo chính input của máy)"
+        },
+        "remove": "Xóa",
+        "add": {
+          "label": "Thêm mã thiết bị",
+          "action": "Thêm"
+        },
+        "empty": "Danh sách trống là hợp lệ: một máy có thể chỉ gửi input của nó vào phòng mà không hiển thị gì cả."
+      },
+      "client": {
+        "title": "Vào phòng",
+        "enabled": {
+          "label": "Vào phòng"
+        },
+        "source": {
+          "label": "Nguồn địa chỉ",
+          "options": {
+            "follow_local": "Theo dịch vụ trên máy này",
+            "manual": "Tự nhập địa chỉ"
+          }
+        },
+        "url": {
+          "label": "Địa chỉ",
+          "preset": {
+            "label": "Địa chỉ có sẵn"
+          }
+        },
+        "token": {
+          "label": "Khóa phòng"
+        },
+        "publish": {
+          "label": "Gửi input của tôi vào phòng"
+        }
+      },
+      "server": {
+        "title": "Chạy dịch vụ",
+        "enabled": {
+          "label": "Chạy dịch vụ trên máy này"
+        },
+        "listen": {
+          "label": "Lắng nghe trên",
+          "options": {
+            "local_only": "Chỉ máy này",
+            "ipv4": "Chỉ mạng nội bộ",
+            "dual_stack": "Mạng nội bộ và máy này",
+            "custom": "Một địa chỉ do tôi chỉ định"
+          }
+        },
+        "address": {
+          "label": "Địa chỉ"
+        },
+        "port": {
+          "label": "Cổng"
+        },
+        "token": {
+          "label": "Khóa phòng"
+        }
+      },
+      "status": {
+        "title": "Trạng thái",
+        "server": {
+          "label": "Dịch vụ",
+          "stopped": "Chưa chạy"
+        },
+        "client": {
+          "label": "Phòng",
+          "state": {
+            "off": "Chưa kết nối",
+            "connecting": "Đang kết nối…",
+            "connected": "Đã kết nối",
+            "reconnecting": "Đang kết nối lại…",
+            "failed": "Kết nối thất bại"
+          }
+        },
+        "bound": {
+          "label": "Đang theo",
+          "none": "Chưa có"
+        }
       }
     }
   },

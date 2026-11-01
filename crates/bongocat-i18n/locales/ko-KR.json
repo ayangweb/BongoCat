@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "단축키"
     },
+    "multiplayer": {
+      "title": "멀티플레이"
+    },
     "app_system": {
       "title": "앱 및 시스템"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "이 시스템에서는 로그인 시 실행을 사용할 수 없습니다",
         "unsupported_os": "이 운영체제에서는 로그인 시 실행을 사용할 수 없습니다",
         "unsupported_build": "개발 빌드에서는 로그인 시 실행을 사용할 수 없습니다"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "연결 서비스는 BongoCat이 시작될 때 만들어집니다. 이 페이지에서 바꾼 설정은 BongoCat을 다시 시작해야 적용됩니다.",
+      "device": {
+        "title": "이 컴퓨터",
+        "id": {
+          "label": "장치 ID"
+        },
+        "name": {
+          "label": "표시 이름"
+        }
+      },
+      "display": {
+        "title": "표시할 장치",
+        "self": {
+          "label": "이 컴퓨터 (내 입력 따라가기)"
+        },
+        "remove": "삭제",
+        "add": {
+          "label": "장치 ID 추가",
+          "action": "추가"
+        },
+        "empty": "목록이 비어 있어도 됩니다. 컴퓨터는 아무것도 표시하지 않고 자신의 입력만 방으로 보낼 수 있습니다."
+      },
+      "client": {
+        "title": "방 참여",
+        "enabled": {
+          "label": "방에 참여"
+        },
+        "source": {
+          "label": "주소 출처",
+          "options": {
+            "follow_local": "이 컴퓨터의 연결 서비스 따르기",
+            "manual": "주소 직접 입력"
+          }
+        },
+        "url": {
+          "label": "주소",
+          "preset": {
+            "label": "주소 프리셋"
+          }
+        },
+        "token": {
+          "label": "방 키"
+        },
+        "publish": {
+          "label": "내 입력을 방으로 보내기"
+        }
+      },
+      "server": {
+        "title": "연결 서비스",
+        "enabled": {
+          "label": "이 컴퓨터에서 연결 서비스 실행"
+        },
+        "listen": {
+          "label": "수신 대상",
+          "options": {
+            "local_only": "이 컴퓨터만",
+            "ipv4": "로컬 네트워크만",
+            "dual_stack": "로컬 네트워크와 이 컴퓨터",
+            "custom": "내가 지정한 주소 하나"
+          }
+        },
+        "address": {
+          "label": "주소"
+        },
+        "port": {
+          "label": "포트"
+        },
+        "token": {
+          "label": "방 키"
+        }
+      },
+      "status": {
+        "title": "상태",
+        "server": {
+          "label": "연결 서비스",
+          "stopped": "실행 중 아님"
+        },
+        "client": {
+          "label": "방",
+          "state": {
+            "off": "연결되지 않음",
+            "connecting": "연결 중…",
+            "connected": "연결됨",
+            "reconnecting": "다시 연결 중…",
+            "failed": "연결 실패"
+          }
+        },
+        "bound": {
+          "label": "따라가는 중",
+          "none": "아직 없음"
+        }
       }
     }
   },

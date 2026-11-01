@@ -386,6 +386,257 @@ impl SettingsView {
         }
     }
 
+    /// How this machine takes part in a room, as the page is showing it.
+    ///
+    /// The value still waiting in the debounce window wins over the snapshot,
+    /// which is what keeps a typed field from being reset underneath the user:
+    /// the row re-reads its value on every frame, and a snapshot that has not
+    /// received the write yet would otherwise pull the caret back to the old
+    /// text. The same rule the logging policy's two fields use.
+    pub(super) fn network_settings_value(&self) -> SettingsNetwork {
+        self.network_settings_debouncer
+            .pending_value()
+            .cloned()
+            .or_else(|| {
+                self.snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.network.clone())
+            })
+            .unwrap_or_default()
+    }
+
+    /// Hand one whole multiplayer patch to the debounce window.
+    ///
+    /// A typed field produces one command per pause rather than per keystroke,
+    /// and it starts from the value still in flight so two fields edited in
+    /// quick succession cannot drop each other's change.
+    fn patch_network_settings(
+        &mut self,
+        mutate: impl FnOnce(&mut SettingsNetwork),
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let persisted = snapshot.network.clone();
+        let mut settings = self
+            .network_settings_debouncer
+            .pending_value()
+            .cloned()
+            .unwrap_or(persisted);
+        mutate(&mut settings);
+        self.queue_network_settings(settings, cx);
+    }
+
+    fn queue_network_settings(&mut self, settings: SettingsNetwork, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let persisted = snapshot.network.clone();
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        // Re-confirming what the configuration already holds is not a change,
+        // and sending it would move the revision for nothing.
+        if settings == persisted && self.pending != Some(PendingOperation::NetworkSettings) {
+            self.network_settings_debouncer.discard_pending();
+            return;
+        }
+        let should_send = self
+            .network_settings_debouncer
+            .observe(settings, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .map(|settings| {
+                self.start_request(
+                    PendingOperation::NetworkSettings,
+                    Some(SettingValue::NetworkSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_network_settings_flush(cx);
+        }
+    }
+
+    /// Send one discrete multiplayer change straight away.
+    ///
+    /// A switch, a dropdown and adding or removing one displayed device are one
+    /// gesture each, so they are not debounced — but they still start from the
+    /// value the debounce window holds and clear it, so a click that lands
+    /// while a typed field is still settling cannot be followed by an older
+    /// patch that quietly drops the click.
+    fn commit_network_settings(
+        &mut self,
+        mutate: impl FnOnce(&mut SettingsNetwork),
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        let persisted = snapshot.network.clone();
+        let mut settings = self
+            .network_settings_debouncer
+            .pending_value()
+            .cloned()
+            .unwrap_or(persisted);
+        mutate(&mut settings);
+        self.network_settings_debouncer.discard_pending();
+        if settings == snapshot.network && self.pending.is_none() {
+            return;
+        }
+        self.start_request(
+            PendingOperation::NetworkSettings,
+            Some(SettingValue::NetworkSettings {
+                expected_config_revision,
+                settings,
+            }),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_device_id(&mut self, id: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(|settings| settings.device.id = id, cx);
+    }
+
+    pub(super) fn set_network_device_name(&mut self, name: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(|settings| settings.device.name = name, cx);
+    }
+
+    /// Whether this machine's own input drives the pet on this machine.
+    ///
+    /// `self` is a reserved word in the display list rather than a device id,
+    /// so it is kept at the front of the list: the row that names this machine
+    /// cannot be an id another machine might also choose.
+    pub(super) fn set_network_display_self(&mut self, shown: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(
+            |settings| {
+                settings
+                    .client
+                    .display
+                    .retain(|device| device != NETWORK_SELF_DEVICE);
+                if shown {
+                    settings
+                        .client
+                        .display
+                        .insert(0, NETWORK_SELF_DEVICE.to_owned());
+                }
+            },
+            cx,
+        );
+    }
+
+    /// Add the id the display group's field is holding to the drawn devices.
+    ///
+    /// The id is read from the field's own state rather than carried in a draft
+    /// on the view, and the field is emptied afterwards: the row is a prompt for
+    /// the next id, so leaving the committed one in it would invite adding it a
+    /// second time — which the write itself refuses, but the user cannot see.
+    pub(super) fn add_network_display_device(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let device = self
+            .network_display_device_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_owned();
+        // An empty entry is the state the row starts in, and the reserved word
+        // would add a row the page cannot tell apart from the one that names
+        // this machine.
+        if device.is_empty() || device == NETWORK_SELF_DEVICE {
+            return;
+        }
+        self.commit_network_settings(
+            |settings| {
+                if !settings.client.display.contains(&device) {
+                    settings.client.display.push(device);
+                }
+            },
+            cx,
+        );
+        self.network_display_device_input
+            .update(cx, |input, cx| input.set_value(String::new(), window, cx));
+    }
+
+    pub(super) fn remove_network_display_device(&mut self, device: String, cx: &mut Context<Self>) {
+        self.commit_network_settings(
+            |settings| settings.client.display.retain(|shown| shown != &device),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(|settings| settings.client.enabled = enabled, cx);
+    }
+
+    pub(super) fn set_network_client_source(
+        &mut self,
+        source: SettingsNetworkClientSource,
+        cx: &mut Context<Self>,
+    ) {
+        self.patch_network_settings(|settings| settings.client.source = source, cx);
+    }
+
+    pub(super) fn set_network_client_url(&mut self, url: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.client.url = normalize_network_optional_text(url),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_token(&mut self, token: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.client.token = normalize_network_optional_text(token),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_publish(&mut self, publish: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(|settings| settings.client.publish = publish, cx);
+    }
+
+    pub(super) fn set_network_server_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(|settings| settings.server.enabled = enabled, cx);
+    }
+
+    pub(super) fn set_network_server_listen(
+        &mut self,
+        listen: SettingsNetworkListenMode,
+        cx: &mut Context<Self>,
+    ) {
+        self.patch_network_settings(|settings| settings.server.listen = listen, cx);
+    }
+
+    pub(super) fn set_network_server_address(&mut self, address: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.address = normalize_network_optional_text(address),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_server_port_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.port = normalize_network_port(raw),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_server_token(&mut self, token: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.token = normalize_network_optional_text(token),
+            cx,
+        );
+    }
+
     /// Turn the gamepad-connection model switch on or off.
     ///
     /// Only the gate moves. Both targets are kept exactly as the user left them,

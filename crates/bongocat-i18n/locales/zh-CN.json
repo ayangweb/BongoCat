@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "快捷键"
     },
+    "multiplayer": {
+      "title": "联机"
+    },
     "app_system": {
       "title": "应用与系统"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "当前系统不支持登录时启动",
         "unsupported_os": "当前操作系统不支持登录时启动",
         "unsupported_build": "开发版本不支持登录时启动"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "联机服务在 BongoCat 启动时建立，修改后重启 BongoCat 才会生效。",
+      "device": {
+        "title": "本机",
+        "id": {
+          "label": "设备 id"
+        },
+        "name": {
+          "label": "显示名称"
+        }
+      },
+      "display": {
+        "title": "展示设备",
+        "self": {
+          "label": "本机（跟随自己的输入）"
+        },
+        "remove": "移除",
+        "add": {
+          "label": "添加设备 id",
+          "action": "添加"
+        },
+        "empty": "列表为空是合法状态：一台机器可以只把自己的输入发到房间，而不展示任何东西。"
+      },
+      "client": {
+        "title": "客户端",
+        "enabled": {
+          "label": "加入房间"
+        },
+        "source": {
+          "label": "地址来源",
+          "options": {
+            "follow_local": "跟随本机的联机服务",
+            "manual": "手动指定地址"
+          }
+        },
+        "url": {
+          "label": "地址",
+          "preset": {
+            "label": "地址预设"
+          }
+        },
+        "token": {
+          "label": "房间密钥"
+        },
+        "publish": {
+          "label": "把我的输入发到房间"
+        }
+      },
+      "server": {
+        "title": "服务端",
+        "enabled": {
+          "label": "在本机运行联机服务"
+        },
+        "listen": {
+          "label": "监听方式",
+          "options": {
+            "local_only": "仅本机",
+            "ipv4": "仅局域网（IPv4）",
+            "dual_stack": "局域网与本机",
+            "custom": "自定义一个地址"
+          }
+        },
+        "address": {
+          "label": "地址"
+        },
+        "port": {
+          "label": "端口"
+        },
+        "token": {
+          "label": "房间密钥"
+        }
+      },
+      "status": {
+        "title": "状态",
+        "server": {
+          "label": "联机服务",
+          "stopped": "未运行"
+        },
+        "client": {
+          "label": "房间",
+          "state": {
+            "off": "未连接",
+            "connecting": "连接中…",
+            "connected": "已连接",
+            "reconnecting": "重连中…",
+            "failed": "连接失败"
+          }
+        },
+        "bound": {
+          "label": "正在跟随",
+          "none": "暂无"
+        }
       }
     }
   },

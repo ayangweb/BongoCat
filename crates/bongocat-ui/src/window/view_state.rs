@@ -99,6 +99,53 @@ impl SettingsView {
                 cx,
             )
         });
+        // The three multiplayer dropdowns are rebuilt from the snapshot's
+        // settings rather than from the configuration alone, so a change that
+        // is still waiting in the debounce window is what the control shows.
+        let network = self.network_settings_value();
+        let network_language = snapshot.resolved_language;
+        self.network_listen_mode_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(network_listen_mode_options(network_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &network_listen_mode_display_name(network.server.listen, network_language),
+                window,
+                cx,
+            )
+        });
+        self.network_client_source_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(network_client_source_options(network_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &network_client_source_display_name(network.client.source, network_language),
+                window,
+                cx,
+            )
+        });
+        // The preset row has no value of its own: it names the host the address
+        // below it points at, so it is selected only while that address is
+        // exactly the one the preset would build.
+        let url = network.client.url.clone().unwrap_or_default();
+        let preset = NETWORK_CLIENT_URL_PRESET_HOSTS
+            .into_iter()
+            .find(|host| url == network_relay_url(host, network.server.port));
+        self.network_client_url_preset_select
+            .update(cx, |select, cx| {
+                select.set_items(
+                    SearchableVec::new(NETWORK_CLIENT_URL_PRESET_HOSTS),
+                    window,
+                    cx,
+                );
+                if let Some(preset) = preset {
+                    select.set_selected_value(&preset, window, cx);
+                }
+            });
         self.random_behavior_mode_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(random_behavior_mode_options(snapshot.resolved_language)),
@@ -197,6 +244,33 @@ impl SettingsView {
                 cx,
             )
         });
+        let network_listen_mode_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(network_listen_mode_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let network_client_source_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(network_client_source_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        // The preset row opens on the machine the page is running on, which is
+        // the address a client that follows the local relay already uses.
+        let network_client_url_preset_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(NETWORK_CLIENT_URL_PRESET_HOSTS),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let network_display_device_input = cx.new(|cx| InputState::new(window, cx));
         // Both gamepad auto switch dropdowns open on their "last used" choice,
         // which is the configured default: the first frame already shows the
         // state a fresh configuration is in.
@@ -288,6 +362,51 @@ impl SettingsView {
             },
         )
         .detach();
+        cx.subscribe(
+            &network_listen_mode_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(mode) =
+                        network_listen_mode_from_display_name(name, display_language)
+                {
+                    view.set_network_server_listen(mode, cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &network_client_source_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(source) =
+                        network_client_source_from_display_name(name, display_language)
+                {
+                    view.set_network_client_source(source, cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &network_client_url_preset_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                if let SelectEvent::Confirm(Some(host)) = event {
+                    let port = view.network_settings_value().server.port;
+                    view.set_network_client_url(network_relay_url(host, port), cx);
+                }
+            },
+        )
+        .detach();
         for (state, select) in [
             (
                 GamepadConnectionState::Connected,
@@ -345,6 +464,8 @@ impl SettingsView {
             random_behavior_timer_generation: 0,
             logging_settings_debouncer: crate::SettingsPatchDebouncer::default(),
             logging_settings_timer_generation: 0,
+            network_settings_debouncer: crate::SettingsPatchDebouncer::default(),
+            network_settings_timer_generation: 0,
             flush_pending_requested: false,
             quit_after_flush: false,
             model_delete_confirmation: None,
@@ -370,6 +491,11 @@ impl SettingsView {
             random_behavior_mode_select,
             gamepad_connected_model_select,
             gamepad_disconnected_model_select,
+            network_listen_mode_select,
+            network_client_source_select,
+            network_client_url_preset_select,
+            network_display_device_input,
+            network_display_device_add_focus: cx.focus_handle().tab_stop(true),
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),

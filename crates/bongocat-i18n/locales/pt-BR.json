@@ -22,6 +22,9 @@
     "shortcuts": {
       "title": "Atalhos"
     },
+    "multiplayer": {
+      "title": "Multijogador"
+    },
     "app_system": {
       "title": "App e sistema"
     },
@@ -533,6 +536,100 @@
         "unsupported_platform": "A abertura no login não está disponível neste sistema",
         "unsupported_os": "A abertura no login não está disponível neste sistema operacional",
         "unsupported_build": "A abertura no login não está disponível em builds de desenvolvimento"
+      }
+    },
+    "multiplayer": {
+      "restart_notice": "O serviço de conexão é criado quando o BongoCat inicia. Reinicie o BongoCat para que uma alteração nesta página tenha efeito.",
+      "device": {
+        "title": "Esta máquina",
+        "id": {
+          "label": "ID do dispositivo"
+        },
+        "name": {
+          "label": "Nome exibido"
+        }
+      },
+      "display": {
+        "title": "Dispositivos exibidos",
+        "self": {
+          "label": "Esta máquina (seguir a minha própria entrada)"
+        },
+        "remove": "Remover",
+        "add": {
+          "label": "Adicionar um ID de dispositivo",
+          "action": "Adicionar"
+        },
+        "empty": "Uma lista vazia é válida: uma máquina pode enviar a sua entrada para a sala sem exibir nada dela."
+      },
+      "client": {
+        "title": "Entrar em uma sala",
+        "enabled": {
+          "label": "Entrar em uma sala"
+        },
+        "source": {
+          "label": "Origem do endereço",
+          "options": {
+            "follow_local": "Seguir o serviço nesta máquina",
+            "manual": "Informar um endereço eu mesmo"
+          }
+        },
+        "url": {
+          "label": "Endereço",
+          "preset": {
+            "label": "Endereço predefinido"
+          }
+        },
+        "token": {
+          "label": "Chave da sala"
+        },
+        "publish": {
+          "label": "Enviar a minha entrada para a sala"
+        }
+      },
+      "server": {
+        "title": "Servir a conexão",
+        "enabled": {
+          "label": "Executar o serviço nesta máquina"
+        },
+        "listen": {
+          "label": "Escutar em",
+          "options": {
+            "local_only": "Somente esta máquina",
+            "ipv4": "Somente a rede local",
+            "dual_stack": "A rede local e esta máquina",
+            "custom": "Um endereço que eu escolher"
+          }
+        },
+        "address": {
+          "label": "Endereço"
+        },
+        "port": {
+          "label": "Porta"
+        },
+        "token": {
+          "label": "Chave da sala"
+        }
+      },
+      "status": {
+        "title": "Status",
+        "server": {
+          "label": "Serviço",
+          "stopped": "Não está em execução"
+        },
+        "client": {
+          "label": "Sala",
+          "state": {
+            "off": "Não conectado",
+            "connecting": "Conectando…",
+            "connected": "Conectado",
+            "reconnecting": "Reconectando…",
+            "failed": "Falha na conexão"
+          }
+        },
+        "bound": {
+          "label": "Seguindo",
+          "none": "Nada ainda"
+        }
       }
     }
   },
