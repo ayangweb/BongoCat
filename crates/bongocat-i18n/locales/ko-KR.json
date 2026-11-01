@@ -631,10 +631,6 @@
           "label": "방 안의 다른 기기",
           "none": "방에 없음"
         },
-        "restart": {
-          "label": "이 페이지에서 변경한 내용은 다시 시작해야 적용됩니다.",
-          "action": "다시 시작"
-        },
         "bound": {
           "label": "따라가는 중",
           "none": "아직 없음"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "상태 및 기기"
+      },
+      "restart": {
+        "action": "다시 시작"
       }
     }
   },

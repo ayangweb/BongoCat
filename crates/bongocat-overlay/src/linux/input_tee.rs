@@ -97,7 +97,10 @@ impl Coalescer {
 /// an observer of that path, never a gate on it.
 pub struct TeeSubmitter {
     inner: Arc<dyn InputSubmitter>,
-    sink: SyncSender<InputFrame>,
+    /// The room side of the copy. `None` for a machine that is in a room but
+    /// has switched sharing off: it still needs the gate on its own pet, it
+    /// just has no audience to forward to.
+    sink: Option<SyncSender<InputFrame>>,
     /// Whether the local pet is drawing this machine's own input.
     ///
     /// A machine that switched "this machine" off in the device list still
@@ -116,7 +119,7 @@ pub struct TeeSubmitter {
 impl TeeSubmitter {
     pub fn new(
         inner: Arc<dyn InputSubmitter>,
-        sink: SyncSender<InputFrame>,
+        sink: Option<SyncSender<InputFrame>>,
         suppress_local: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -185,7 +188,12 @@ impl TeeSubmitter {
             // separately. A frame built here therefore has nothing to fill in.
             bounds: None,
         };
-        match self.sink.try_send(frame) {
+        let Some(sink) = self.sink.as_ref() else {
+            // Sharing is off: the gate above still decides what the pet sees,
+            // but there is no room audience to copy to.
+            return;
+        };
+        match sink.try_send(frame) {
             Ok(()) => TeeCounters::bump(&self.counters.forwarded),
             Err(TrySendError::Full(_)) => TeeCounters::bump(&self.counters.dropped_queue_full),
             Err(TrySendError::Disconnected(_)) => {
@@ -255,7 +263,7 @@ mod tests {
         let (sender, receiver) = mpsc::sync_channel(bound);
         let inner: Arc<dyn InputSubmitter> = recorder.clone();
         (
-            TeeSubmitter::new(inner, sender, Arc::new(AtomicBool::new(false))),
+            TeeSubmitter::new(inner, Some(sender), Arc::new(AtomicBool::new(false))),
             recorder,
             receiver,
         )

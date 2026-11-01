@@ -631,10 +631,6 @@
           "label": "房间内其他设备",
           "none": "不在房间内"
         },
-        "restart": {
-          "label": "本页有改动时，重启后才会生效。",
-          "action": "重启"
-        },
         "bound": {
           "label": "正在跟随",
           "none": "暂无"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "状态与设备选择"
+      },
+      "restart": {
+        "action": "重启"
       }
     }
   },

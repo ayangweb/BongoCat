@@ -631,10 +631,6 @@
           "label": "Other machines in the room",
           "none": "Not in a room"
         },
-        "restart": {
-          "label": "Changed something on this page? Restart to apply it.",
-          "action": "Restart"
-        },
         "bound": {
           "label": "Following",
           "none": "Nothing yet"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "Status & devices"
+      },
+      "restart": {
+        "action": "Restart"
       }
     }
   },

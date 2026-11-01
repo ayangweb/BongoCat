@@ -631,10 +631,6 @@
           "label": "Outras máquinas na sala",
           "none": "Fora da sala"
         },
-        "restart": {
-          "label": "Mudou algo nesta página? Reinicie para aplicar.",
-          "action": "Reiniciar"
-        },
         "bound": {
           "label": "Seguindo",
           "none": "Nada ainda"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "Status e dispositivos"
+      },
+      "restart": {
+        "action": "Reiniciar"
       }
     }
   },

@@ -161,18 +161,43 @@ fn network_address_row(
 ///
 /// The value is the whole row: a status is not a setting, so there is no field
 /// to edit and no default to reset to.
-fn network_status_row(
+/// How a status fact paints its dot.
+#[derive(Clone, Copy)]
+enum StatusTone {
+    /// Alive and working.
+    Live,
+    /// In progress, or waiting for something to come back.
+    Pending,
+    /// A failure the user may need to act on.
+    Fault,
+    /// Not applicable right now.
+    Idle,
+}
+
+/// A status row: a colored dot that answers "is this fine?" at a glance, then
+/// the fact itself.
+fn network_status_row_toned(
     language: SettingsLanguage,
     label_key: &'static str,
     value: String,
+    tone: StatusTone,
 ) -> SettingItem {
     SettingItem::new(
         row_text(language, label_key),
         SettingField::element(move |_: &RenderOptions, _: &mut Window, app: &mut App| {
             let tokens = Tokens::from_theme(app);
+            let dot = match tone {
+                StatusTone::Live => tokens.success,
+                StatusTone::Pending => tokens.warning,
+                StatusTone::Fault => tokens.danger,
+                StatusTone::Idle => tokens.muted,
+            };
             div()
+                .flex()
+                .items_center()
+                .gap_2()
                 .text_sm()
-                .text_color(tokens.muted)
+                .child(div().size_2().rounded_full().bg(dot))
                 .child(value.clone())
                 .into_any_element()
         }),
@@ -279,6 +304,15 @@ fn network_display_add_row(
     .disabled(editing_blocked)
 }
 
+/// Whether a peers-count string carries a number at its head.
+///
+/// The count row prints the room's number verbatim, and every other answer it
+/// can give starts with a letter, so the first character is the whole test.
+#[cfg_attr(not(test), allow(dead_code))]
+fn peers_status_starts_with_digit(value: &str) -> bool {
+    value.chars().next().is_some_and(|c| c.is_ascii_digit())
+}
+
 /// One device the room says is online but this machine is not drawing yet.
 ///
 /// The room already announces every peer's id and name, so retyping the id
@@ -357,7 +391,9 @@ fn network_restart_row(
 ) -> SettingItem {
     let view = view.clone();
     SettingItem::new(
-        row_text(language, "settings.multiplayer.status.restart.label"),
+        // The group title above the row is the restart notice itself; the
+        // row needs no second heading between it and the button.
+        SharedString::from(""),
         SettingField::element(
             move |options: &RenderOptions, _: &mut Window, _: &mut App| {
                 let disabled = editing_blocked || options.is_disabled();
@@ -367,7 +403,7 @@ fn network_restart_row(
                         Button::new("network-restart")
                             .label(bongocat_i18n::text(
                                 language.catalog_locale(),
-                                "settings.multiplayer.status.restart.action",
+                                "settings.multiplayer.restart.action",
                             ))
                             .with_size(options.size())
                             .danger()
@@ -411,7 +447,6 @@ pub(super) fn multiplayer_page(
     let device_keywords = page.search_keywords(language, ["settings.multiplayer.device.title"]);
     let device_group = SettingGroup::new()
         .title(row_text(language, "settings.multiplayer.device.title"))
-        .description(row_text(language, "settings.multiplayer.restart_notice"))
         .items([
             network_text_row(
                 view,
@@ -610,6 +645,17 @@ pub(super) fn multiplayer_page(
         ]);
 
     let status_keywords = page.search_keywords(language, ["settings.multiplayer.status.title"]);
+    let server_tone = if status.server.is_some() {
+        StatusTone::Live
+    } else {
+        StatusTone::Idle
+    };
+    let room_state = status.client.as_ref().map(|client| client.state);
+    let latency_known = status
+        .client
+        .as_ref()
+        .and_then(|client| client.latency_ms)
+        .is_some();
     let server_status = status.server.map_or_else(
         || {
             bongocat_i18n::text(
@@ -621,7 +667,7 @@ pub(super) fn multiplayer_page(
         |server| server.url,
     );
     let client = status.client.clone();
-    let client_status = client.map_or_else(
+    let client_status = client.as_ref().map_or_else(
         || {
             bongocat_i18n::text(
                 language.catalog_locale(),
@@ -668,6 +714,14 @@ pub(super) fn multiplayer_page(
             )
             .to_owned()
         });
+    // The tone questions are answered before the rows move their values in.
+    let peers_live = peers_status_starts_with_digit(&peers_status);
+    let bound_live = bound_status
+        != bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.multiplayer.status.bound.none",
+        )
+        .to_owned();
     let status_group = SettingGroup::new()
         .title(row_text(
             language,
@@ -675,34 +729,59 @@ pub(super) fn multiplayer_page(
         ))
         .description(row_text(language, "settings.multiplayer.display.empty"))
         .items([
-            network_status_row(
+            network_status_row_toned(
                 language,
                 "settings.multiplayer.status.server.label",
                 server_status,
+                server_tone,
             )
             .keywords(status_keywords.iter().cloned()),
-            network_status_row(
+            network_status_row_toned(
                 language,
                 "settings.multiplayer.status.client.label",
-                client_status,
+                client_status.clone(),
+                match room_state {
+                    Some(SettingsNetworkClientState::Connected { .. }) => StatusTone::Live,
+                    Some(
+                        SettingsNetworkClientState::Connecting
+                        | SettingsNetworkClientState::Reconnecting,
+                    ) => StatusTone::Pending,
+                    Some(SettingsNetworkClientState::Failed) => StatusTone::Fault,
+                    Some(SettingsNetworkClientState::Off) | None => StatusTone::Idle,
+                },
             )
             .keywords(status_keywords.iter().cloned()),
-            network_status_row(
+            network_status_row_toned(
                 language,
                 "settings.multiplayer.status.latency.label",
                 latency_status,
+                if latency_known {
+                    StatusTone::Live
+                } else {
+                    StatusTone::Idle
+                },
             )
             .keywords(status_keywords.iter().cloned()),
-            network_status_row(
+            network_status_row_toned(
                 language,
                 "settings.multiplayer.status.peers.label",
                 peers_status,
+                if peers_live {
+                    StatusTone::Live
+                } else {
+                    StatusTone::Idle
+                },
             )
             .keywords(status_keywords.iter().cloned()),
-            network_status_row(
+            network_status_row_toned(
                 language,
                 "settings.multiplayer.status.bound.label",
                 bound_status,
+                if bound_live {
+                    StatusTone::Live
+                } else {
+                    StatusTone::Idle
+                },
             )
             .keywords(status_keywords.iter().cloned()),
         ])
@@ -715,10 +794,7 @@ pub(super) fn multiplayer_page(
     // page: every change here needs it, and a red button that must not be
     // missed belongs above the controls rather than buried in their board.
     let restart_group = SettingGroup::new()
-        .title(row_text(
-            language,
-            "settings.multiplayer.status.restart.label",
-        ))
+        .title(row_text(language, "settings.multiplayer.restart_notice"))
         .items([network_restart_row(view, language, editing_blocked)]);
 
     SettingPage::new(page.title(language))

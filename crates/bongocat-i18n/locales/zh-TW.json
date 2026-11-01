@@ -631,10 +631,6 @@
           "label": "房間內其他裝置",
           "none": "不在房間內"
         },
-        "restart": {
-          "label": "本頁有變更時，重新啟動後才會生效。",
-          "action": "重新啟動"
-        },
         "bound": {
           "label": "正在跟隨",
           "none": "暫無"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "狀態與裝置選擇"
+      },
+      "restart": {
+        "action": "重新啟動"
       }
     }
   },

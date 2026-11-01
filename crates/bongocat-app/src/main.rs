@@ -2659,6 +2659,13 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let network_plan = net_publish::plan(&options, &application.config().network);
     // Read before `options` is handed to the session below, which consumes it.
     let watching = network_plan.watching();
+    // A machine that joined a room but draws nothing — its own entry is off and
+    // no peer is listed — has no pet to show: leaving the window up would read
+    // as the switch not working. The tray can still bring it back for the
+    // session, exactly as a `--hide` run can.
+    if network_plan.in_room_without_pet() {
+        application.set_overlay_visible(false)?;
+    }
     // Wrapped here rather than at the session call: `options` is shadowed by the
     // overlay options two lines down, and the producer has to be wrapped before
     // the session takes ownership of it. Started before the session so no key of

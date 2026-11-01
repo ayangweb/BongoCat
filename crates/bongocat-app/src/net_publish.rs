@@ -111,6 +111,17 @@ impl NetworkPlan {
             .as_ref()
             .is_some_and(|join| join.draw.draws() && !join.publish)
     }
+
+    /// Whether this run is in a room yet has nothing for the pet to draw.
+    ///
+    /// "This machine" is off and no peer is listed: the joined socket exists,
+    /// but a pet dancing to nothing reads as the switch being broken, so the
+    /// window hides until the tray or a restart brings it back.
+    pub(crate) fn in_room_without_pet(&self) -> bool {
+        self.join
+            .as_ref()
+            .is_some_and(|join| !join.show_self && !join.draw.draws())
+    }
 }
 
 /// Reads the command line over the configuration.
@@ -276,8 +287,11 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     // input thread, which is why the tee is allowed to drop instead of block.
     // The pet draws this machine's own input only when "this machine" is still
     // in the device list; a publisher that turned it off sends to the room but
-    // does not dance. The flag is shared so the tee (which owns the submit path)
-    // reads the same decision the plan already made.
+    // does not dance, and a viewer that turned it off feeds the pet nothing at
+    // all. The flag is shared so the tee (which owns the submit path) reads the
+    // same decision the plan already made — and the tee exists for every joined
+    // run, not only for publishers: without it a viewer's own input would reach
+    // the pet beside whatever the room is sending.
     let suppress_local = Arc::new(std::sync::atomic::AtomicBool::new(!join.show_self));
     let sink = if join.publish {
         let (sink, queue) = sync_channel::<InputFrame>(SINK_CAPACITY);
@@ -320,14 +334,14 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
         })
         .map_err(|error| format!("failed to start the room thread: {error}"))?;
 
-    Ok(match sink {
-        Some(sink) => InputProducer::new(Arc::new(TeeSubmitter::new(
-            base.submitter(),
-            sink,
-            suppress_local,
-        ))),
-        None => base,
-    })
+    // Every joined run goes through the tee: it is the gate that keeps this
+    // machine's own input away from a pet the device list has pointed at
+    // someone else, publisher or not.
+    Ok(InputProducer::new(Arc::new(TeeSubmitter::new(
+        base.submitter(),
+        sink,
+        suppress_local,
+    ))))
 }
 
 /// Serves a relay on its own thread.

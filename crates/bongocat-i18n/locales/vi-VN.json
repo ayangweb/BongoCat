@@ -631,10 +631,6 @@
           "label": "Thiết bị khác trong phòng",
           "none": "Chưa ở trong phòng"
         },
-        "restart": {
-          "label": "Có thay đổi trên trang này? Hãy khởi động lại để áp dụng.",
-          "action": "Khởi động lại"
-        },
         "bound": {
           "label": "Đang theo",
           "none": "Chưa có"
@@ -646,6 +642,9 @@
       },
       "status_and_devices": {
         "title": "Trạng thái và thiết bị"
+      },
+      "restart": {
+        "action": "Khởi động lại"
       }
     }
   },
