@@ -439,3 +439,14 @@ macOS/Windows 发版，`HOST_TARGET_TRIPLE` 没有 Linux 变体，所以
 另一处已修：`settings::tests::projection::the_running_system_reports_the_capability_it_actually_gates_input_behind`
 在上游只认 `input_monitoring`（macOS）和 `administrator`（Windows）。本 fork 跑在 Linux 上，
 实际值是 `linux_libinput`，因此已把 Linux 的能力名加进断言。
+
+### 11.7 输入权限：input 组直启，pkexec 兜底
+
+PR #1114 的 input helper 每次启动都经 `pkexec` 提权，polkit 因此每次都弹认证——即使用户已在
+`input` 组、helper 要读的 evdev 设备本就可以打开。现在启动前先探测 `/dev/input`（列出 `event*`
+并尝试打开，与上游 PR #1096 的做法一致）：能打开就由桌面用户直接运行同一个 helper，零弹窗、
+零特权进程；打不开才回退 `pkexec`。helper 对「没经 pkexec 的 root 启动」仍然拒绝，认证路径的
+校验原样保留。权限解释对话框也只在探测失败时出现——它描述的是一个已经满足的授权。
+
+探测放在 spawn 之前而不是让 helper 自己回答，因为 libinput 会静默跳过打不开的设备：一个读不到
+任何设备的 helper 会永远空转而不是失败，所以由父进程在启动前决定用哪种方式。
