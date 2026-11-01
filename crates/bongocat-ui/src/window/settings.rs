@@ -567,6 +567,41 @@ impl SettingsView {
             .update(cx, |input, cx| input.set_value(String::new(), window, cx));
     }
 
+    /// Replaces this process with a fresh copy of itself.
+    ///
+    /// The pending patches flush first, so whatever the user changed last is on
+    /// disk before the quit lands; the child reads the configuration whole.
+    pub(super) fn restart_to_apply_network_settings(&mut self, cx: &mut Context<Self>) {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("sleep 0.3; exec {}", exe.display()))
+                .spawn();
+        }
+        self.request_quit_after_flush(cx);
+    }
+
+    /// Adds one online peer to the list this machine draws.
+    ///
+    /// The id comes from the room's own announcement rather than a typed field,
+    /// but the persisted result is the same object: a peer shown here joins the
+    /// exact list the typed field writes.
+    pub(super) fn show_network_display_device(&mut self, device: String, cx: &mut Context<Self>) {
+        // The reserved word would add a row the page cannot tell apart from the
+        // one that names this machine, and the room never announces it either.
+        if device == NETWORK_SELF_DEVICE {
+            return;
+        }
+        self.commit_network_settings(
+            |settings| {
+                if !settings.client.display.contains(&device) {
+                    settings.client.display.push(device);
+                }
+            },
+            cx,
+        );
+    }
+
     pub(super) fn remove_network_display_device(&mut self, device: String, cx: &mut Context<Self>) {
         self.commit_network_settings(
             |settings| settings.client.display.retain(|shown| shown != &device),

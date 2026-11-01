@@ -306,6 +306,14 @@ pub(super) fn settings_network_status(
         }),
         client: status.room.as_ref().map(|room| {
             bongocat_ui_protocol::SettingsNetworkClientStatus {
+                peers: room
+                    .peers
+                    .iter()
+                    .map(|peer| bongocat_ui_protocol::SettingsNetworkPeer {
+                        id: peer.id.clone(),
+                        name: peer.name.clone(),
+                    })
+                    .collect(),
                 state: match room.state {
                     bongocat_net::RoomState::Off => {
                         bongocat_ui_protocol::SettingsNetworkClientState::Off

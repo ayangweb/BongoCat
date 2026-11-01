@@ -475,6 +475,61 @@ impl Application {
         Ok(Some(generated))
     }
 
+    /// Gives this machine a device id and a display name it did not have to be
+    /// told.
+    ///
+    /// Two machines that both start from the template would otherwise answer to
+    /// the same id, and nothing downstream can tell the room's announcements
+    /// apart from one another. The fingerprint is the machine id's own prefix —
+    /// it is already a unique random value, so hashing it again would only
+    /// shorten the entropy — and the name falls back to the host name. Both are
+    /// written back once, exactly like the generated room key, and a user who
+    /// renames the machine afterwards wins over either default.
+    pub fn ensure_network_device_identity(&mut self) -> Result<(), ApplicationError> {
+        let host = std::env::var("HOSTNAME")
+            .ok()
+            .or_else(|| {
+                std::fs::read_to_string("/etc/hostname")
+                    .ok()
+                    .map(|text| text.trim().to_owned())
+            })
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "bongocat".to_owned());
+        let fingerprint = std::fs::read_to_string("/etc/machine-id")
+            .map(|text| text.trim().to_owned())
+            .ok()
+            .filter(|text| text.len() >= 8)
+            .map(|text| text[..8].to_owned())
+            .unwrap_or_else(|| host.chars().take(12).collect());
+
+        // "pc-01" and "PC" are the template values this fork used before the
+        // identity existed; leaving them in place would keep two machines
+        // colliding, which is the failure this method is here to end.
+        let template = ("pc-01", "PC");
+        let mut next_config = self.config.clone();
+        let mut changed = false;
+        if next_config.network.device.id.is_empty() || next_config.network.device.id == template.0 {
+            next_config.network.device.id = format!("pc-{fingerprint}");
+            changed = true;
+        }
+        if next_config.network.device.name.is_empty()
+            || next_config.network.device.name == template.1
+        {
+            next_config.network.device.name = host;
+            changed = true;
+        }
+        if !changed {
+            return Ok(());
+        }
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_shortcuts(
         &mut self,
         shortcuts: bongocat_ui_protocol::SettingsShortcuts,

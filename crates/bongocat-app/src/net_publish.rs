@@ -256,7 +256,7 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     };
     let (events, commands) =
         bongocat_net::client::spawn(config).map_err(|error| error.to_string())?;
-    publish_room(RoomState::Connecting, None);
+    publish_room(RoomState::Connecting, None, &[]);
 
     // The bridge only moves frames. The waiting happens here rather than on the
     // input thread, which is why the tee is allowed to drop instead of block.
@@ -335,6 +335,7 @@ fn start_relay(plan: &ServePlan) -> Result<(), String> {
 /// Turns a room's events into local input, and into the status the settings window
 /// shows.
 fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &DrawMode) {
+    let mut room_peers: Vec<bongocat_net::protocol::PeerInfo> = Vec::new();
     let mut peers: u16 = 0;
     let mut bound: Option<String> = None;
     // What this viewer believes is held down on the far machine. A release frame
@@ -370,7 +371,11 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                                 frame.src
                             );
                             bound = Some(frame.src.clone());
-                            publish_room(RoomState::Connected { peers }, bound.as_deref());
+                            publish_room(
+                                RoomState::Connected { peers },
+                                bound.as_deref(),
+                                &room_peers,
+                            );
                         }
                     }
                     DrawMode::Device(device) => {
@@ -383,7 +388,11 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                                 "watch: drawing {device} from the room"
                             );
                             bound = Some(device.clone());
-                            publish_room(RoomState::Connected { peers }, bound.as_deref());
+                            publish_room(
+                                RoomState::Connected { peers },
+                                bound.as_deref(),
+                                &room_peers,
+                            );
                         }
                     }
                 }
@@ -408,11 +417,12 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                 let _ = producer.publish(input);
             }
             ClientEvent::Joined { peers: room, .. } => {
-                peers = room.len().min(u16::MAX as usize) as u16;
+                room_peers = room;
+                peers = room_peers.len().min(u16::MAX as usize) as u16;
                 let _ = writeln!(
                     std::io::stderr(),
                     "watch: in the room, {} peer(s) publishing",
-                    room.iter().filter(|peer| peer.publish).count()
+                    room_peers.iter().filter(|peer| peer.publish).count()
                 );
                 // A reconnect invalidates the binding: the far end may have
                 // restarted with a different id, and holding a stale one would
@@ -420,20 +430,30 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                 // session that no longer exists.
                 release_held(producer, &mut pressed);
                 bound = None;
-                publish_room(RoomState::Connected { peers }, None);
+                publish_room(RoomState::Connected { peers }, None, &room_peers);
             }
-            ClientEvent::PeerJoined(_) => {
-                peers = peers.saturating_add(1);
-                publish_room(RoomState::Connected { peers }, bound.as_deref());
+            ClientEvent::PeerJoined(peer) => {
+                room_peers.push(peer);
+                peers = room_peers.len().min(u16::MAX as usize) as u16;
+                publish_room(
+                    RoomState::Connected { peers },
+                    bound.as_deref(),
+                    &room_peers,
+                );
             }
             ClientEvent::PeerLeft(id) => {
-                peers = peers.saturating_sub(1);
+                room_peers.retain(|peer| peer.id != id);
+                peers = room_peers.len().min(u16::MAX as usize) as u16;
                 let _ = writeln!(std::io::stderr(), "watch: {id} left");
                 if bound.as_deref() == Some(id.as_str()) {
                     release_held(producer, &mut pressed);
                     bound = None;
                 }
-                publish_room(RoomState::Connected { peers }, bound.as_deref());
+                publish_room(
+                    RoomState::Connected { peers },
+                    bound.as_deref(),
+                    &room_peers,
+                );
             }
             ClientEvent::Reconnecting { attempt, reason } => {
                 let _ = writeln!(
@@ -442,12 +462,14 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                 );
                 release_held(producer, &mut pressed);
                 bound = None;
-                publish_room(RoomState::Reconnecting, None);
+                room_peers.clear();
+                publish_room(RoomState::Reconnecting, None, &[]);
             }
             ClientEvent::Failed(reason) => {
                 let _ = writeln!(std::io::stderr(), "watch: stopped: {reason}");
                 release_held(producer, &mut pressed);
-                publish_room(RoomState::Failed, None);
+                room_peers.clear();
+                publish_room(RoomState::Failed, None, &[]);
                 break;
             }
         }
@@ -455,11 +477,16 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
 }
 
 /// Writes what the room is doing where the settings window can read it.
-fn publish_room(state: RoomState, bound: Option<&str>) {
+fn publish_room(
+    state: RoomState,
+    bound: Option<&str>,
+    room_peers: &[bongocat_net::protocol::PeerInfo],
+) {
     update_network_status(|status| {
         status.room = Some(RoomStatus {
             state,
             bound: bound.map(str::to_owned),
+            peers: room_peers.to_vec(),
         });
     });
 }

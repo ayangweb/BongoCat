@@ -10,6 +10,7 @@
 //! takes a copy, so a settings frame can draw it without subscribing to anything and
 //! without a slow reader being able to stall a connection.
 
+use crate::protocol::PeerInfo;
 use std::sync::{Mutex, OnceLock};
 
 /// What the room connection is doing.
@@ -38,6 +39,12 @@ pub struct RoomStatus {
     /// publishers and one pet draws one of them, so the binding is a fact about
     /// what has been seen rather than about what was configured.
     pub bound: Option<String>,
+    /// The other devices the room currently holds.
+    ///
+    /// The settings window's device list offers these by name: a peer that has
+    /// joined is a fact the room announced, and retyping its id into a text
+    /// field would only transcribe what the page already knows.
+    pub peers: Vec<PeerInfo>,
 }
 
 /// The relay this process serves, if it serves one.

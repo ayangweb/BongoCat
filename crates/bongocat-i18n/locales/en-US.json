@@ -559,6 +559,9 @@
           "label": "Add a device id",
           "action": "Add"
         },
+        "peer": {
+          "show": "Show this device"
+        },
         "empty": "An empty list is fine: a machine can send its input to a room without drawing any of it."
       },
       "client": {
@@ -629,6 +632,10 @@
         "peers": {
           "label": "Other machines in the room",
           "none": "Not in a room"
+        },
+        "restart": {
+          "label": "Changed something on this page? Restart to apply it.",
+          "action": "Restart"
         },
         "bound": {
           "label": "Following",

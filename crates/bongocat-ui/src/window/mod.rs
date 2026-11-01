@@ -22,7 +22,7 @@ use crate::{
 // next upstream import change from colliding with this fork.
 use crate::{
     DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClientSource,
-    SettingsNetworkClientState, SettingsNetworkListenMode,
+    SettingsNetworkClientState, SettingsNetworkListenMode, SettingsNetworkPeer,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{

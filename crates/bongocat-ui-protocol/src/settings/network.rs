@@ -148,8 +148,17 @@ pub struct SettingsNetworkServerStatus {
     pub url: String,
 }
 
+/// One other device the room currently holds.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsNetworkPeer {
+    /// The address this device publishes under and is drawn by.
+    pub id: String,
+    /// The label the device chose for itself.
+    pub name: String,
+}
+
 /// The room this process has joined, if it has joined one.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SettingsNetworkClientStatus {
     pub state: SettingsNetworkClientState,
     /// The peer whose input this pet is drawing.
@@ -158,6 +167,9 @@ pub struct SettingsNetworkClientStatus {
     /// publishers and one pet draws one of them, so the binding is a fact about
     /// what has been seen rather than about what was configured.
     pub bound: Option<String>,
+    /// The other devices the room currently holds, as the device list offers
+    /// them without being retyped.
+    pub peers: Vec<SettingsNetworkPeer>,
 }
 
 /// What the multiplayer side of this process is doing right now.

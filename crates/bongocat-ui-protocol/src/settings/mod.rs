@@ -63,7 +63,7 @@ pub use model_import::{
 pub use network::{
     DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClient,
     SettingsNetworkClientSource, SettingsNetworkClientState, SettingsNetworkClientStatus,
-    SettingsNetworkDevice, SettingsNetworkListenMode, SettingsNetworkServer,
+    SettingsNetworkDevice, SettingsNetworkListenMode, SettingsNetworkPeer, SettingsNetworkServer,
     SettingsNetworkServerStatus, SettingsNetworkStatus,
 };
 pub use runtime::{

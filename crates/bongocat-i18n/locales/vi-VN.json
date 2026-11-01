@@ -559,6 +559,9 @@
           "label": "Thêm mã thiết bị",
           "action": "Thêm"
         },
+        "peer": {
+          "show": "Hiện thiết bị này"
+        },
         "empty": "Danh sách trống là hợp lệ: một máy có thể chỉ gửi input của nó vào phòng mà không hiển thị gì cả."
       },
       "client": {
@@ -629,6 +632,10 @@
         "peers": {
           "label": "Thiết bị khác trong phòng",
           "none": "Chưa ở trong phòng"
+        },
+        "restart": {
+          "label": "Có thay đổi trên trang này? Hãy khởi động lại để áp dụng.",
+          "action": "Khởi động lại"
         },
         "bound": {
           "label": "Đang theo",

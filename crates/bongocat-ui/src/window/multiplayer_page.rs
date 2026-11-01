@@ -245,6 +245,101 @@ fn network_display_add_row(
     .disabled(editing_blocked)
 }
 
+/// One device the room says is online but this machine is not drawing yet.
+///
+/// The room already announces every peer's id and name, so retyping the id
+/// into the field below would only transcribe what this row can show: one
+/// click adds it to the list this machine draws. Devices that are offline stay
+/// hand-added — the typed field is how a machine is named before its first
+/// join, and a device already in the list keeps its own row above, the one
+/// with the removal control.
+fn network_display_peer_row(
+    view: &Entity<SettingsView>,
+    language: SettingsLanguage,
+    peer: SettingsNetworkPeer,
+    editing_blocked: bool,
+) -> SettingItem {
+    let view = view.clone();
+    let label = if peer.name.is_empty() || peer.name == peer.id {
+        peer.id.clone()
+    } else {
+        format!("{} ({})", peer.name, peer.id)
+    };
+    SettingItem::new(
+        SharedString::from(label),
+        SettingField::element(
+            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+                let disabled = editing_blocked || options.is_disabled();
+                let device = peer.id.clone();
+                let peer_view = view.clone();
+                div()
+                    .child(
+                        Button::new(ElementId::Name(SharedString::from(format!(
+                            "network-show-peer-{device}"
+                        ))))
+                        .label(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.multiplayer.display.peer.show",
+                        ))
+                        .with_size(options.size())
+                        .ghost()
+                        .xsmall()
+                        .disabled(disabled)
+                        .on_click(move |_, _, app| {
+                            peer_view.update(app, |view, cx| {
+                                view.show_network_display_device(device.clone(), cx)
+                            });
+                        }),
+                    )
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(editing_blocked)
+}
+
+/// The row that replaces this process so the page's changes take effect.
+///
+/// The relay and the room are both built at startup, which is why no in-process
+/// reload can apply them. Spawning the same executable and quitting is the whole
+/// trick, and the child is started through a short `sleep` so the parent — and
+/// with it the relay's port — is gone by the time the fresh process binds.
+fn network_restart_row(
+    view: &Entity<SettingsView>,
+    language: SettingsLanguage,
+    editing_blocked: bool,
+) -> SettingItem {
+    let view = view.clone();
+    SettingItem::new(
+        row_text(language, "settings.multiplayer.status.restart.label"),
+        SettingField::element(
+            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+                let disabled = editing_blocked || options.is_disabled();
+                let restart_view = view.clone();
+                div()
+                    .child(
+                        Button::new("network-restart")
+                            .label(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.multiplayer.status.restart.action",
+                            ))
+                            .with_size(options.size())
+                            .ghost()
+                            .xsmall()
+                            .disabled(disabled)
+                            .on_click(move |_, _, app| {
+                                restart_view.update(app, |view, cx| {
+                                    view.restart_to_apply_network_settings(cx)
+                                });
+                            }),
+                    )
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(editing_blocked)
+}
+
 /// The multiplayer page's five groups.
 ///
 /// The notice rides on the first group because it is a sentence about the page
@@ -321,6 +416,23 @@ pub(super) fn multiplayer_page(
     {
         display_items.push(
             network_display_device_row(view, language, device, editing_blocked)
+                .keywords(display_keywords.iter().cloned()),
+        );
+    }
+    // The room announces who is online; each peer this machine is not drawing
+    // yet appears here with a one-click way to draw it. The rows refresh with
+    // the status the page already polls, so a peer that joins shows up without
+    // anything being retyped and a peer that leaves stops being offered.
+    for peer in status
+        .client
+        .iter()
+        .flat_map(|client| client.peers.iter())
+        .filter(|peer| !network.client.display.contains(&peer.id))
+        .cloned()
+        .collect::<Vec<_>>()
+    {
+        display_items.push(
+            network_display_peer_row(view, language, peer, editing_blocked)
                 .keywords(display_keywords.iter().cloned()),
         );
     }
@@ -513,6 +625,8 @@ pub(super) fn multiplayer_page(
     let status_group = SettingGroup::new()
         .title(row_text(language, "settings.multiplayer.status.title"))
         .items([
+            network_restart_row(view, language, editing_blocked)
+                .keywords(status_keywords.iter().cloned()),
             network_status_row(
                 language,
                 "settings.multiplayer.status.server.label",
@@ -543,10 +657,10 @@ pub(super) fn multiplayer_page(
         .icon(page.icon())
         .title_suffix(render::page_reporter(page, navigation_memory))
         .groups(vec![
+            status_group,
             device_group,
             display_group,
             client_group,
             server_group,
-            status_group,
         ])
 }

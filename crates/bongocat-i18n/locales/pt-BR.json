@@ -559,6 +559,9 @@
           "label": "Adicionar um ID de dispositivo",
           "action": "Adicionar"
         },
+        "peer": {
+          "show": "Mostrar este dispositivo"
+        },
         "empty": "Uma lista vazia é válida: uma máquina pode enviar a sua entrada para a sala sem exibir nada dela."
       },
       "client": {
@@ -629,6 +632,10 @@
         "peers": {
           "label": "Outras máquinas na sala",
           "none": "Fora da sala"
+        },
+        "restart": {
+          "label": "Mudou algo nesta página? Reinicie para aplicar.",
+          "action": "Reiniciar"
         },
         "bound": {
           "label": "Seguindo",

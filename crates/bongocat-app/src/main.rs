@@ -2649,6 +2649,10 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     // the key is generated here rather than at the relay so it is stored: it has
     // to be the same after a restart, or every peer would have to be
     // reconfigured each time this machine comes back.
+    // The identity is unconditional: every run announces itself, not just a run
+    // that serves a relay, and two machines that both start from the template
+    // would collide even when neither is serving anything.
+    application.ensure_network_device_identity()?;
     if application.config().network.server.enabled {
         application.ensure_network_server_token()?;
     }

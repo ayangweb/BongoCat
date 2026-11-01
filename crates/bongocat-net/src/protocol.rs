@@ -65,7 +65,7 @@ pub struct Hello {
 }
 
 /// A peer as seen by everyone else in the room.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub id: String,
     pub name: String,
