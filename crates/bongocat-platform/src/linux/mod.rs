@@ -1,6 +1,6 @@
 //! Wayland capabilities. Global placement is intentionally unavailable.
 mod input;
-pub use input::LinuxInputService;
+pub use input::{LinuxInputService, unprivileged_input_is_possible};
 pub fn system_language() -> bongocat_config::Language {
     sys_locale::get_locale().map_or_else(Default::default, |locale| {
         bongocat_config::Language::from_system_locale(&locale)

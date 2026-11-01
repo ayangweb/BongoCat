@@ -2772,6 +2772,18 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             // A viewer draws another machine's input, so it has nothing to
             // authorise. Opening the dialog would ask for a permission the whole
             // point of this mode is not to need.
+        } else if bongocat_platform::unprivileged_input_is_possible() {
+            // Group membership (or a udev rule) already opens the devices the
+            // helper reads, so both halves of the old prompt would be noise:
+            // the explanation describes an authorization that is not needed,
+            // and confirming it started a pkexec authentication for a helper
+            // this user can run itself. Capture starts straight away, the way
+            // a hidden run already does.
+            cx.global_mut::<Product>()
+                .overlay
+                .as_mut()
+                .expect("running overlay")
+                .start_linux_input();
         } else if let Some(settings) = cx.global::<Product>().settings.window.clone() {
             let _ = settings.update(cx, |_, window, cx| {
                 // The dialog reads Root's window state; release the typed

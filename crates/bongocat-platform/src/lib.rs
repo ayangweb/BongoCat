@@ -154,4 +154,5 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
     LinuxInputService, LinuxSystemTray, set_linux_pointer_sensitivity, system_language,
+    unprivileged_input_is_possible,
 };

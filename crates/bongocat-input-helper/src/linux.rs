@@ -41,11 +41,31 @@ fn packet(output: &mut impl Write, message: InputMessage) -> io::Result<()> {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let uid: u32 = std::env::var("PKEXEC_UID")?.parse()?;
-    // SAFETY: geteuid has no pointer arguments or side effects.
-    if uid == 0 || unsafe { libc::geteuid() } != 0 {
-        return Err("use pkexec from a local user session".into());
-    }
+    // A pkexec launch carries the invoking user's id and must be root: that is
+    // the authenticated path, and its checks stay exactly as they were. A
+    // direct launch runs as the desktop user, who opens the devices through
+    // their own group membership or a udev rule — no elevation involved, so
+    // there is no PKEXEC_UID to read and the user id is this process's own.
+    // Root without pkexec has skipped the authentication either path provides,
+    // and is refused.
+    let uid: u32 = match std::env::var("PKEXEC_UID") {
+        Ok(invoked) => {
+            let invoked: u32 = invoked.parse()?;
+            // SAFETY: geteuid has no pointer arguments or side effects.
+            if invoked == 0 || unsafe { libc::geteuid() } != 0 {
+                return Err("use pkexec from a local user session".into());
+            }
+            invoked
+        }
+        Err(_) => {
+            // SAFETY: geteuid has no pointer arguments or side effects.
+            let uid = unsafe { libc::geteuid() };
+            if uid == 0 {
+                return Err("use pkexec from a local user session".into());
+            }
+            uid
+        }
+    };
     if std::env::args_os().skip(1).collect::<Vec<_>>() != ["--input-helper"] {
         return Err("input helper accepts only --input-helper".into());
     }

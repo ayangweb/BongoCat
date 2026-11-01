@@ -2,8 +2,10 @@ use crate::PlatformInputError;
 use bongocat_input::*;
 use bongocat_input_helper::protocol::{ButtonState, HEADER, InputMessage, PACKET_SIZE};
 use std::{
+    fs::{self, File},
     io::{ErrorKind, Read},
     os::fd::AsRawFd,
+    path::Path,
     process::{Child, Command, Stdio},
     sync::{
         Arc,
@@ -26,10 +28,28 @@ impl LinuxInputService {
     ) -> Result<Self, PlatformInputError> {
         let executable =
             std::env::current_exe().map_err(|_| PlatformInputError::BackendUnavailable)?;
-        let mut child = Command::new("/usr/bin/pkexec")
-            .arg("--disable-internal-agent")
-            .arg(executable)
-            .arg("--input-helper")
+        // The helper runs unprivileged whenever this user can open the devices
+        // itself, which is what membership of the `input` group (or a udev rule
+        // granting the same access) provides: no authentication dialog on every
+        // start, and no process holding root for the whole session. Only a user
+        // who cannot read a single event device pays for pkexec. The probe is
+        // the one upstream PR #1096 takes for its own evdev reader — list the
+        // event nodes and try to open one — and it is asked here rather than
+        // left to the helper because libinput silently skips devices its
+        // interface cannot open: a helper with no readable device would idle
+        // forever instead of failing, so the parent decides before spawning
+        // which launch the user's permissions can support.
+        let mut command = if any_openable_event_device(Path::new(INPUT_DEVICES_DIRECTORY)) {
+            // Same executable, same helper, same argument: only the launcher
+            // differs, and only the elevated one goes through polkit.
+            Command::new(&executable)
+        } else {
+            let mut elevated = Command::new("/usr/bin/pkexec");
+            elevated.arg("--disable-internal-agent").arg(&executable);
+            elevated
+        };
+        command.arg("--input-helper");
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -215,6 +235,43 @@ impl Drop for LinuxInputService {
         let _ = self.stop();
     }
 }
+/// Where the kernel exposes the evdev devices the helper's libinput context
+/// opens. Probed before the helper is spawned, so the constant lives next to
+/// the launch decision that consumes it.
+const INPUT_DEVICES_DIRECTORY: &str = "/dev/input";
+
+/// Whether this user can open the evdev devices without any elevation.
+///
+/// The startup flow asks this before showing the permission explanation: a
+/// user whose group membership already opens the devices needs neither the
+/// explanation nor the pkexec authentication the confirmation would go on to
+/// start, so the answer decides whether either appears at all. This mirrors
+/// upstream PR #1096, whose Linux flow never prompts and treats readable evdev
+/// access as simply the state input runs in.
+pub fn unprivileged_input_is_possible() -> bool {
+    any_openable_event_device(Path::new(INPUT_DEVICES_DIRECTORY))
+}
+
+/// Whether at least one event device under `directory` opens for this user.
+///
+/// Probed with a plain open because that is the exact permission the helper's
+/// libinput context needs. Nothing here checks group names: a udev rule can
+/// grant the same access without a group, and a group the devices are not
+/// actually readable through would be worthless to trust.
+fn any_openable_event_device(directory: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("event"))
+        })
+        .any(|path| File::open(&path).is_ok())
+}
+
 fn reap(child: &mut Child) {
     // Cancels an outstanding pkexec authentication owned by this user. Once
     // elevated, stdin EOF instead terminates the helper; kill may be denied.
@@ -341,4 +398,29 @@ fn key_usage(code: u32) -> Option<u16> {
         127 => 0x65,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_probe_only_counts_event_devices() {
+        let directory = std::env::temp_dir().join(format!("bongocat-probe-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("the probe test directory to be created");
+        fs::write(directory.join("event0"), b"").expect("the event device stand-in to be written");
+        fs::write(directory.join("mouse0"), b"").expect("the mouse stand-in to be written");
+        assert!(
+            any_openable_event_device(&directory),
+            "an openable event device makes the unprivileged launch possible"
+        );
+        fs::remove_dir_all(&directory).expect("the probe test directory to be removed");
+    }
+
+    #[test]
+    fn the_probe_answers_no_for_a_missing_directory() {
+        assert!(!any_openable_event_device(Path::new(
+            "/nonexistent-bongocat-probe-directory"
+        )));
+    }
 }
