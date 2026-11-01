@@ -71,7 +71,8 @@ it starts from belongs to upstream; the changes below are what this fork adds on
   another machine joins it — `--publish-url` sends that machine's input to the room, `--watch`
   draws another machine's pet instead of its own. The settings window carries a multiplayer
   page with the same parts (this machine, devices to draw, join a room, serve a relay) plus a
-  live status group.
+  live status group. The multiplayer runtime is wired up on Linux today; on other platforms
+  the page can be configured but nothing joins.
 - The rest of this README describes the upstream project, so lines like "runs on macOS and
   Windows" or "works offline" no longer hold for this fork.
 

@@ -450,3 +450,19 @@ PR #1114 的 input helper 每次启动都经 `pkexec` 提权，polkit 因此每�
 
 探测放在 spawn 之前而不是让 helper 自己回答，因为 libinput 会静默跳过打不开的设备：一个读不到
 任何设备的 helper 会永远空转而不是失败，所以由父进程在启动前决定用哪种方式。
+
+### 11.8 自查审计（2026-11-01）
+
+对相对上游的全量 diff 做了一次独立审计（最小修改 + 健全性两个维度），据此修掉：
+
+- `InputFrame.src` 全链路无人填充：tee 只能填空串（它不知道本机 device id），relay 又刻意
+  原样转发，于是「要画的设备」列表永远匹配不上、Following 状态行显示空串——端到端测试没
+  抓住是因为测试脚本手工填了 src。现在由发布端 bridge 在发送前盖上本机 device id。
+- `wss` 此前被 URL 校验接受但构建没有 TLS feature，拨号必然失败：现在校验直接拒绝并说明。
+- relay 单帧上限改为 1 MiB（tungstenite 默认 64 MiB），输入帧不足 1 KiB。
+- 删除无读者的协议字段与函数：`Joined.server_time`、`apply_negotiated_options`、
+  `unix_millis`；tee 的快照 API 目前只有测试消费（生产接线到诊断导出待做），已注明。
+- `window/mod.rs` 的 import 改为独立一行，把对上游的冲突面从「整块重排」缩回「+1 行」。
+
+已知限制：联机运行时目前只在 Linux 接入（`net_publish` 只挂在 Linux 的 run_product 上），
+其他平台可配置但不生效；如果 PC 端需要跑非 Linux 构建，要先接通那个平台。
