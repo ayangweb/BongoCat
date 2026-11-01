@@ -56,6 +56,29 @@
     "remember_last_expression": false,
     "last_expressions": []
   },
+  "network": {
+    "device": {
+      "id": "pc-01",
+      "name": "PC"
+    },
+    "client": {
+      "enabled": false,
+      "source": "follow_local",
+      "url": null,
+      "token": null,
+      "publish": true,
+      "display": [
+        "self"
+      ]
+    },
+    "server": {
+      "enabled": false,
+      "listen": "dual_stack",
+      "address": null,
+      "port": 8787,
+      "token": null
+    }
+  },
   "shortcuts": {
     "commands_enabled": true,
     "command_bindings": [],

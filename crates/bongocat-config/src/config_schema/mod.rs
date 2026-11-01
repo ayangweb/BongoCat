@@ -12,6 +12,7 @@ mod appearance;
 mod input;
 mod logging;
 mod model;
+mod network;
 mod overlay;
 mod system;
 mod updates;
@@ -36,6 +37,11 @@ pub use model::{
     ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
     RandomBehaviorMode,
 };
+pub use network::{
+    DEFAULT_NETWORK_PORT, MAXIMUM_NETWORK_DEVICE_ID_BYTES, MAXIMUM_NETWORK_DEVICE_NAME_BYTES,
+    NETWORK_SELF_DEVICE, NetworkClientConfig, NetworkClientSource, NetworkConfig,
+    NetworkDeviceConfig, NetworkListenMode, NetworkServerConfig,
+};
 pub use overlay::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS,
     MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig,
@@ -57,6 +63,11 @@ pub struct NativeConfig {
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
+    /// How this machine takes part in a room. Absent from a document written
+    /// before multiplayer existed, which is why the field is defaulted rather
+    /// than required.
+    #[serde(default)]
+    pub network: NetworkConfig,
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
@@ -110,6 +121,7 @@ impl Default for NativeConfig {
                 remember_last_expression: false,
                 last_expressions: Vec::new(),
             },
+            network: NetworkConfig::default(),
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
                 show_taskbar_icon: false,
@@ -158,6 +170,7 @@ impl NativeConfig {
                 "overlay.hide_on_idle_delay_seconds",
             ));
         }
+        self.network.validate()?;
         if !(1..=400).contains(&self.input.pointer_sensitivity_percent) {
             return Err(ConfigError::InvalidValue(
                 "input.pointer_sensitivity_percent",

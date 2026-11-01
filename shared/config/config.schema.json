@@ -371,6 +371,167 @@
       },
       "type": "object"
     },
+    "NetworkClientConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "default": [
+            "self"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "publish": {
+          "default": true,
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/NetworkClientSource",
+          "default": "follow_local"
+        },
+        "token": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NetworkClientSource": {
+      "oneOf": [
+        {
+          "const": "follow_local",
+          "type": "string"
+        },
+        {
+          "const": "manual",
+          "type": "string"
+        }
+      ]
+    },
+    "NetworkConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/NetworkClientConfig",
+          "default": {
+            "display": [
+              "self"
+            ],
+            "enabled": false,
+            "publish": true,
+            "source": "follow_local",
+            "token": null,
+            "url": null
+          }
+        },
+        "device": {
+          "$ref": "#/$defs/NetworkDeviceConfig",
+          "default": {
+            "id": "pc-01",
+            "name": "PC"
+          }
+        },
+        "server": {
+          "$ref": "#/$defs/NetworkServerConfig",
+          "default": {
+            "address": null,
+            "enabled": false,
+            "listen": "dual_stack",
+            "port": 8787,
+            "token": null
+          }
+        }
+      },
+      "type": "object"
+    },
+    "NetworkDeviceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "default": "pc-01",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        "name": {
+          "default": "PC",
+          "maxLength": 64,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NetworkListenMode": {
+      "oneOf": [
+        {
+          "const": "local_only",
+          "type": "string"
+        },
+        {
+          "const": "ipv4",
+          "type": "string"
+        },
+        {
+          "const": "dual_stack",
+          "type": "string"
+        },
+        {
+          "const": "custom",
+          "type": "string"
+        }
+      ]
+    },
+    "NetworkServerConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "listen": {
+          "$ref": "#/$defs/NetworkListenMode",
+          "default": "dual_stack"
+        },
+        "port": {
+          "default": 8787,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "token": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "OverlayConfig": {
       "additionalProperties": false,
       "properties": {
@@ -593,6 +754,32 @@
     },
     "model": {
       "$ref": "#/$defs/ModelConfig"
+    },
+    "network": {
+      "$ref": "#/$defs/NetworkConfig",
+      "default": {
+        "client": {
+          "display": [
+            "self"
+          ],
+          "enabled": false,
+          "publish": true,
+          "source": "follow_local",
+          "token": null,
+          "url": null
+        },
+        "device": {
+          "id": "pc-01",
+          "name": "PC"
+        },
+        "server": {
+          "address": null,
+          "enabled": false,
+          "listen": "dual_stack",
+          "port": 8787,
+          "token": null
+        }
+      }
     },
     "overlay": {
       "$ref": "#/$defs/OverlayConfig"
