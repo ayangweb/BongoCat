@@ -337,7 +337,7 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     // Every joined run goes through the tee: it is the gate that keeps this
     // machine's own input away from a pet the device list has pointed at
     // someone else, publisher or not.
-    Ok(InputProducer::new(Arc::new(TeeSubmitter::new(
+    Ok(base.with_submitter(Arc::new(TeeSubmitter::new(
         base.submitter(),
         sink,
         suppress_local,
@@ -451,7 +451,9 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                     // time is the only comparable stamp.
                     at: now_millis(),
                 };
-                let _ = producer.publish(input);
+                if let Err(error) = producer.publish(input) {
+                    let _ = writeln!(std::io::stderr(), "watch: publish failed: {error}");
+                }
             }
             ClientEvent::Joined { peers: room, .. } => {
                 room_peers = room;

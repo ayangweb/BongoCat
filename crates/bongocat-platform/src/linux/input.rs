@@ -91,7 +91,7 @@ impl LinuxInputService {
                     let mut enabled = false;
                     let mut position = CursorPosition { x: 0.5, y: 0.5 };
                     while read_packet(&mut output, &mut packet, &worker_stop)? {
-                        let at = MonotonicMillis::new(started.elapsed().as_millis() as u64);
+                        let at = MonotonicMillis::new(wall_millis());
                         let message = InputMessage::decode(&packet)
                             .ok_or(PlatformInputError::BackendUnavailable)?;
                         if let InputMessage::Reset { enabled: active } = message {
@@ -183,7 +183,7 @@ impl LinuxInputService {
                 loop {
                     match producer.recover(
                         InputResetReason::ServiceRestart,
-                        MonotonicMillis::new(started.elapsed().as_millis() as u64),
+                        MonotonicMillis::new(wall_millis()),
                     ) {
                         Ok(_) => break,
                         Err(InputPublishError::RuntimeStopped(_)) => break,
@@ -319,6 +319,18 @@ fn read_packet(
     }
     Ok(true)
 }
+/// Wall-clock milliseconds, the same stamp the room bridge uses.
+///
+/// The runtime refuses events whose time runs backwards against the last one it
+/// applied, and it sees this machine's own capture and the room's frames side by
+/// side — so every stamper must read the same clock, not a per-process uptime.
+fn wall_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn edge(control: InputControl, down: bool, at: MonotonicMillis) -> InputEvent {
     InputEvent::Edge {
         control,

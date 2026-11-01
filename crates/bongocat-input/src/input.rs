@@ -578,6 +578,22 @@ impl InputProducer {
         std::sync::Arc::clone(&self.submitter)
     }
 
+    /// A producer that hands events to `submitter` while sharing this one's
+    /// sequence bookkeeping.
+    ///
+    /// The multiplayer tee needs exactly this: the runtime sees events from two
+    /// senders — the room and this machine's own capture — and its gap detection
+    /// is only sound while every sender draws numbers from the same counter. A
+    /// fresh producer would restart the count at zero, and every one of its
+    /// frames would read as stale against the other sender's.
+    pub fn with_submitter(&self, submitter: std::sync::Arc<dyn InputSubmitter>) -> Self {
+        Self {
+            submitter,
+            state: std::sync::Arc::clone(&self.state),
+            transport: std::sync::Arc::clone(&self.transport),
+        }
+    }
+
     pub fn publish(&self, event: InputEvent) -> Result<u64, InputPublishError> {
         let mut state = self
             .state

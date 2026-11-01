@@ -12,6 +12,7 @@
 //! that arrives late is worthless, so losing it is the correct answer and
 //! waiting for the network is not.
 
+use std::io::Write;
 use std::sync::{
     Arc, Mutex, PoisonError,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -209,7 +210,12 @@ impl InputSubmitter for TeeSubmitter {
         if self.suppress_local.load(Ordering::Acquire) {
             return Ok(());
         }
-        self.inner.submit(event)
+        let result = self.inner.submit(event);
+        // TEMP DIAGNOSTIC — remove once the round trip is confirmed.
+        if result.is_err() {
+            let _ = writeln!(std::io::stderr(), "tee: inner rejected: {:?}", result);
+        }
+        result
     }
 }
 
