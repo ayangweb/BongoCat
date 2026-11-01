@@ -77,7 +77,6 @@ pub struct PeerInfo {
 pub struct Joined {
     pub peer_id: String,
     pub peers: Vec<PeerInfo>,
-    pub server_time: u64,
 }
 
 /// One input sample. `seq` is per-sender and monotonic; a gap means loss, not

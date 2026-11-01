@@ -102,7 +102,7 @@ pub enum ClientError {
         source: url::ParseError,
     },
     /// The url parsed but does not address a websocket.
-    #[error("unsupported relay url scheme `{scheme}`: expected ws or wss")]
+    #[error("unsupported relay url scheme `{scheme}`: expected ws (this build has no TLS)")]
     Scheme { scheme: String },
     #[error("connection failed: {0}")]
     Connect(String),
@@ -191,7 +191,7 @@ fn backoff_for_attempt(attempt: u32) -> Duration {
     delay.min(RECONNECT_MAX_DELAY)
 }
 
-/// Accepts `ws` and `wss` urls only.
+/// Accepts `ws` urls only.
 ///
 /// A plain http(s) url is a configuration mistake, and connecting to it would
 /// fail inside the websocket handshake with a much less useful message.
@@ -201,7 +201,10 @@ fn validate_server_url(raw: &str) -> Result<Url, ClientError> {
         source,
     })?;
     match url.scheme() {
-        "ws" | "wss" => Ok(url),
+        "ws" => Ok(url),
+        // The parser accepts wss, but this build runs tungstenite without a
+        // TLS feature, so the dial would fail inside the handshake with a far
+        // less useful message than this one. Refuse it where the user typed it.
         scheme => Err(ClientError::Scheme {
             scheme: scheme.to_owned(),
         }),
@@ -613,18 +616,6 @@ fn open_socket(url: &Url) -> Result<Socket, ClientError> {
                     .map_err(|error| ClientError::Connect(error.to_string()))?;
             Ok(socket)
         }
-        "wss" => {
-            // The TLS handshake needs to own the stream, so the timeouts are
-            // applied to the negotiated socket afterwards. `connect` also has no
-            // connect timeout of its own, which is why it is only used on this
-            // path: `ws` connects through `connect_stream` and is bounded there.
-            // A `wss` url additionally needs a TLS feature on the tungstenite
-            // dependency; without one this reports a plain connection failure.
-            let (mut socket, _response) = tungstenite::connect(url.as_str())
-                .map_err(|error| ClientError::Connect(error.to_string()))?;
-            apply_negotiated_options(&mut socket)?;
-            Ok(socket)
-        }
         scheme => Err(ClientError::Scheme {
             scheme: scheme.to_owned(),
         }),
@@ -660,18 +651,6 @@ fn apply_stream_options(stream: &TcpStream) -> Result<(), ClientError> {
     stream.set_read_timeout(Some(SOCKET_POLL_INTERVAL))?;
     stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
     Ok(())
-}
-
-/// Reaches the `TcpStream` underneath the negotiated stream.
-///
-/// `MaybeTlsStream` only has variants beyond `Plain` when tungstenite is built
-/// with a TLS backend, so the wildcard arm is unreachable in a `ws`-only build.
-#[allow(unreachable_patterns)]
-fn apply_negotiated_options(socket: &mut Socket) -> Result<(), ClientError> {
-    match socket.get_mut() {
-        MaybeTlsStream::Plain(stream) => apply_stream_options(stream),
-        _ => Ok(()),
-    }
 }
 
 fn is_timeout(error: &WsError) -> bool {
@@ -921,12 +900,9 @@ mod tests {
                 .scheme(),
             "ws"
         );
-        assert_eq!(
-            validate_server_url("wss://relay.example.com/session")
-                .expect("secure websocket")
-                .scheme(),
-            "wss"
-        );
+        let error = validate_server_url("wss://relay.example.com/session")
+            .expect_err("wss parses but this build has no TLS to dial it with");
+        assert!(matches!(error, ClientError::Scheme { scheme } if scheme == "wss"));
 
         let error = validate_server_url("https://relay.example.com")
             .expect_err("http is a configuration mistake, not a websocket");
@@ -1141,7 +1117,6 @@ mod tests {
                 &Joined {
                     peer_id: "peer-1".to_owned(),
                     peers: Vec::new(),
-                    server_time: 0,
                 },
             )
             .expect("joined envelope");

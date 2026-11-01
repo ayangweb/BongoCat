@@ -60,6 +60,13 @@ const RETIRE_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 /// buffered without bound.
 const OUTBOX_CAPACITY: usize = 1024;
 
+/// The largest message one connection may hand the relay.
+///
+/// Input frames are under a kilobyte; a peer sending megabytes is either broken
+/// or hostile, and tungstenite's default 64 MiB ceiling would let either one
+/// pin a buffer against this thread for as long as the frame takes to arrive.
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+
 /// Burst and sustained rate for discrete input (keys, buttons, clicks).
 const DISCRETE_BURST: f64 = 500.0;
 const DISCRETE_PER_SECOND: f64 = 500.0;
@@ -165,7 +172,10 @@ fn serve_connection(stream: TcpStream, token: Arc<str>, hub: Arc<Mutex<Hub>>) {
     // thread after `HANDSHAKE_TIMEOUT` instead of holding it forever.
     let _ = stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT));
 
-    let mut socket = match tungstenite::accept(stream) {
+    let mut socket_config = tungstenite::protocol::WebSocketConfig::default();
+    socket_config.max_message_size = Some(MAX_MESSAGE_BYTES);
+    socket_config.max_frame_size = Some(MAX_MESSAGE_BYTES);
+    let mut socket = match tungstenite::accept_with_config(stream, Some(socket_config)) {
         Ok(socket) => socket,
         Err(_) => return,
     };
@@ -210,7 +220,6 @@ fn serve_connection(stream: TcpStream, token: Arc<str>, hub: Arc<Mutex<Hub>>) {
     let joined = Joined {
         peer_id: hello.device.id.clone(),
         peers,
-        server_time: unix_millis(),
     };
     if let Some(frame) = encode(kind::JOINED, &joined) {
         link.deliver(frame);
@@ -508,12 +517,6 @@ fn peer_info(device: &DeviceInfo) -> PeerInfo {
         name: device.name.clone(),
         publish: device.publish,
     }
-}
-
-fn unix_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_millis() as u64)
 }
 
 /// Locks a mutex, recovering from poisoning: relay state is a set of connection

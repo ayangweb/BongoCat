@@ -179,6 +179,14 @@ pub(crate) fn plan(options: &RunOptions, config: &NetworkConfig) -> NetworkPlan 
         }),
         _ => None,
     };
+    // An enabled section that cannot name its address or room key would
+    // otherwise sit "Off" forever with nothing on screen to say why.
+    if enabled && join.is_none() {
+        let _ = writeln!(
+            std::io::stderr(),
+            "net: not joining; the section is enabled but the address or the room key is missing"
+        );
+    }
 
     NetworkPlan { serve, join }
 }
@@ -237,9 +245,6 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     let Some(join) = &plan.join else {
         return Ok(base);
     };
-    if join.token.is_empty() {
-        return Err("the room key is empty; set one on the multiplayer page".to_owned());
-    }
     let config = ClientConfig {
         url: join.url.clone(),
         token: join.token.clone(),
@@ -258,10 +263,17 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     let sink = if join.publish {
         let (sink, queue) = sync_channel::<InputFrame>(SINK_CAPACITY);
         let commands = commands.clone();
+        let device_id = join.device_id.clone();
         std::thread::Builder::new()
             .name("bongocat-publish".to_owned())
             .spawn(move || {
-                while let Ok(frame) = queue.recv() {
+                while let Ok(mut frame) = queue.recv() {
+                    // The tee cannot know which device it runs on, and the relay
+                    // forwards frames verbatim to save a parse and a build per
+                    // frame, so the sender is the one place the source can be
+                    // named. Without it the far end's device list can never
+                    // match a frame, and its "following" row reads an empty id.
+                    frame.src = device_id.clone();
                     if commands.send(ClientCommand::Publish(frame)).is_err() {
                         break;
                     }

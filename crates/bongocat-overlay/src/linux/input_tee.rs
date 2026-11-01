@@ -29,12 +29,12 @@ use bongocat_net::protocol::InputFrame;
 /// event did not. That is enough to tell a peer's "nothing happens" apart from
 /// a stalled network, a silent filter, or a device reporting garbage.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TeeSnapshot {
-    pub(crate) forwarded: u64,
-    pub(crate) dropped_queue_full: u64,
-    pub(crate) dropped_sink_closed: u64,
-    pub(crate) repeated_within_millisecond: u64,
-    pub(crate) not_user_input: u64,
+struct TeeSnapshot {
+    forwarded: u64,
+    dropped_queue_full: u64,
+    dropped_sink_closed: u64,
+    repeated_within_millisecond: u64,
+    not_user_input: u64,
 }
 
 #[derive(Debug, Default)]
@@ -117,7 +117,11 @@ impl TeeSubmitter {
         }
     }
 
-    pub fn diagnostics(&self) -> TeeSnapshot {
+    // Read by the tests below to pin the filter behaviour. Production does
+    // not read it yet — the diagnostics export would be its consumer — which
+    // is why a non-test build sees this as dead code.
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn diagnostics(&self) -> TeeSnapshot {
         self.counters.snapshot()
     }
 

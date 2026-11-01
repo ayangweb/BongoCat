@@ -5,19 +5,24 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    DEFAULT_NETWORK_PORT, ModifierKey, NETWORK_SELF_DEVICE, SettingsBuildEnvironment,
-    SettingsBuildInfo, SettingsClient, SettingsCursorSettings, SettingsError, SettingsErrorCode,
-    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
-    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsNetwork, SettingsNetworkClientSource,
-    SettingsNetworkClientState, SettingsNetworkListenMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
+    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
+    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+};
+// One line of its own rather than interleaved into the block above: every name
+// here arrives with the multiplayer page, and keeping them apart keeps the
+// next upstream import change from colliding with this fork.
+use crate::{
+    DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClientSource,
+    SettingsNetworkClientState, SettingsNetworkListenMode,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
