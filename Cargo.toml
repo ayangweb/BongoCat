@@ -22,6 +22,7 @@ members = [
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
+    "crates/bongocat-net",
 ]
 
 [workspace.package]
