@@ -418,6 +418,10 @@ relay。CLI 参数仍然是即时生效的，所以它不受影响。
 里传句柄。状态包括：relay 的监听地址、房间连接状态（未连接/连接中/已连接 N 台/重连中/已失败）、
 以及当前正在跟随哪台设备。
 
+「已连接 N 台」的 N 在设置页单独占一行（房间内其他设备）：relay 在回答 join 时给出已经在房间里
+的设备数，之后的 `peer_joined` / `peer_left` 再增减。N=0 是有效值而不是空——它表示「已进房间，
+对面还没来」，和「未连接」是两件事，所以只有未连接/连接中/重连中/已失败才显示「不在房间内」。
+
 ### 11.5 与上游的冲突面
 
 - `crates/bongocat-input/src/input.rs`：只加 derive 和一个 `submitter()` 访问器；
@@ -426,6 +430,12 @@ relay。CLI 参数仍然是即时生效的，所以它不受影响。
 
 ### 11.6 已知的既有失败（非本次引入）
 
-`settings::tests::projection::the_running_system_reports_the_capability_it_actually_gates_input_behind`
+`cargo test --workspace` 在本 fork 上剩 3 个失败，全在 `bongocat-update`：该 crate 只为
+macOS/Windows 发版，`HOST_TARGET_TRIPLE` 没有 Linux 变体，所以
+`host_target_is_one_of_the_shipped_combinations`、
+`availability_requires_a_production_channel_and_a_signing_key`、
+`unavailability_names_the_gate_that_closed` 在 Linux 上必然失败。与联机改动无关，未改。
+
+另一处已修：`settings::tests::projection::the_running_system_reports_the_capability_it_actually_gates_input_behind`
 在上游只认 `input_monitoring`（macOS）和 `administrator`（Windows）。本 fork 跑在 Linux 上，
 实际值是 `linux_libinput`，因此已把 Linux 的能力名加进断言。
