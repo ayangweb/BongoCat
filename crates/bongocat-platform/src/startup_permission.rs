@@ -715,9 +715,13 @@ mod tests {
 
     #[test]
     fn capability_name_is_stable_and_anonymous() {
+        // `linux_libinput` is what this fork reports: the capability is the one
+        // the platform actually gates input behind, and Linux gates it behind
+        // read access to the input devices rather than a TCC prompt or an
+        // elevated token.
         assert!(matches!(
             STARTUP_PERMISSION_CAPABILITY,
-            "input_monitoring" | "administrator"
+            "input_monitoring" | "administrator" | "linux_libinput"
         ));
     }
 }
