@@ -150,6 +150,31 @@ pub(super) fn network_client_state_text(
     bongocat_i18n::text(display_language.catalog_locale(), key)
 }
 
+/// How many machines the room holds, as the peers row reads it.
+///
+/// A count is a number rather than a sentence, so it takes no translation and
+/// the row can print the value it is given. Every state other than `Connected`
+/// answers with "not in a room" instead of a zero, because no room and an empty
+/// room are different facts to the person waiting for the other machine to
+/// appear: the first says this pet never joined, the second says it is alone in
+/// a room it did join.
+pub(super) fn network_client_peers_text(
+    state: SettingsNetworkClientState,
+    display_language: SettingsLanguage,
+) -> String {
+    match state {
+        SettingsNetworkClientState::Connected { peers } => peers.to_string(),
+        SettingsNetworkClientState::Off
+        | SettingsNetworkClientState::Connecting
+        | SettingsNetworkClientState::Reconnecting
+        | SettingsNetworkClientState::Failed => bongocat_i18n::text(
+            display_language.catalog_locale(),
+            "settings.multiplayer.status.peers.none",
+        )
+        .to_owned(),
+    }
+}
+
 /// The relay a client joins when it follows the one this machine serves.
 ///
 /// Built from the configured port rather than stored, so the row cannot

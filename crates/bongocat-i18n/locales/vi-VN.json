@@ -626,6 +626,10 @@
             "failed": "Kết nối thất bại"
           }
         },
+        "peers": {
+          "label": "Thiết bị khác trong phòng",
+          "none": "Chưa ở trong phòng"
+        },
         "bound": {
           "label": "Đang theo",
           "none": "Chưa có"

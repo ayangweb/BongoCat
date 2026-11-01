@@ -489,6 +489,17 @@ pub(super) fn multiplayer_page(
         },
         |client| network_client_state_text(client.state, language).to_owned(),
     );
+    // No room at all reads as the state a machine that never joined has, which
+    // the function answers with the same "not in a room" text: the row cannot
+    // count a room this process is not in, and it must not print a zero that
+    // looks like one it is alone in.
+    let peers_status = network_client_peers_text(
+        status
+            .client
+            .as_ref()
+            .map_or(SettingsNetworkClientState::Off, |client| client.state),
+        language,
+    );
     let bound_status = status
         .client
         .and_then(|client| client.bound)
@@ -512,6 +523,12 @@ pub(super) fn multiplayer_page(
                 language,
                 "settings.multiplayer.status.client.label",
                 client_status,
+            )
+            .keywords(status_keywords.iter().cloned()),
+            network_status_row(
+                language,
+                "settings.multiplayer.status.peers.label",
+                peers_status,
             )
             .keywords(status_keywords.iter().cloned()),
             network_status_row(

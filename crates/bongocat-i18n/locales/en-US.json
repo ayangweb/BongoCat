@@ -626,6 +626,10 @@
             "failed": "Connection failed"
           }
         },
+        "peers": {
+          "label": "Other machines in the room",
+          "none": "Not in a room"
+        },
         "bound": {
           "label": "Following",
           "none": "Nothing yet"

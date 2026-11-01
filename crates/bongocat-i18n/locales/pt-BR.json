@@ -626,6 +626,10 @@
             "failed": "Falha na conexão"
           }
         },
+        "peers": {
+          "label": "Outras máquinas na sala",
+          "none": "Fora da sala"
+        },
         "bound": {
           "label": "Seguindo",
           "none": "Nada ainda"

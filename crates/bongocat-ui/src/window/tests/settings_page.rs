@@ -794,3 +794,40 @@ fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppC
         "an interval nothing reads must not reach the service"
     );
 }
+
+/// The peers row counts a room this machine is in, and says so otherwise.
+///
+/// The count the relay reports leaves this machine out, so zero is a real
+/// answer — "in the room, nobody else here yet" — and has to stay a zero rather
+/// than fall back to the not-in-a-room text: a viewer waiting for the other
+/// machine to appear has to be able to tell "connected, still alone" from
+/// "not connected at all", which is the whole reason it opened the page.
+#[test]
+fn the_peers_row_counts_only_the_room_this_machine_is_in() {
+    let english = SettingsLanguage::English;
+    let not_in_a_room = bongocat_i18n::text(
+        english.catalog_locale(),
+        "settings.multiplayer.status.peers.none",
+    );
+
+    assert_eq!(
+        network_client_peers_text(SettingsNetworkClientState::Connected { peers: 0 }, english),
+        "0"
+    );
+    assert_eq!(
+        network_client_peers_text(SettingsNetworkClientState::Connected { peers: 2 }, english),
+        "2"
+    );
+    for state in [
+        SettingsNetworkClientState::Off,
+        SettingsNetworkClientState::Connecting,
+        SettingsNetworkClientState::Reconnecting,
+        SettingsNetworkClientState::Failed,
+    ] {
+        assert_eq!(
+            network_client_peers_text(state, english),
+            not_in_a_room,
+            "a room this machine is not in has no count to show"
+        );
+    }
+}
