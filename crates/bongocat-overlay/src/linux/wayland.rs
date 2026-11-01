@@ -799,7 +799,10 @@ impl WaylandWindow {
             let layer = shell.create_layer_surface(
                 &qh,
                 surface,
-                Layer::Top,
+                // `Top` sits below fullscreen windows in Hyprland, which hides the
+                // pet exactly when it is wanted most. `Overlay` is the only layer
+                // that stays above a fullscreen game.
+                Layer::Overlay,
                 Some(bongocat_config::BUNDLE_ID),
                 None,
             );
