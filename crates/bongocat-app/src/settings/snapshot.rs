@@ -58,6 +58,7 @@ pub(super) struct SettingsSnapshotClock {
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     observed_overlay_visible: Option<bool>,
+    observed_network_status: Option<bongocat_ui_protocol::SettingsNetworkStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
 }
@@ -71,6 +72,7 @@ impl SettingsSnapshotClock {
             observed_input_diagnostics: None,
             observed_startup_item: None,
             observed_overlay_visible: None,
+            observed_network_status: None,
             diagnostics_export: None,
             input_capability: InputCapabilityCache {
                 checked_at: None,
@@ -136,6 +138,22 @@ impl SettingsSnapshotClock {
             self.mark_changed();
         }
         self.observed_overlay_visible = Some(visible);
+    }
+
+    /// Watch the multiplayer status, which moves on its own while a room is
+    /// being joined, lost and retried.
+    ///
+    /// Observed here rather than polled by the window because the window only
+    /// asks "did anything change"; without this, a settings page left open
+    /// would keep showing the status it was opened with.
+    pub(super) fn observe_network_status(
+        &mut self,
+        status: bongocat_ui_protocol::SettingsNetworkStatus,
+    ) {
+        let previous = self.observed_network_status.replace(status.clone());
+        if previous.is_some_and(|previous| previous != status) {
+            self.mark_changed();
+        }
     }
 
     pub(super) fn observe_diagnostics_export(&mut self, status: SettingsDiagnosticsExportStatus) {
@@ -245,6 +263,10 @@ pub(super) fn snapshot(
         ),
         remember_last_expression: application.config().model.remember_last_expression,
         logging: settings_logging_from_config(&application.config().logging),
+        network: crate::config_projection::settings_network_from_config(
+            &application.config().network,
+        ),
+        network_status: settings_network_status(&bongocat_net::network_status()),
         shortcuts: settings_shortcuts(application.config()),
         startup_item,
         diagnostics_export: clock.diagnostics_export,
@@ -280,6 +302,7 @@ pub(super) fn observe_snapshot_state(
     let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
     clock.observe_overlay_visible(runtime.overlay_visible);
+    clock.observe_network_status(settings_network_status(&bongocat_net::network_status()));
     let input_diagnostics = settings_input_diagnostics(
         &runtime.input,
         runtime.platform_input,

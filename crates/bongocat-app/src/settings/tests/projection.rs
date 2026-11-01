@@ -382,6 +382,32 @@ fn an_unobserved_capability_names_no_platform() {
     );
 }
 
+/// The multiplayer section is spelled twice: once in the document and once in the
+/// settings contract, because the window must not import the configuration crate.
+/// A default that drifted would show a user a port or a device id the product does
+/// not actually use, so the two are pinned to each other here rather than trusted.
+#[test]
+fn the_network_defaults_the_window_shows_are_the_ones_the_document_stores() {
+    use bongocat_config::NetworkConfig;
+    use bongocat_ui_protocol::SettingsNetwork;
+
+    let from_config =
+        crate::config_projection::settings_network_from_config(&NetworkConfig::default());
+    assert_eq!(from_config, SettingsNetwork::default());
+    assert_eq!(
+        from_config.server.port,
+        bongocat_ui_protocol::DEFAULT_NETWORK_PORT
+    );
+    // Round trip: a section that survives the window and comes back unchanged
+    // must be the section that was shown.
+    let round_tripped = crate::config_projection::network_config_from_settings(from_config);
+    assert_eq!(round_tripped, NetworkConfig::default());
+    assert_eq!(
+        bongocat_ui_protocol::NETWORK_SELF_DEVICE,
+        bongocat_config::NETWORK_SELF_DEVICE
+    );
+}
+
 /// `TokenElevation` on Windows and the TCC grant on macOS answer the same
 /// question, so one query and one shape serve both. This pins the shape: a
 /// platform with no capability concept would have to change the contract, not
@@ -391,7 +417,10 @@ fn the_running_system_reports_the_capability_it_actually_gates_input_behind() {
     let capability = system_input_capability();
     assert_eq!(capability.name, STARTUP_PERMISSION_CAPABILITY);
     assert!(
-        matches!(capability.name, "input_monitoring" | "administrator"),
+        matches!(
+            capability.name,
+            "input_monitoring" | "administrator" | "linux_libinput"
+        ),
         "the capability name is a property of the platform, got {}",
         capability.name
     );

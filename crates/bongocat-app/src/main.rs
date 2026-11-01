@@ -23,6 +23,8 @@
 mod binary_tests;
 mod gamepad_observer;
 mod model_cover;
+#[cfg(target_os = "linux")]
+mod net_publish;
 #[cfg(not(target_os = "linux"))]
 mod overlay_placement;
 #[cfg(not(target_os = "linux"))]
@@ -306,7 +308,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(error) => return Err(Box::new(error)),
     };
 
+    // The relay is headless: it must answer before anything opens a GPU surface or a
+    // window, because a relay may well run on a machine that has no display at all.
+    if run_options.relay {
+        return run_relay(&run_options);
+    }
+
     run_product(run_options)
+}
+
+/// Translates the parsed relay flags into the relay's own configuration.
+///
+/// The listen mode is validated here rather than by `clap` so that an unknown value
+/// can name every accepted spelling instead of failing with a generic parse error.
+fn run_relay(options: &RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let bind = match options.relay_listen.as_str() {
+        "local" => bongocat_net::relay::BindMode::LocalOnly,
+        "ipv4" => bongocat_net::relay::BindMode::Ipv4Only,
+        "dual" => bongocat_net::relay::BindMode::DualStack,
+        other => {
+            return Err(format!(
+                "unknown --relay-listen value {other:?}; expected `local`, `ipv4`, or `dual`"
+            )
+            .into());
+        }
+    };
+    let token = match options.relay_token.as_deref() {
+        Some(token) if !token.is_empty() => token.to_owned(),
+        Some(_) => return Err("--relay-token must not be empty".into()),
+        None => {
+            // Printing it is the only way to hand it over: a headless relay has no UI to
+            // show it in, and a built-in default would be a token everyone shares.
+            let generated = bongocat_net::generate_token();
+            // Written through `writeln!` rather than `eprintln!`: the workspace denies
+            // the print macros, and a generated token nobody can read is useless.
+            let _ = writeln!(io::stderr(), "relay token (generated): {generated}");
+            generated
+        }
+    };
+    let config = bongocat_net::relay::RelayConfig {
+        bind,
+        port: options.relay_port,
+        token,
+    };
+    bongocat_net::relay::run(config).map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -360,6 +405,13 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
         }
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
+    // `--hide` starts the session with the overlay already invisible rather than
+    // switching it off after the first frame, which would show the pet and then
+    // take it away. Visibility is runtime state, so the status icon and the
+    // settings switch still bring it back for this session.
+    if run_options.hide {
+        application.set_overlay_visible(false)?;
+    }
     application.set_overlay_always_on_top_available(true);
     let application_log = application.log_handle();
     application.install_process_panic_hook();
@@ -466,7 +518,9 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
     let render_consumer = application.take_render_consumer()?;
-    let expect_visible_frame = true;
+    // A hidden run draws no visible content, so a frame count of zero is not a
+    // failure there: only the mode that promised a visible pet owns that check.
+    let expect_visible_frame = !run_options.hide;
     let frame_runtime_client = runtime_client.clone();
     let frame_source_shutdown = FrameSourceShutdown::default();
     let failures = Arc::new(Mutex::new(Vec::new()));
@@ -2576,12 +2630,36 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         return Err("BongoCat Linux requires a Wayland session".into());
     }
     let preset_directory = presets()?;
+    let hidden = options.hide;
     let mut application = Application::start(preset_directory.path())?;
+    // `--hide` starts the session with the overlay already invisible instead of
+    // switching it off afterwards: the runtime publishes the first frame the
+    // session draws, so turning it off later would show the pet for a frame and
+    // then take it away. Visibility is runtime state, so everything that shows
+    // the overlay again — the status icon, the settings switch — still works.
+    if hidden {
+        application.set_overlay_visible(false)?;
+    }
     application.install_process_panic_hook();
     let _core_log = bongocat_live2d::CoreLogHandle::install(
         application.logs_directory(),
         application.log_settings_controller(),
     )?;
+    // A relay that is switched on needs a room key before the plan is read, and
+    // the key is generated here rather than at the relay so it is stored: it has
+    // to be the same after a restart, or every peer would have to be
+    // reconfigured each time this machine comes back.
+    if application.config().network.server.enabled {
+        application.ensure_network_server_token()?;
+    }
+    let network_plan = net_publish::plan(&options, &application.config().network);
+    // Read before `options` is handed to the session below, which consumes it.
+    let watching = network_plan.watching();
+    // Wrapped here rather than at the session call: `options` is shadowed by the
+    // overlay options two lines down, and the producer has to be wrapped before
+    // the session takes ownership of it. Started before the session so no key of
+    // the watched machine is missed while the overlay is still being built.
+    let input_producer = net_publish::start(&network_plan, application.input_producer())?;
     let config = &application.config().overlay;
     let options = OverlaySessionOptions {
         click_through: config.click_through,
@@ -2610,7 +2688,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
     let overlay = ProductOverlaySession::start_with_interaction_sinks(
         runtime.clone(),
-        application.input_producer(),
+        input_producer,
         application.cursor_producer(),
         application.gamepad_axis_producer(),
         application.take_render_consumer()?,
@@ -2669,14 +2747,32 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             quit: quit.clone(),
             close_requested: false,
         });
-        open_settings(cx);
+        // A hidden run shows no window at all, so the settings window stays shut
+        // until the status icon asks for it. That window is the only other entry
+        // point besides the icon, and it is the one that carries the permission
+        // explanation below, so the hidden path starts capture on its own.
+        if !hidden {
+            open_settings(cx);
+        }
         let palette = bongocat_ui::linux_system_menu_palette(cx);
         cx.global_mut::<Product>()
             .overlay
             .as_mut()
             .expect("running overlay")
             .set_linux_menu_presentation(presentation.clone(), palette);
-        if let Some(settings) = cx.global::<Product>().settings.window.clone() {
+        if hidden {
+            // The explanation is drawn in the settings window, which a hidden run
+            // never opens, and there is nobody in front of the screen to answer it
+            // anyway: the mode was asked for on the command line, so capture
+            // starts without the prompt. A viewer captures nothing either way.
+            if !watching && let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                overlay.start_linux_input();
+            }
+        } else if watching {
+            // A viewer draws another machine's input, so it has nothing to
+            // authorise. Opening the dialog would ask for a permission the whole
+            // point of this mode is not to need.
+        } else if let Some(settings) = cx.global::<Product>().settings.window.clone() {
             let _ = settings.update(cx, |_, window, cx| {
                 // The dialog reads Root's window state; release the typed
                 // settings-window update's Root borrow before opening it.

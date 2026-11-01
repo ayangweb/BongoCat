@@ -560,6 +560,27 @@ pub(super) fn run_service(
                 }
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetNetworkSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_network_settings(settings)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("network_settings"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetShortcuts {
                 expected_config_revision,
                 shortcuts,

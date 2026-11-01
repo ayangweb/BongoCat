@@ -490,6 +490,8 @@ mod tests {
             gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             remember_last_expression: false,
             logging: SettingsLogging::default(),
+            network: bongocat_ui_protocol::SettingsNetwork::default(),
+            network_status: bongocat_ui_protocol::SettingsNetworkStatus::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,

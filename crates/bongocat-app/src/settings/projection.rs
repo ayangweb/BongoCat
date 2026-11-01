@@ -294,6 +294,41 @@ pub(super) const fn startup_item_status_code(status: SettingsStartupItemStatus) 
     }
 }
 
+/// What the multiplayer side of this process is doing, in the window's words.
+pub(super) fn settings_network_status(
+    status: &bongocat_net::NetworkStatus,
+) -> bongocat_ui_protocol::SettingsNetworkStatus {
+    bongocat_ui_protocol::SettingsNetworkStatus {
+        server: status.relay.as_ref().map(|relay| {
+            bongocat_ui_protocol::SettingsNetworkServerStatus {
+                url: relay.url.clone(),
+            }
+        }),
+        client: status.room.as_ref().map(|room| {
+            bongocat_ui_protocol::SettingsNetworkClientStatus {
+                state: match room.state {
+                    bongocat_net::RoomState::Off => {
+                        bongocat_ui_protocol::SettingsNetworkClientState::Off
+                    }
+                    bongocat_net::RoomState::Connecting => {
+                        bongocat_ui_protocol::SettingsNetworkClientState::Connecting
+                    }
+                    bongocat_net::RoomState::Connected { peers } => {
+                        bongocat_ui_protocol::SettingsNetworkClientState::Connected { peers }
+                    }
+                    bongocat_net::RoomState::Reconnecting => {
+                        bongocat_ui_protocol::SettingsNetworkClientState::Reconnecting
+                    }
+                    bongocat_net::RoomState::Failed => {
+                        bongocat_ui_protocol::SettingsNetworkClientState::Failed
+                    }
+                },
+                bound: room.bound.clone(),
+            }
+        }),
+    }
+}
+
 pub(super) const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {
     matches!(
         status,

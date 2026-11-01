@@ -17,6 +17,7 @@ fn run_options_default_to_an_unbounded_product_lifetime() {
             settings_window_open_smoke: false,
             models_page_smoke: false,
             hidden_model_switch_smoke: false,
+            hide: false,
             #[cfg(feature = "storage-test-injection")]
             settings_window_state_smoke: false,
             #[cfg(feature = "storage-test-injection")]
@@ -76,7 +77,10 @@ fn a_run_duration_can_be_attached_to_its_flag() {
     );
 }
 
-/// A harness run is exactly a run that named a flag other than `--run-seconds`.
+/// A harness run is exactly a run that named a flag other than a product mode.
+///
+/// `--run-seconds` bounds a normal run and `--hide` starts one without a visible
+/// pet; neither replaces the product with a diagnostic, so neither is a harness.
 ///
 /// This is the rule the permission prompt hangs on, and it is now derived from the
 /// flag declaration rather than from a hand-written argument scan. The two checks
@@ -92,6 +96,13 @@ fn only_the_bounded_run_duration_keeps_a_start_interactive() {
         .expect("product run options");
     assert!(!product.automated_verification());
     assert!(!product.settings_window_smoke);
+
+    let hidden = RunOptions::parse(["--hide".to_owned()]).expect("hidden product options");
+    assert!(hidden.hide);
+    assert!(
+        !hidden.automated_verification(),
+        "--hide is a product mode, not a harness"
+    );
 
     let harness: BTreeSet<&str> = [
         "--settings-window-smoke",
@@ -126,7 +137,7 @@ fn only_the_bounded_run_duration_keeps_a_start_interactive() {
     let declared: BTreeSet<String> = <RunOptions as clap::CommandFactory>::command()
         .get_arguments()
         .filter_map(|argument| argument.get_long())
-        .filter(|flag| *flag != "run-seconds")
+        .filter(|flag| !matches!(*flag, "run-seconds" | "hide"))
         .map(str::to_owned)
         .collect();
     assert_eq!(

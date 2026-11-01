@@ -428,6 +428,53 @@ impl Application {
         Ok(())
     }
 
+    /// Persist the whole multiplayer section as one atomic change.
+    ///
+    /// The three parts are one decision, so they land together: a document
+    /// that moved the client address but not the server port would describe a
+    /// client pointing at a room that no longer exists.
+    ///
+    /// The change reaches the network on the next start. The relay is a
+    /// socket bound for the lifetime of the process and a room is joined once
+    /// at startup, so re-reading the section here would leave a relay still
+    /// listening on the port the user just changed away from.
+    pub fn set_network_settings(
+        &mut self,
+        settings: bongocat_ui_protocol::SettingsNetwork,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.network = crate::config_projection::network_config_from_settings(settings);
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Give the served relay a room key if it has none.
+    ///
+    /// Generated rather than left open, and stored rather than printed: the key
+    /// has to be the same after a restart, or every peer would have to be
+    /// reconfigured each time this machine comes back.
+    pub fn ensure_network_server_token(&mut self) -> Result<Option<String>, ApplicationError> {
+        if let Some(token) = self.config.network.server.token.as_deref() {
+            let token = token.trim();
+            return Ok((!token.is_empty()).then(|| token.to_owned()));
+        }
+        let generated = bongocat_net::generate_token();
+        let mut next_config = self.config.clone();
+        next_config.network.server.token = Some(generated.clone());
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(Some(generated))
+    }
+
     pub fn set_shortcuts(
         &mut self,
         shortcuts: bongocat_ui_protocol::SettingsShortcuts,
