@@ -54,6 +54,30 @@ want it again.
 Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 [MMmmmoko](https://github.com/MMmmmoko).
 
+## About this fork
+
+This is a personal fork of [ayangweb/BongoCat](https://github.com/ayangweb/BongoCat), kept for
+its author's own machines. It is **not** the upstream project: issues opened here do not reach
+upstream, and this fork does not promise to stay compatible with upstream releases. Everything
+it starts from belongs to upstream; the changes below are what this fork adds on top.
+
+- **Linux / Wayland support.** Built on top of
+  [PR #1114](https://github.com/ayangweb/BongoCat/pull/1114) by
+  [@xiaozhangup](https://github.com/xiaozhangup), which ports the pet to Linux through a
+  layer-shell overlay (tested on Hyprland).
+- **Cross-device multiplayer.** Inspired by the room-key + relay design of
+  [JMTeCHNoLOGY/BongoCat](https://github.com/JMTeCHNoLOGY/BongoCat), reimplemented from scratch
+  for this codebase in `crates/bongocat-net`: one machine serves a room with `--relay`, and
+  another machine joins it — `--publish-url` sends that machine's input to the room, `--watch`
+  draws another machine's pet instead of its own. The settings window carries a multiplayer
+  page with the same parts (this machine, devices to draw, join a room, serve a relay) plus a
+  live status group.
+- The rest of this README describes the upstream project, so lines like "runs on macOS and
+  Windows" or "works offline" no longer hold for this fork.
+
+This fork is licensed under the same [Apache License 2.0](./LICENSE) as upstream, and the
+upstream authors hold the copyright to everything this fork starts from.
+
 ## Features
 
 - Runs on macOS and Windows.

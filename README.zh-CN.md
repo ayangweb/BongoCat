@@ -50,6 +50,26 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 
 灵感来自 [MMmmmoko](https://github.com/MMmmmoko) 的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。
 
+## 关于这个 fork
+
+这是 [ayangweb/BongoCat](https://github.com/ayangweb/BongoCat) 的个人 fork，仅供其作者自己的
+几台机器使用。它**不是**上游项目：在这里提的 issue 到不了上游，这个 fork 也不保证与上游版本
+保持兼容。它所基于的一切都属于上游，下面的改动是这个 fork 自己加的。
+
+- **Linux / Wayland 支持。** 基于 [@xiaozhangup](https://github.com/xiaozhangup) 的
+  [PR #1114](https://github.com/ayangweb/BongoCat/pull/1114) 构建，通过 layer-shell overlay
+  把桌面宠物移植到 Linux（在 Hyprland 上实测）。
+- **跨设备联机。** 参考 [JMTeCHNoLOGY/BongoCat](https://github.com/JMTeCHNoLOGY/BongoCat) 的
+  房间密钥 + relay 设计，在本仓库的代码里从头重新实现（`crates/bongocat-net`）：一台机器用
+  `--relay` 开房间，另一台加入它——`--publish-url` 把那台机器的输入推送到房间，`--watch` 则
+  画另一台机器的猫而不是自己的。设置窗口里有对应的联机页（本机、要画的设备、加入房间、
+  开启联机服务），底部还有实时状态。
+- 本 README 其余部分描述的是上游项目，所以类似「适配 macOS、Windows」「支持离线运行」的说法
+  对这个 fork 不再成立。
+
+本 fork 与上游一样采用 [Apache License 2.0](./LICENSE) 授权，本 fork 所基于代码的版权归上游
+作者所有。
+
 ## 功能介绍
 
 - 适配 macOS、Windows。
