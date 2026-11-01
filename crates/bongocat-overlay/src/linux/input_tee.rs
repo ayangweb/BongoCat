@@ -14,7 +14,7 @@
 
 use std::sync::{
     Arc, Mutex, PoisonError,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::{SyncSender, TrySendError},
 };
 
@@ -98,6 +98,13 @@ impl Coalescer {
 pub struct TeeSubmitter {
     inner: Arc<dyn InputSubmitter>,
     sink: SyncSender<InputFrame>,
+    /// Whether the local pet is drawing this machine's own input.
+    ///
+    /// A machine that switched "this machine" off in the device list still
+    /// publishes (the tee's whole purpose), but its pet must not dance to the
+    /// keys this user presses. When this flag is set the copy still reaches the
+    /// sink and the runtime never sees the event; the room is the only audience.
+    suppress_local: Arc<AtomicBool>,
     /// The tee's own sequence, not the runtime's. The runtime's sequence also
     /// counts resets, reconciliations and the events this tee filters out, so
     /// reusing it would report a gap for every frame that was never sent.
@@ -107,10 +114,15 @@ pub struct TeeSubmitter {
 }
 
 impl TeeSubmitter {
-    pub fn new(inner: Arc<dyn InputSubmitter>, sink: SyncSender<InputFrame>) -> Self {
+    pub fn new(
+        inner: Arc<dyn InputSubmitter>,
+        sink: SyncSender<InputFrame>,
+        suppress_local: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             inner,
             sink,
+            suppress_local,
             sequence: AtomicU64::new(0),
             coalescer: Mutex::new(Coalescer::default()),
             counters: TeeCounters::default(),
@@ -186,6 +198,9 @@ impl TeeSubmitter {
 impl InputSubmitter for TeeSubmitter {
     fn submit(&self, event: SequencedInputEvent) -> Result<(), InputSubmitError> {
         self.offer(&event);
+        if self.suppress_local.load(Ordering::Acquire) {
+            return Ok(());
+        }
         self.inner.submit(event)
     }
 }
@@ -239,7 +254,11 @@ mod tests {
         let recorder = Arc::new(Recorder::default());
         let (sender, receiver) = mpsc::sync_channel(bound);
         let inner: Arc<dyn InputSubmitter> = recorder.clone();
-        (TeeSubmitter::new(inner, sender), recorder, receiver)
+        (
+            TeeSubmitter::new(inner, sender, Arc::new(AtomicBool::new(false))),
+            recorder,
+            receiver,
+        )
     }
 
     #[test]

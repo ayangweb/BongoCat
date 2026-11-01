@@ -249,15 +249,6 @@ impl NetworkConfig {
         if self.server.port == 0 {
             return Err(ConfigError::InvalidValue("network.server.port"));
         }
-        if self.client.source == NetworkClientSource::Manual
-            && self
-                .client
-                .url
-                .as_deref()
-                .is_none_or(|url| url.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidValue("network.client.url"));
-        }
         if self.server.listen == NetworkListenMode::Custom
             && self
                 .server

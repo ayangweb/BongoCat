@@ -312,8 +312,10 @@ pub(super) fn settings_network_status(
                     .map(|peer| bongocat_ui_protocol::SettingsNetworkPeer {
                         id: peer.id.clone(),
                         name: peer.name.clone(),
+                        publish: peer.publish,
                     })
                     .collect(),
+                latency_ms: room.latency_ms,
                 state: match room.state {
                     bongocat_net::RoomState::Off => {
                         bongocat_ui_protocol::SettingsNetworkClientState::Off

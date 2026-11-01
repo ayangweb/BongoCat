@@ -560,7 +560,9 @@
           "action": "추가"
         },
         "peer": {
-          "show": "이 기기 표시"
+          "show": "이 기기 표시",
+          "sharing": "공유 중",
+          "not_sharing": "공유 안 함"
         },
         "empty": "목록이 비어 있어도 됩니다. 컴퓨터는 아무것도 표시하지 않고 자신의 입력만 방으로 보낼 수 있습니다."
       },
@@ -570,17 +572,13 @@
           "label": "방에 참여"
         },
         "source": {
-          "label": "주소 출처",
           "options": {
             "follow_local": "이 컴퓨터의 연결 서비스 따르기",
             "manual": "주소 직접 입력"
           }
         },
         "url": {
-          "label": "주소",
-          "preset": {
-            "label": "주소 프리셋"
-          }
+          "label": "주소"
         },
         "token": {
           "label": "방 키"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "따라가는 중",
           "none": "아직 없음"
+        },
+        "latency": {
+          "label": "지연 시간",
+          "none": "연결 안 됨"
         }
+      },
+      "status_and_devices": {
+        "title": "상태 및 기기"
       }
     }
   },

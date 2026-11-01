@@ -560,7 +560,9 @@
           "action": "Adicionar"
         },
         "peer": {
-          "show": "Mostrar este dispositivo"
+          "show": "Mostrar este dispositivo",
+          "sharing": "compartilhando",
+          "not_sharing": "não compartilhando"
         },
         "empty": "Uma lista vazia é válida: uma máquina pode enviar a sua entrada para a sala sem exibir nada dela."
       },
@@ -570,17 +572,13 @@
           "label": "Entrar em uma sala"
         },
         "source": {
-          "label": "Origem do endereço",
           "options": {
             "follow_local": "Seguir o serviço nesta máquina",
             "manual": "Informar um endereço eu mesmo"
           }
         },
         "url": {
-          "label": "Endereço",
-          "preset": {
-            "label": "Endereço predefinido"
-          }
+          "label": "Endereço"
         },
         "token": {
           "label": "Chave da sala"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "Seguindo",
           "none": "Nada ainda"
+        },
+        "latency": {
+          "label": "Latência",
+          "none": "não conectado"
         }
+      },
+      "status_and_devices": {
+        "title": "Status e dispositivos"
       }
     }
   },

@@ -155,6 +155,8 @@ pub struct SettingsNetworkPeer {
     pub id: String,
     /// The label the device chose for itself.
     pub name: String,
+    /// Whether this device is sending its input into the room.
+    pub publish: bool,
 }
 
 /// The room this process has joined, if it has joined one.
@@ -170,6 +172,9 @@ pub struct SettingsNetworkClientStatus {
     /// The other devices the room currently holds, as the device list offers
     /// them without being retyped.
     pub peers: Vec<SettingsNetworkPeer>,
+    /// This machine's round-trip to the relay, in milliseconds, when it is
+    /// known. `None` before the first heartbeat is answered.
+    pub latency_ms: Option<u64>,
 }
 
 /// What the multiplayer side of this process is doing right now.

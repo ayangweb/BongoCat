@@ -123,6 +123,40 @@ fn network_option_row(
     .disabled(editing_blocked)
 }
 
+/// The client's single address row: one dropdown whose entries are the
+/// addresses themselves.
+///
+/// The entries are owned strings because the preset addresses carry the
+/// configured port, so the row is its own function rather than the fixed-list
+/// one above. The field it edits is the whole choice — source and url move
+/// together — which is exactly what the two rows it replaces used to split.
+fn network_address_row(
+    view: &Entity<SettingsView>,
+    language: SettingsLanguage,
+    label_key: &'static str,
+    editing_blocked: bool,
+) -> SettingItem {
+    let view = view.clone();
+    SettingItem::new(
+        row_text(language, label_key),
+        SettingField::element(
+            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                let state = view.read(app).network_client_address_select.clone();
+                // The options are rebuilt here so the menu width and the list the
+                // view state syncs stay the same shape: a port changed a moment
+                // ago must not leave a preset naming the old one.
+                let port = view.read(app).network_settings_value().server.port;
+                let options = network_client_address_options(language, port);
+                Select::new(&state)
+                    .menu_width(dropdown_menu_width(window, options.iter().cloned()))
+                    .disabled(editing_blocked)
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(editing_blocked)
+}
+
 /// A row that reports a fact about the running process.
 ///
 /// The value is the whole row: a status is not a setting, so there is no field
@@ -260,13 +294,25 @@ fn network_display_peer_row(
     editing_blocked: bool,
 ) -> SettingItem {
     let view = view.clone();
+    // The label carries the sharing state so one board can tell at a glance
+    // which devices are feeding the room and which are only watching.
     let label = if peer.name.is_empty() || peer.name == peer.id {
         peer.id.clone()
     } else {
         format!("{} ({})", peer.name, peer.id)
     };
+    let sharing_key = if peer.publish {
+        "settings.multiplayer.display.peer.sharing"
+    } else {
+        "settings.multiplayer.display.peer.not_sharing"
+    };
+    let title = format!(
+        "{} — {}",
+        label,
+        bongocat_i18n::text(language.catalog_locale(), sharing_key)
+    );
     SettingItem::new(
-        SharedString::from(label),
+        SharedString::from(title),
         SettingField::element(
             move |options: &RenderOptions, _: &mut Window, _: &mut App| {
                 let disabled = editing_blocked || options.is_disabled();
@@ -324,7 +370,7 @@ fn network_restart_row(
                                 "settings.multiplayer.status.restart.action",
                             ))
                             .with_size(options.size())
-                            .ghost()
+                            .danger()
                             .xsmall()
                             .disabled(disabled)
                             .on_click(move |_, _, app| {
@@ -440,11 +486,6 @@ pub(super) fn multiplayer_page(
         network_display_add_row(view, language, editing_blocked)
             .keywords(display_keywords.iter().cloned()),
     );
-    let display_group = SettingGroup::new()
-        .title(row_text(language, "settings.multiplayer.display.title"))
-        .description(row_text(language, "settings.multiplayer.display.empty"))
-        .items(display_items);
-
     // The address row is the one place the source dropdown's answer changes a
     // row's shape: a client that follows the local relay has no address to type,
     // so the row shows the address it will use and refuses the caret.
@@ -478,25 +519,14 @@ pub(super) fn multiplayer_page(
                 |view, enabled, cx| view.set_network_client_enabled(enabled, cx),
             )
             .keywords(client_keywords.iter().cloned()),
-            network_option_row(
+            network_address_row(
                 view,
                 language,
-                "settings.multiplayer.client.source.label",
-                network_client_source_options(language).to_vec(),
+                "settings.multiplayer.client.url.label",
                 editing_blocked,
-                |view| &view.network_client_source_select,
             )
             .keywords(client_keywords.iter().cloned()),
             url_row.keywords(client_keywords.iter().cloned()),
-            network_option_row(
-                view,
-                language,
-                "settings.multiplayer.client.url.preset.label",
-                NETWORK_CLIENT_URL_PRESET_HOSTS.to_vec(),
-                editing_blocked,
-                |view| &view.network_client_url_preset_select,
-            )
-            .keywords(client_keywords.iter().cloned()),
             network_text_row(
                 view,
                 language,
@@ -614,7 +644,8 @@ pub(super) fn multiplayer_page(
     );
     let bound_status = status
         .client
-        .and_then(|client| client.bound)
+        .as_ref()
+        .and_then(|client| client.bound.clone())
         .unwrap_or_else(|| {
             bongocat_i18n::text(
                 language.catalog_locale(),
@@ -622,11 +653,28 @@ pub(super) fn multiplayer_page(
             )
             .to_owned()
         });
+    // The latency row reads a live sample that only exists once the room is up,
+    // so a machine that never joined shows "not connected" rather than a zero it
+    // never measured.
+    let latency_status = status
+        .client
+        .as_ref()
+        .and_then(|client| client.latency_ms)
+        .map(|ms| format!("{ms} ms"))
+        .unwrap_or_else(|| {
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.multiplayer.status.latency.none",
+            )
+            .to_owned()
+        });
     let status_group = SettingGroup::new()
-        .title(row_text(language, "settings.multiplayer.status.title"))
+        .title(row_text(
+            language,
+            "settings.multiplayer.status_and_devices.title",
+        ))
+        .description(row_text(language, "settings.multiplayer.display.empty"))
         .items([
-            network_restart_row(view, language, editing_blocked)
-                .keywords(status_keywords.iter().cloned()),
             network_status_row(
                 language,
                 "settings.multiplayer.status.server.label",
@@ -641,6 +689,12 @@ pub(super) fn multiplayer_page(
             .keywords(status_keywords.iter().cloned()),
             network_status_row(
                 language,
+                "settings.multiplayer.status.latency.label",
+                latency_status,
+            )
+            .keywords(status_keywords.iter().cloned()),
+            network_status_row(
+                language,
                 "settings.multiplayer.status.peers.label",
                 peers_status,
             )
@@ -651,15 +705,29 @@ pub(super) fn multiplayer_page(
                 bound_status,
             )
             .keywords(status_keywords.iter().cloned()),
-        ]);
+        ])
+        // The device rows this machine draws follow the facts about the room:
+        // one board, because choosing what to draw is how a user acts on what
+        // the status just told them.
+        .items(display_items);
+
+    // The restart row is its own board so it can be the first thing on the
+    // page: every change here needs it, and a red button that must not be
+    // missed belongs above the controls rather than buried in their board.
+    let restart_group = SettingGroup::new()
+        .title(row_text(
+            language,
+            "settings.multiplayer.status.restart.label",
+        ))
+        .items([network_restart_row(view, language, editing_blocked)]);
 
     SettingPage::new(page.title(language))
         .icon(page.icon())
         .title_suffix(render::page_reporter(page, navigation_memory))
         .groups(vec![
-            status_group,
+            restart_group,
             device_group,
-            display_group,
+            status_group,
             client_group,
             server_group,
         ])

@@ -831,3 +831,32 @@ fn the_peers_row_counts_only_the_room_this_machine_is_in() {
         );
     }
 }
+
+/// The address dropdown is one list, not two controls.
+///
+/// Its first entry is the "follow the local relay" sentinel, its last is "type
+/// an address myself", and between them sit the real loopback addresses built
+/// from the configured port — so the preset shows exactly what it will dial and
+/// the port it reads is the one the server row holds, not a stale literal.
+#[test]
+fn the_client_address_dropdown_builds_real_addresses_from_the_port() {
+    let english = SettingsLanguage::English;
+    let options = network_client_address_options(english, 8787);
+    assert_eq!(options.len(), 4);
+    assert_eq!(
+        options[0],
+        network_client_address_sentinel(SettingsNetworkClientSource::FollowLocal, english)
+    );
+    assert_eq!(options[1], "ws://127.0.0.1:8787");
+    assert_eq!(options[2], "ws://localhost:8787");
+    assert_eq!(
+        options[3],
+        network_client_address_sentinel(SettingsNetworkClientSource::Manual, english)
+    );
+
+    // A changed port moves the presets with it: the dropdown can never offer a
+    // preset that names a port the user has since edited.
+    let options = network_client_address_options(english, 9999);
+    assert_eq!(options[1], "ws://127.0.0.1:9999");
+    assert_eq!(options[2], "ws://localhost:9999");
+}

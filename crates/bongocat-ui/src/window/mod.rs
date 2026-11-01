@@ -203,6 +203,11 @@ pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'stat
 /// one state type with the theme and log-level dropdowns.
 pub(crate) type NetworkOptionSelectState = SelectState<SearchableVec<&'static str>>;
 
+/// The client address dropdown's state. Its options are real `ws://` urls built
+/// from the configured port, which no `&'static str` can carry, so it gets its
+/// own state over owned strings.
+pub(crate) type NetworkAddressSelectState = SelectState<SearchableVec<String>>;
+
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
 /// The appearance a settings window paints its first frame with.
@@ -321,12 +326,12 @@ pub struct SettingsView {
     pub(crate) gamepad_connected_model_select: Entity<GamepadModelSelectState>,
     pub(crate) gamepad_disconnected_model_select: Entity<GamepadModelSelectState>,
     pub(crate) network_listen_mode_select: Entity<NetworkOptionSelectState>,
-    pub(crate) network_client_source_select: Entity<NetworkOptionSelectState>,
-    /// The address a client joins, offered as a choice as well as typed.
+    /// The one address choice: follow the local relay, pick a preset, or type.
     ///
-    /// Its options name the machine the page is running on, so they are built
-    /// from the configured port on every snapshot rather than held as literals.
-    pub(crate) network_client_url_preset_select: Entity<NetworkOptionSelectState>,
+    /// Its options are the addresses themselves, built from the configured port
+    /// on every snapshot, so "where the address comes from" and "what it is"
+    /// are a single decision instead of two rows.
+    pub(crate) network_client_address_select: Entity<NetworkAddressSelectState>,
     /// The device id the "add" row below the displayed devices is typing.
     ///
     /// It is view state rather than configuration: the id becomes part of the

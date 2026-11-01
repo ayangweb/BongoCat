@@ -560,7 +560,9 @@
           "action": "新增"
         },
         "peer": {
-          "show": "展示此裝置"
+          "show": "展示此裝置",
+          "sharing": "共享中",
+          "not_sharing": "未共享"
         },
         "empty": "清單為空是合法的：一台機器可以只把自己的輸入送到房間，而不顯示任何東西。"
       },
@@ -570,17 +572,13 @@
           "label": "加入房間"
         },
         "source": {
-          "label": "位址來源",
           "options": {
             "follow_local": "跟隨本機的連線服務",
             "manual": "手動指定位址"
           }
         },
         "url": {
-          "label": "位址",
-          "preset": {
-            "label": "位址預設值"
-          }
+          "label": "位址"
         },
         "token": {
           "label": "房間金鑰"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "正在跟隨",
           "none": "暫無"
+        },
+        "latency": {
+          "label": "延遲",
+          "none": "未連線"
         }
+      },
+      "status_and_devices": {
+        "title": "狀態與裝置選擇"
       }
     }
   },

@@ -560,7 +560,9 @@
           "action": "添加"
         },
         "peer": {
-          "show": "展示此设备"
+          "show": "展示此设备",
+          "sharing": "共享中",
+          "not_sharing": "未共享"
         },
         "empty": "列表为空是合法状态：一台机器可以只把自己的输入发到房间，而不展示任何东西。"
       },
@@ -570,17 +572,13 @@
           "label": "加入房间"
         },
         "source": {
-          "label": "地址来源",
           "options": {
             "follow_local": "跟随本机的联机服务",
             "manual": "手动指定地址"
           }
         },
         "url": {
-          "label": "地址",
-          "preset": {
-            "label": "地址预设"
-          }
+          "label": "地址"
         },
         "token": {
           "label": "房间密钥"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "正在跟随",
           "none": "暂无"
+        },
+        "latency": {
+          "label": "延迟",
+          "none": "未连接"
         }
+      },
+      "status_and_devices": {
+        "title": "状态与设备选择"
       }
     }
   },
@@ -649,5 +654,7 @@
     "denied": "输入授权未完成。请重新打开应用并允许认证，键鼠动作才能驱动模型。",
     "stopped": "输入服务已停止，模型无法响应键鼠。请重新打开应用并检查认证与当前桌面会话状态。"
   },
-  "linux_tray": {"unavailable": "无法显示托盘图标。请确认桌面支持系统托盘；GNOME 需要启用 AppIndicator 扩展。"}
+  "linux_tray": {
+    "unavailable": "无法显示托盘图标。请确认桌面支持系统托盘；GNOME 需要启用 AppIndicator 扩展。"
+  }
 }

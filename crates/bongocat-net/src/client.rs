@@ -67,6 +67,8 @@ pub enum ClientEvent {
     Input(InputFrame),
     PeerJoined(PeerInfo),
     PeerLeft(String),
+    /// A heartbeat was answered: the round-trip to the relay in milliseconds.
+    Latency(u64),
     /// The link dropped and is being retried. `attempt` counts from 1.
     Reconnecting {
         attempt: u32,
@@ -401,6 +403,13 @@ impl Session {
                 // and it is driven by anything the relay sends.
                 let _ = self.send(kind::PONG, &beat);
             }
+            Incoming::Pong(beat) => {
+                // The relay echoes the ping's own timestamp, so the elapsed
+                // time is the round-trip. The clock is monotonic on both ends
+                // of this arithmetic, which is all a subtraction needs.
+                let rtt = now_millis().saturating_sub(beat.t);
+                events.emit(ClientEvent::Latency(rtt));
+            }
             Incoming::ServerError(error) => return apply(reaction_to_refusal(error)),
         }
         Ok(())
@@ -498,6 +507,7 @@ enum Incoming {
     PeerLeft(PeerLeft),
     Input(InputFrame),
     Ping(Heartbeat),
+    Pong(Heartbeat),
     ServerError(ProtocolError),
 }
 
@@ -524,9 +534,9 @@ fn decode(text: &str) -> Result<Option<Incoming>, DecodeError> {
         kind::PEER_LEFT => Incoming::PeerLeft(payload(&envelope)?),
         kind::INPUT => Incoming::Input(payload(&envelope)?),
         kind::PING => Incoming::Ping(payload(&envelope)?),
+        kind::PONG => Incoming::Pong(payload(&envelope)?),
         kind::ERROR => Incoming::ServerError(payload(&envelope)?),
-        // `pong` needs no handling beyond the liveness timestamp the caller has
-        // already taken; an unknown kind is ignored for the reason above.
+        // An unknown kind is ignored for the reason above.
         _ => return Ok(None),
     };
     Ok(Some(incoming))

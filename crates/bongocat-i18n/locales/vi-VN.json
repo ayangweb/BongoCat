@@ -560,7 +560,9 @@
           "action": "Thêm"
         },
         "peer": {
-          "show": "Hiện thiết bị này"
+          "show": "Hiện thiết bị này",
+          "sharing": "đang chia sẻ",
+          "not_sharing": "không chia sẻ"
         },
         "empty": "Danh sách trống là hợp lệ: một máy có thể chỉ gửi input của nó vào phòng mà không hiển thị gì cả."
       },
@@ -570,17 +572,13 @@
           "label": "Vào phòng"
         },
         "source": {
-          "label": "Nguồn địa chỉ",
           "options": {
             "follow_local": "Theo dịch vụ trên máy này",
             "manual": "Tự nhập địa chỉ"
           }
         },
         "url": {
-          "label": "Địa chỉ",
-          "preset": {
-            "label": "Địa chỉ có sẵn"
-          }
+          "label": "Địa chỉ"
         },
         "token": {
           "label": "Khóa phòng"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "Đang theo",
           "none": "Chưa có"
+        },
+        "latency": {
+          "label": "Độ trễ",
+          "none": "chưa kết nối"
         }
+      },
+      "status_and_devices": {
+        "title": "Trạng thái và thiết bị"
       }
     }
   },

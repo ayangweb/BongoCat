@@ -560,7 +560,9 @@
           "action": "Add"
         },
         "peer": {
-          "show": "Show this device"
+          "show": "Show this device",
+          "sharing": "sharing",
+          "not_sharing": "not sharing"
         },
         "empty": "An empty list is fine: a machine can send its input to a room without drawing any of it."
       },
@@ -570,17 +572,13 @@
           "label": "Join a room"
         },
         "source": {
-          "label": "Address source",
           "options": {
             "follow_local": "Follow the relay on this machine",
             "manual": "Type an address myself"
           }
         },
         "url": {
-          "label": "Address",
-          "preset": {
-            "label": "Address preset"
-          }
+          "label": "Address"
         },
         "token": {
           "label": "Room key"
@@ -640,7 +638,14 @@
         "bound": {
           "label": "Following",
           "none": "Nothing yet"
+        },
+        "latency": {
+          "label": "Latency",
+          "none": "not connected"
         }
+      },
+      "status_and_devices": {
+        "title": "Status & devices"
       }
     }
   },
@@ -649,5 +654,7 @@
     "denied": "Input authorization was not completed. Reopen the app and approve authentication to animate the model from keyboard and mouse input.",
     "stopped": "The input service stopped. Reopen the app and check authorization and the current desktop session."
   },
-  "linux_tray": {"unavailable": "The tray icon could not be shown. Check that the desktop supports system trays; GNOME requires an AppIndicator extension."}
+  "linux_tray": {
+    "unavailable": "The tray icon could not be shown. Check that the desktop supports system trays; GNOME requires an AppIndicator extension."
+  }
 }

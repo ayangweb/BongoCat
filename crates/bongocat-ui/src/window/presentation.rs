@@ -100,7 +100,13 @@ pub(super) fn network_listen_mode_options(
         .map(|mode| network_listen_mode_display_name(mode, display_language))
 }
 
-pub(super) fn network_client_source_display_name(
+/// The label the address dropdown shows for "follow the relay on this
+/// machine" and "I will type an address myself".
+///
+/// These are the two non-address entries in a list that is otherwise real
+/// `ws://` urls, so they read as choices among addresses rather than as a
+/// separate "source" question.
+pub(super) fn network_client_address_sentinel(
     source: SettingsNetworkClientSource,
     display_language: SettingsLanguage,
 ) -> &'static str {
@@ -113,20 +119,28 @@ pub(super) fn network_client_source_display_name(
     bongocat_i18n::text(display_language.catalog_locale(), key)
 }
 
-pub(super) fn network_client_source_from_display_name(
-    name: &str,
+/// The whole address list the client's one dropdown offers, in order: follow the
+/// local relay, the two preset loopback addresses, then type one.
+///
+/// The presets are real addresses rather than bare hosts so the dropdown shows
+/// exactly what will be dialed, and the port is read on every rebuild so a
+/// preset can never name a port the user has since changed.
+pub(super) fn network_client_address_options(
     display_language: SettingsLanguage,
-) -> Option<SettingsNetworkClientSource> {
-    SettingsNetworkClientSource::ALL
-        .into_iter()
-        .find(|source| network_client_source_display_name(*source, display_language) == name)
-}
-
-pub(super) fn network_client_source_options(
-    display_language: SettingsLanguage,
-) -> [&'static str; SettingsNetworkClientSource::ALL.len()] {
-    SettingsNetworkClientSource::ALL
-        .map(|source| network_client_source_display_name(source, display_language))
+    port: u16,
+) -> Vec<String> {
+    let mut options = vec![
+        network_client_address_sentinel(SettingsNetworkClientSource::FollowLocal, display_language)
+            .to_owned(),
+    ];
+    for host in NETWORK_CLIENT_URL_PRESET_HOSTS {
+        options.push(network_relay_url(host, port));
+    }
+    options.push(
+        network_client_address_sentinel(SettingsNetworkClientSource::Manual, display_language)
+            .to_owned(),
+    );
+    options
 }
 
 /// What the room connection this process opened is doing, as one row reads it.

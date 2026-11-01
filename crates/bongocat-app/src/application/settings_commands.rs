@@ -502,14 +502,22 @@ impl Application {
             .map(|text| text[..8].to_owned())
             .unwrap_or_else(|| host.chars().take(12).collect());
 
-        // "pc-01" and "PC" are the template values this fork used before the
-        // identity existed; leaving them in place would keep two machines
-        // colliding, which is the failure this method is here to end.
+        // The template "pc-01" predates the identity, and the "pc-<8 hex>"
+        // values predate the prefix being dropped; all of them would leave two
+        // machines answering to something they did not choose. The fingerprint
+        // itself is the id — it is already unique, and a prefix is noise the
+        // room's announcements would carry verbatim.
         let template = ("pc-01", "PC");
         let mut next_config = self.config.clone();
         let mut changed = false;
-        if next_config.network.device.id.is_empty() || next_config.network.device.id == template.0 {
-            next_config.network.device.id = format!("pc-{fingerprint}");
+        let id = next_config.network.device.id.clone();
+        let id_is_template = id.is_empty()
+            || id == "pc-01"
+            || (id.len() == 11
+                && id.starts_with("pc-")
+                && id[3..].chars().all(|c| c.is_ascii_hexdigit()));
+        if id_is_template {
+            next_config.network.device.id = fingerprint.clone();
             changed = true;
         }
         if next_config.network.device.name.is_empty()

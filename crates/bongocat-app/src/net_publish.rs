@@ -76,6 +76,11 @@ pub(crate) struct JoinPlan {
     pub(crate) device_name: String,
     /// Whether this machine's own input is sent to the room.
     pub(crate) publish: bool,
+    /// Whether this machine's pet draws its own input.
+    ///
+    /// Distinct from `publish`: a machine can push its keys into the room while
+    /// its pet shows someone else's, and vice versa.
+    pub(crate) show_self: bool,
     /// What this machine draws out of the room.
     pub(crate) draw: DrawMode,
 }
@@ -155,6 +160,14 @@ pub(crate) fn plan(options: &RunOptions, config: &NetworkConfig) -> NetworkPlan 
     // machine that switched the client off must open no socket at all.
     let enabled = config.client.enabled || manual || options.watch;
     let publish = enabled && !options.watch && config.client.publish;
+    // "This machine" is an entry in the same list that names the peers: it is
+    // what keeps the pet dancing to this machine's own keys, and taking it out
+    // is the switch the page presents as "follow my own input".
+    let show_self = config
+        .client
+        .display
+        .iter()
+        .any(|entry| entry == bongocat_config::NETWORK_SELF_DEVICE);
     let draw = if !enabled {
         DrawMode::Nothing
     } else if options.watch {
@@ -175,6 +188,7 @@ pub(crate) fn plan(options: &RunOptions, config: &NetworkConfig) -> NetworkPlan 
             device_id,
             device_name,
             publish,
+            show_self,
             draw,
         }),
         _ => None,
@@ -260,6 +274,11 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
 
     // The bridge only moves frames. The waiting happens here rather than on the
     // input thread, which is why the tee is allowed to drop instead of block.
+    // The pet draws this machine's own input only when "this machine" is still
+    // in the device list; a publisher that turned it off sends to the room but
+    // does not dance. The flag is shared so the tee (which owns the submit path)
+    // reads the same decision the plan already made.
+    let suppress_local = Arc::new(std::sync::atomic::AtomicBool::new(!join.show_self));
     let sink = if join.publish {
         let (sink, queue) = sync_channel::<InputFrame>(SINK_CAPACITY);
         let commands = commands.clone();
@@ -302,7 +321,11 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
         .map_err(|error| format!("failed to start the room thread: {error}"))?;
 
     Ok(match sink {
-        Some(sink) => InputProducer::new(Arc::new(TeeSubmitter::new(base.submitter(), sink))),
+        Some(sink) => InputProducer::new(Arc::new(TeeSubmitter::new(
+            base.submitter(),
+            sink,
+            suppress_local,
+        ))),
         None => base,
     })
 }
@@ -432,6 +455,13 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                 bound = None;
                 publish_room(RoomState::Connected { peers }, None, &room_peers);
             }
+            ClientEvent::Latency(latency_ms) => {
+                update_network_status(|status| {
+                    if let Some(room) = status.room.as_mut() {
+                        room.latency_ms = Some(latency_ms);
+                    }
+                });
+            }
             ClientEvent::PeerJoined(peer) => {
                 room_peers.push(peer);
                 peers = room_peers.len().min(u16::MAX as usize) as u16;
@@ -483,10 +513,14 @@ fn publish_room(
     room_peers: &[bongocat_net::protocol::PeerInfo],
 ) {
     update_network_status(|status| {
+        // The latency is sampled on its own cadence, so a state change must not
+        // wipe the last sample the way it wipes the roster it is rebuilding.
+        let latency_ms = status.room.as_ref().and_then(|room| room.latency_ms);
         status.room = Some(RoomStatus {
             state,
             bound: bound.map(str::to_owned),
             peers: room_peers.to_vec(),
+            latency_ms,
         });
     });
 }

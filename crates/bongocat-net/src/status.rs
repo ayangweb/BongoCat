@@ -45,6 +45,9 @@ pub struct RoomStatus {
     /// joined is a fact the room announced, and retyping its id into a text
     /// field would only transcribe what the page already knows.
     pub peers: Vec<PeerInfo>,
+    /// This machine's round-trip to the relay, in milliseconds, once the first
+    /// heartbeat has been answered. `None` until then.
+    pub latency_ms: Option<u64>,
 }
 
 /// The relay this process serves, if it serves one.
