@@ -53,6 +53,7 @@ dbg_macro = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+bongocat-net = { path = "../bongocat-net" }
 smithay-client-toolkit.workspace = true
 wayland-client.workspace = true
 bongocat-config.workspace = true

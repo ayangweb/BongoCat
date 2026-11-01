@@ -5,6 +5,9 @@ use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutc
 use std::time::Instant;
 mod context_menu;
 mod cover_capture;
+// The assembly layer wraps the runtime's producer with this before the producer
+// reaches this session, so the module has to be reachable from outside.
+pub mod input_tee;
 mod renderer;
 mod wayland;
 use bongocat_platform::{SystemMenuAction, SystemMenuPalette, SystemMenuPresentation};

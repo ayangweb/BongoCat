@@ -136,3 +136,10 @@ pub use timing::{FrameTimingSummary, PreviewReport};
 
 #[cfg(target_os = "linux")]
 mod linux;
+/// Mirrors local input events to a channel the assembly layer owns.
+///
+/// Re-exported because the producer has to be wrapped before the session takes
+/// it — the session cannot wrap it afterwards, since the producer owns its
+/// submitter outright.
+#[cfg(target_os = "linux")]
+pub use linux::input_tee::TeeSubmitter;
