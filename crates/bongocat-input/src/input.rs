@@ -26,7 +26,9 @@ impl MonotonicMillis {
 /// need a second physical-key type.
 pub const GLOBE_KEY_USAGE: u16 = 0xff03;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct PhysicalKey(u16);
 
 impl PhysicalKey {
@@ -232,7 +234,9 @@ impl PressedModifiers {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum MouseButton {
     Left,
     Right,
@@ -242,13 +246,17 @@ pub enum MouseButton {
     Other(u8),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct GamepadConnection {
     pub device_id: u8,
     pub generation: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum GamepadButton {
     South,
     East,
@@ -329,13 +337,17 @@ impl GamepadButton {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct GamepadButtonKey {
     pub connection: GamepadConnection,
     pub button: GamepadButton,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum GamepadAxis {
     LeftStickX,
     LeftStickY,
@@ -366,7 +378,9 @@ pub struct GamepadAxisKey {
     pub axis: GamepadAxis,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum InputControl {
     Key(PhysicalKey),
     Mouse(MouseButton),
@@ -409,7 +423,7 @@ impl InputBindings {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InputEdge {
     Down,
     Up,
@@ -553,6 +567,15 @@ impl InputProducer {
             state: std::sync::Arc::new(std::sync::Mutex::new(InputProducerState::default())),
             transport: std::sync::Arc::new(InputTransportCounters::default()),
         }
+    }
+
+    /// The submitter this producer forwards to.
+    ///
+    /// Exposed so a caller can build a wrapper around the same destination — a relay
+    /// that mirrors events elsewhere, for instance — without the producer having to
+    /// learn about that destination itself.
+    pub fn submitter(&self) -> std::sync::Arc<dyn InputSubmitter> {
+        std::sync::Arc::clone(&self.submitter)
     }
 
     pub fn publish(&self, event: InputEvent) -> Result<u64, InputPublishError> {
