@@ -387,6 +387,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn set_network_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetNetworkSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_shortcuts(
         &self,
         expected_config_revision: u64,
@@ -822,6 +835,18 @@ impl SettingsClient {
         settings: SettingsLogging,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetLoggingSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn set_network_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetNetworkSettings {
             expected_config_revision,
             settings,
             reply,

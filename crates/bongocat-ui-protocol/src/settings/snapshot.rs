@@ -64,6 +64,15 @@ pub struct SettingsSnapshot {
     /// holding is a fact about what they used rather than a setting.
     pub remember_last_expression: bool,
     pub logging: SettingsLogging,
+    /// How this machine takes part in a room, as the user configured it.
+    pub network: SettingsNetwork,
+    /// What the multiplayer side of this process is doing right now.
+    ///
+    /// Separate from `network` because the two move at different rates: the
+    /// settings change when a user edits them, the status changes while a
+    /// room is being joined, and a page that polls the second must not have
+    /// to re-read the first.
+    pub network_status: SettingsNetworkStatus,
     pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,
     pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,

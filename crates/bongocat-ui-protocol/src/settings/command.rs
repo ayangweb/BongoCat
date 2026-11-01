@@ -177,6 +177,16 @@ pub enum SettingsCommand {
         settings: SettingsLogging,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Persist the whole multiplayer section as one atomic change.
+    ///
+    /// The three parts are one decision: a client address that points at a
+    /// server described in the same document only makes sense if both land
+    /// together.
+    SetNetworkSettings {
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetShortcuts {
         expected_config_revision: u64,
         shortcuts: SettingsShortcuts,
