@@ -300,10 +300,15 @@ pub(crate) fn start(
         cursor.set_observer(Some(Arc::new(move |sample| {
             const POINTER_MIN_INTERVAL_MS: u64 = 16;
             let now = now_millis().value();
-            let last = last_pointer_sent.swap(now, std::sync::atomic::Ordering::Relaxed);
+            // The baseline only moves when a frame is actually sent: swapping
+            // on every sample would push the deadline forward forever, and a
+            // 10 ms capture against a 16 ms budget would starve itself to a
+            // trickle — the jerky trail this replaces.
+            let last = last_pointer_sent.load(std::sync::atomic::Ordering::Relaxed);
             if now.saturating_sub(last) < POINTER_MIN_INTERVAL_MS {
                 return;
             }
+            last_pointer_sent.store(now, std::sync::atomic::Ordering::Relaxed);
             let frame = bongocat_net::protocol::PointerFrame {
                 src: pointer_device.clone(),
                 seq: pointer_sequence.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
