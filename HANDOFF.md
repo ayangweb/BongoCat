@@ -56,9 +56,9 @@ GUI 配置驱动等效（config 已持久化）：两台普通启动即可，重
 
 ### 真机输入注入（验证联机的唯一可靠手段；脚本已定版）
 
-- PC：`~/.cache/bongocat/{type_keys_pc,move_mouse_pc}.py`（uinput 注入真实 evdev 事件；
-  本沙箱对 `/dev/uinput` 的 ioctl 被 seccomp 拦，须 `hyprctl dispatch exec_cmd` 在宿主跑）
-- laptop：`~/Work/Projects/wbtest/type_keys.py`
+- PC：uinput 注入脚本（真实 evdev 事件；**已于 2026-11-02 按用户要求清理**，需要时重写，
+  本沙箱对 `/dev/uinput` 的 ioctl 被 seccomp 拦，须 `hyprctl dispatch exec_cmd` 在宿主跑，
+  且不要放仓库内）
 - 诊断方法：临时在 `net_publish`/`input_tee`/`runtime apply` 加 stderr 打印再重编，
   用完删除（历史上有两轮靠这个定位）
 
@@ -88,7 +88,7 @@ GUI 配置驱动等效（config 已持久化）：两台普通启动即可，重
 2. **PC 多实例同 id 互踢**：残留实例用同一 device id 反复 join → relay 软退役互踢循环，
    污染一切诊断。启动前先 `pkill -x` 清干净，并用宿主侧 `pgrep` 落盘确认。
 3. **rsync --delete 会删 PC 侧新建的脚本**：验证/启动脚本必须放在 rsync 排除路径
-   （PC `~/.cache/bongocat/`、laptop `~/Work/Projects/wbtest/`），放仓库内必被删。
+   放仓库内必被 rsync --delete 删掉（历史教训：曾因此连吃两轮假阴性）。验证用的临时脚本已于 2026-11-02 按用户要求全部清理，下次需要时重新生成并放仓库外。
 4. **沙箱构建四件套**：`LD_PRELOAD=noop_time.so` + `TMPDIR=target/tmp` +
    `RUSTUP_TOOLCHAIN=stable` + 后台运行（见 sandbox-rust-build 技能；PC 构建必须）。
 5. **`/tmp` 每次沙箱调用清空**：跨命令的临时文件放 `~/.cache/` 或 workspace。
