@@ -350,6 +350,7 @@ struct CursorSlotState {
 #[derive(Default)]
 pub(crate) struct CursorSlot {
     state: Mutex<CursorSlotState>,
+    observer: Mutex<Option<CursorObserver>>,
 }
 
 impl CursorSlot {
@@ -375,7 +376,25 @@ impl CursorSlot {
         if state.pending.replace(sample).is_some() {
             state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
         }
+        // The mirror runs after the slot write and outside the lock: an observer
+        // that blocks would stall the capture, and it must never see a sample
+        // the renderer has not been offered first.
+        let observer = self
+            .observer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(observer) = observer.as_ref() {
+            observer(&sample);
+        }
+        drop(observer);
         Ok(())
+    }
+
+    fn set_observer(&self, observer: Option<CursorObserver>) {
+        *self
+            .observer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = observer;
     }
 
     pub(crate) fn take(&self) -> Option<CursorSample> {
@@ -409,6 +428,9 @@ impl CursorSlot {
     }
 }
 
+/// A mirror for every published sample.
+pub type CursorObserver = Arc<dyn Fn(&CursorSample) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct CursorProducer {
     slot: Arc<CursorSlot>,
@@ -419,6 +441,16 @@ impl CursorProducer {
         Self {
             slot: Arc::new(CursorSlot::default()),
         }
+    }
+
+    /// Registers a mirror that sees every published sample.
+    ///
+    /// The multiplayer bridge uses it to copy the pointer into the room: the
+    /// renderer's `take` must stay the only reader of the slot, so the mirror is
+    /// called from inside `publish` rather than racing it for the same value.
+    /// Only the most recent registration is kept — there is one room to feed.
+    pub fn set_observer(&self, observer: Option<CursorObserver>) {
+        self.slot.set_observer(observer);
     }
 
     pub fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {

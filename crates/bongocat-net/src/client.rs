@@ -52,7 +52,7 @@ use url::Url;
 
 use crate::protocol::{
     DeviceInfo, Envelope, ErrorCode, Heartbeat, Hello, InputFrame, Joined, PeerInfo, PeerLeft,
-    ProtocolError, kind,
+    PointerFrame, ProtocolError, kind,
 };
 
 /// What the connection reports upward.
@@ -65,6 +65,8 @@ pub enum ClientEvent {
     },
     /// An input sample from another device.
     Input(InputFrame),
+    /// A normalized pointer position from another device.
+    Pointer(PointerFrame),
     PeerJoined(PeerInfo),
     PeerLeft(String),
     /// A heartbeat was answered: the round-trip to the relay in milliseconds.
@@ -84,6 +86,9 @@ pub enum ClientCommand {
     /// Send one input sample. Dropped silently if the send queue is full:
     /// a late keystroke is worthless, and blocking here would stall input.
     Publish(InputFrame),
+    /// Send one pointer position, under the same drop-first policy: the next
+    /// sample supersedes this one the moment it is captured.
+    PublishPointer(PointerFrame),
     Shutdown,
 }
 
@@ -349,6 +354,15 @@ impl Session {
 
             for _ in 0..MAX_PUBLISH_PER_TURN {
                 match inbox.pop() {
+                    Some(ClientCommand::PublishPointer(frame)) => {
+                        match self.send(kind::POINTER, &frame) {
+                            Ok(()) => {}
+                            // Same backpressure answer as the input frames: the
+                            // next sample supersedes this one anyway.
+                            Err(SendProblem::WouldBlock) => break,
+                            Err(problem) => return problem.into_outcome(),
+                        }
+                    }
                     Some(ClientCommand::Publish(frame)) => match self.send(kind::INPUT, &frame) {
                         Ok(()) => {}
                         // The socket is backpressured. Keep the rest queued and
@@ -398,6 +412,7 @@ impl Session {
             Incoming::PeerJoined(peer) => events.critical(ClientEvent::PeerJoined(peer)),
             Incoming::PeerLeft(left) => events.critical(ClientEvent::PeerLeft(left.id)),
             Incoming::Input(frame) => events.emit(ClientEvent::Input(frame)),
+            Incoming::Pointer(frame) => events.emit(ClientEvent::Pointer(frame)),
             Incoming::Ping(beat) => {
                 // A missed pong is not fatal: the liveness deadline decides,
                 // and it is driven by anything the relay sends.
@@ -506,6 +521,7 @@ enum Incoming {
     PeerJoined(PeerInfo),
     PeerLeft(PeerLeft),
     Input(InputFrame),
+    Pointer(PointerFrame),
     Ping(Heartbeat),
     Pong(Heartbeat),
     ServerError(ProtocolError),
@@ -533,6 +549,7 @@ fn decode(text: &str) -> Result<Option<Incoming>, DecodeError> {
         kind::PEER_JOINED => Incoming::PeerJoined(payload(&envelope)?),
         kind::PEER_LEFT => Incoming::PeerLeft(payload(&envelope)?),
         kind::INPUT => Incoming::Input(payload(&envelope)?),
+        kind::POINTER => Incoming::Pointer(payload(&envelope)?),
         kind::PING => Incoming::Ping(payload(&envelope)?),
         kind::PONG => Incoming::Pong(payload(&envelope)?),
         kind::ERROR => Incoming::ServerError(payload(&envelope)?),
@@ -850,7 +867,9 @@ impl CommandInbox {
 fn command_class(command: &ClientCommand) -> CommandClass {
     match command {
         ClientCommand::Publish(frame) if is_continuous(frame) => CommandClass::Continuous,
-        ClientCommand::Publish(_) | ClientCommand::Shutdown => CommandClass::Discrete,
+        ClientCommand::Publish(_) | ClientCommand::PublishPointer(_) | ClientCommand::Shutdown => {
+            CommandClass::Discrete
+        }
     }
 }
 
@@ -989,6 +1008,7 @@ mod tests {
             .iter()
             .map(|command| match command {
                 ClientCommand::Publish(frame) => frame.seq,
+                ClientCommand::PublishPointer(frame) => frame.seq,
                 ClientCommand::Shutdown => u64::MAX,
             })
             .collect();

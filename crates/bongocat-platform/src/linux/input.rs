@@ -69,7 +69,7 @@ impl LinuxInputService {
                     service_start_attempts: 1,
                     ..Default::default()
                 };
-                let started = Instant::now();
+                let _started = Instant::now();
                 let mut gamepad = None;
                 let result = (|| {
                     let mut header = [0; HEADER.len()];

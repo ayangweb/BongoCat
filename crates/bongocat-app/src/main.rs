@@ -2670,7 +2670,11 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     // overlay options two lines down, and the producer has to be wrapped before
     // the session takes ownership of it. Started before the session so no key of
     // the watched machine is missed while the overlay is still being built.
-    let input_producer = net_publish::start(&network_plan, application.input_producer())?;
+    let input_producer = net_publish::start(
+        &network_plan,
+        application.input_producer(),
+        application.cursor_producer(),
+    )?;
     let config = &application.config().overlay;
     let options = OverlaySessionOptions {
         click_through: config.click_through,

@@ -25,6 +25,7 @@ pub mod kind {
     pub const PEER_LEFT: &str = "peer_left";
     pub const PING: &str = "ping";
     pub const PONG: &str = "pong";
+    pub const POINTER: &str = "pointer";
     pub const ERROR: &str = "error";
 }
 
@@ -70,6 +71,21 @@ pub struct PeerInfo {
     pub id: String,
     pub name: String,
     pub publish: bool,
+}
+
+/// One normalized pointer position, sender-side.
+///
+/// `x` and `y` live in the sender's own 0..1 space (the capture normalizes
+/// against its viewport before publishing), so the receiver interprets them in
+/// whatever viewport it draws with — a multi-monitor boundary walks like the
+/// pointer walked, no geometry needs to travel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PointerFrame {
+    pub src: String,
+    pub seq: u64,
+    pub t: u64,
+    pub x: f64,
+    pub y: f64,
 }
 
 /// Relay → client, the answer to [`Hello`].

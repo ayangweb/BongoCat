@@ -263,7 +263,11 @@ fn serve_plan(config: &NetworkConfig) -> Option<ServePlan> {
 /// A publishing run gets a tee that mirrors every local edge to the room; every
 /// other run keeps the producer it already had, so a machine that is not in a
 /// room opens no socket and starts no thread.
-pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProducer, String> {
+pub(crate) fn start(
+    plan: &NetworkPlan,
+    base: InputProducer,
+    cursor: bongocat_input::CursorProducer,
+) -> Result<InputProducer, String> {
     if let Some(serve) = &plan.serve {
         start_relay(serve)?;
     }
@@ -282,6 +286,34 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
     let (events, commands) =
         bongocat_net::client::spawn(config).map_err(|error| error.to_string())?;
     publish_room(RoomState::Connecting, None, &[]);
+
+    // The pointer mirror samples the cursor slot from inside publish, so it
+    // never races the renderer's take, and it rate-limits itself to well under
+    // the room's input budget: a pointer position superseded by the next one is
+    // worthless, but sixty of them a second is still sixty frames the relay
+    // forwards for nothing.
+    if join.publish {
+        let pointer_commands = commands.clone();
+        let pointer_device = join.device_id.clone();
+        let last_pointer_sent = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let pointer_sequence = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        cursor.set_observer(Some(Arc::new(move |sample| {
+            const POINTER_MIN_INTERVAL_MS: u64 = 16;
+            let now = now_millis().value();
+            let last = last_pointer_sent.swap(now, std::sync::atomic::Ordering::Relaxed);
+            if now.saturating_sub(last) < POINTER_MIN_INTERVAL_MS {
+                return;
+            }
+            let frame = bongocat_net::protocol::PointerFrame {
+                src: pointer_device.clone(),
+                seq: pointer_sequence.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                t: now,
+                x: sample.position.x,
+                y: sample.position.y,
+            };
+            let _ = pointer_commands.send(ClientCommand::PublishPointer(frame));
+        })));
+    }
 
     // The bridge only moves frames. The waiting happens here rather than on the
     // input thread, which is why the tee is allowed to drop instead of block.
@@ -330,7 +362,7 @@ pub(crate) fn start(plan: &NetworkPlan, base: InputProducer) -> Result<InputProd
             // stops. A machine that only draws sends no commands, so this sender
             // exists purely to keep the session alive for as long as the thread runs.
             let _commands = commands;
-            room_loop(&events, &producer, &draw);
+            room_loop(&events, &producer, &draw, &cursor);
         })
         .map_err(|error| format!("failed to start the room thread: {error}"))?;
 
@@ -371,7 +403,12 @@ fn start_relay(plan: &ServePlan) -> Result<(), String> {
 
 /// Turns a room's events into local input, and into the status the settings window
 /// shows.
-fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &DrawMode) {
+fn room_loop(
+    events: &Receiver<ClientEvent>,
+    producer: &InputProducer,
+    draw: &DrawMode,
+    cursor: &bongocat_input::CursorProducer,
+) {
     let mut room_peers: Vec<bongocat_net::protocol::PeerInfo> = Vec::new();
     let mut peers: u16 = 0;
     let mut bound: Option<String> = None;
@@ -453,6 +490,43 @@ fn room_loop(events: &Receiver<ClientEvent>, producer: &InputProducer, draw: &Dr
                 };
                 if let Err(error) = producer.publish(input) {
                     let _ = writeln!(std::io::stderr(), "watch: publish failed: {error}");
+                }
+            }
+            ClientEvent::Pointer(frame) => {
+                // The same display filter as the edge frames: a pointer position
+                // from a device this pet is not drawing is ignored outright.
+                let draws_this = match draw {
+                    DrawMode::Nothing => false,
+                    DrawMode::Any => true,
+                    DrawMode::Device(device) => frame.src == *device,
+                };
+                if !draws_this {
+                    continue;
+                }
+                if bound.is_none() {
+                    bound = Some(frame.src.clone());
+                    publish_room(
+                        RoomState::Connected { peers },
+                        bound.as_deref(),
+                        &room_peers,
+                    );
+                }
+                // The frame already carries normalized 0..1 coordinates; the
+                // unit viewport reproduces them exactly on this machine's
+                // screen, so no geometry needs to travel for the common case.
+                if let Ok(sample) = bongocat_input::CursorSample::new(
+                    bongocat_input::CursorPosition {
+                        x: frame.x,
+                        y: frame.y,
+                    },
+                    bongocat_input::CursorViewport {
+                        origin: bongocat_input::CursorPosition { x: 0.0, y: 0.0 },
+                        width: 1.0,
+                        height: 1.0,
+                    },
+                    MonotonicMillis::new(now_millis().value()),
+                ) {
+                    let _ = cursor.publish(sample);
                 }
             }
             ClientEvent::Joined { peers: room, .. } => {

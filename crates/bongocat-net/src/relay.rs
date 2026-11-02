@@ -31,7 +31,7 @@ use tungstenite::{Error as WsError, Message};
 
 use crate::protocol::{
     DeviceInfo, Envelope, ErrorCode, Heartbeat, Hello, InputFrame, Joined, PeerInfo, PeerLeft,
-    ProtocolError, kind,
+    PointerFrame, ProtocolError, kind,
 };
 
 /// How long a connection thread may sit in `read` before it drains its outbound
@@ -423,6 +423,28 @@ fn handle_text(
 
             // Forwarded verbatim: re-encoding would cost a parse and a build per
             // frame, and would drop any field this build does not know about.
+            let wire: Arc<str> = Arc::from(text);
+            let targets = {
+                let hub = lock(hub);
+                hub.broadcast_targets(token, conn)
+            };
+            for target in targets {
+                target.deliver(Arc::clone(&wire));
+            }
+        }
+        kind::POINTER => {
+            let Ok(frame) = envelope.decode::<PointerFrame>() else {
+                send_error(
+                    link,
+                    &protocol_violation("pointer frame did not match the agreed shape"),
+                );
+                return false;
+            };
+            // Dropped when the sender's viewport disagrees with the receiver's
+            // would be a courtesy; normalized coordinates travel instead, so the
+            // frame is forwarded as-is and the receiver maps it onto its own
+            // viewport at draw time.
+            let _ = frame;
             let wire: Arc<str> = Arc::from(text);
             let targets = {
                 let hub = lock(hub);
