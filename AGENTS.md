@@ -215,3 +215,15 @@ just schema                                             # 从 Rust 类型生成�
 - 完成推送和 PR 创建后 `git switch` 回主分支（默认 `master`），工作树不留在本次开发分支。
 - PR 标题沿用同一 Conventional Commits 标题，正文写清改动、验证结果、未运行测试和已知风险。
 - 未经明确要求不打 tag、不 release。
+
+## 11. 本 fork 的当前状态与交接（易变内容）
+
+本仓库是 `ayangweb/BongoCat` 的 fork，在 PR #1114（Wayland 支持）之上新增跨机联机，
+分支 `feat/multiplayer` 同时包含两者且未推 GitHub。接手任何工作前先读：
+
+- `HANDOFF.md` —— 当前状态、两机拓扑、构建/部署/启动/验证流程、已踩坑清单（必读）；
+- `TODO.md` —— 用户排期的后续需求；
+- `DESIGN.md` §11 —— 联机设计与实施偏差。
+
+本节与其余各章不同：其余各章是长期约束，本节指向的三个文件是易变的现状事实，
+以仓库实况为准。
