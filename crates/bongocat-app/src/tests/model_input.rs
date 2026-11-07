@@ -51,6 +51,156 @@ fn installed_models_get_default_keyboard_bindings() {
     assert_eq!(gamepad.hand_for_gamepad(GamepadButton::Select), None);
 }
 
+/// Imported split keyboards must use the hand that can actually draw each key.
+#[test]
+fn installed_keyboard_bindings_follow_the_models_artwork() {
+    let root = tempdir().expect("model root");
+    for (side, names) in [
+        ("left-keys", &["KeyA", "Num1", "LeftArrow"][..]),
+        (
+            "right-keys",
+            &[
+                "KeyH", "KeyJ", "Num6", "Enter", "Dot", "Shift", "Fn", "Globe",
+            ][..],
+        ),
+    ] {
+        let directory = root.path().join("resources").join(side);
+        fs::create_dir_all(&directory).expect("key directory");
+        for name in names {
+            fs::write(directory.join(format!("{name}.png")), b"key").expect("key image");
+        }
+    }
+    let images = KeyImageInventory::read(root.path());
+    let bindings = input_bindings_for_model(ModelOrigin::Installed, "split-keyboard", &images);
+    for (usage, expected) in [
+        (0x04, Some(HandSide::Left)),  // A
+        (0x1e, Some(HandSide::Left)),  // 1
+        (0x50, Some(HandSide::Left)),  // left arrow, authored on the left
+        (0x0b, Some(HandSide::Right)), // H
+        (0x0d, Some(HandSide::Right)), // J
+        (0x23, Some(HandSide::Right)), // 6
+        (0x28, Some(HandSide::Right)), // Enter
+        (0x37, Some(HandSide::Right)), // .
+        (0xe1, Some(HandSide::Right)), // shared Shift image
+        (0xe5, Some(HandSide::Right)),
+        (0x3a, Some(HandSide::Right)), // F1 falls back to Fn
+        (0x73, Some(HandSide::Right)), // F24 falls back to Fn
+        (0x58, Some(HandSide::Right)), // keypad Enter falls back to Enter
+        (0x5e, Some(HandSide::Right)), // keypad 6 falls back to Num6
+        (bongocat_render::GLOBE_KEY_USAGE, Some(HandSide::Right)),
+        (0x05, None), // no B image on either side
+        (0x52, None), // no up-arrow image on either side
+    ] {
+        assert_eq!(
+            bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+            expected,
+            "0x{usage:04x}"
+        );
+    }
+}
+
+#[test]
+fn installed_keyboard_duplicate_artwork_keeps_the_existing_hand_preference() {
+    let root = tempdir().expect("model root");
+    for side in ["left-keys", "right-keys"] {
+        let directory = root.path().join("resources").join(side);
+        fs::create_dir_all(&directory).expect("key directory");
+        for name in ["KeyH", "UpArrow"] {
+            fs::write(directory.join(format!("{name}.png")), b"key").expect("key image");
+        }
+    }
+    let bindings = input_bindings_for_model(
+        ModelOrigin::Installed,
+        "duplicate-artwork",
+        &KeyImageInventory::read(root.path()),
+    );
+    assert_eq!(
+        bindings.hand_for(PhysicalKey::from_hid_usage(0x0b)),
+        Some(HandSide::Left)
+    );
+    assert_eq!(
+        bindings.hand_for(PhysicalKey::from_hid_usage(0x52)),
+        Some(HandSide::Right)
+    );
+}
+
+/// Exercise activation, runtime paw state, overlay resolution and release with
+/// a real model whose H artwork is on the opposite side from the preset table.
+#[test]
+fn installed_right_hand_keyboard_press_reaches_the_render_frame_and_releases() {
+    const KEY_H: u16 = 0x0b;
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let model_root = layout.models.join("split-keyboard");
+    copy_fixture_tree(&repository_preset_root().join("keyboard"), &model_root);
+    fs::rename(
+        model_root.join("resources/left-keys/KeyH.png"),
+        model_root.join("resources/right-keys/KeyH.png"),
+    )
+    .expect("move H artwork to the right hand");
+    let mut application = Application::start_with_layout_internal(
+        layout,
+        repository_preset_root().as_path(),
+        true,
+        Language::English,
+    )
+    .expect("start rendering application");
+    let token = application
+        .prepare_model(ModelOrigin::Installed, "split-keyboard")
+        .expect("prepare imported model");
+    let consumer = application.take_render_consumer().expect("render consumer");
+    let frame = wait_for_model_commit_frame(&consumer, token);
+    consumer
+        .report_model_commit(ModelCommitFeedback {
+            token: frame.model_commit.expect("commit token"),
+            outcome: ModelCommitOutcome::Prepared,
+        })
+        .expect("commit imported model");
+    application
+        .runtime_client()
+        .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+        .expect("activate imported model");
+    let input = application.input_producer();
+    for (sequence, edge) in [(1, InputEdge::Down), (2, InputEdge::Up)] {
+        let published = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::from_hid_usage(KEY_H)),
+                edge,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(sequence),
+            })
+            .expect("key edge");
+        let snapshot = application
+            .runtime_client()
+            .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+            .expect("key projection");
+        let pressed = edge == InputEdge::Down;
+        assert_eq!(snapshot.model_input.right_hand_down, pressed);
+        assert!(!snapshot.model_input.left_hand_down);
+        if pressed {
+            let press = snapshot
+                .model_input
+                .key_presses
+                .iter()
+                .next()
+                .expect("H press");
+            assert_eq!(press.key, KeyIdentity::Keyboard(KEY_H));
+            assert_eq!(press.side, KeySide::Right);
+            let rendered = wait_for_render_frame(&consumer, |snapshot| {
+                snapshot.active_keys.iter().any(|overlay| {
+                    let asset = &frame.resources.key_assets[overlay.asset_id.index()];
+                    asset.name == "KeyH" && asset.side == KeySide::Right
+                })
+            });
+            assert_eq!(rendered.snapshot.active_keys.len(), 1);
+        } else {
+            assert!(snapshot.model_input.key_presses.iter().next().is_none());
+            wait_for_render_frame(&consumer, |snapshot| snapshot.active_keys.is_empty());
+        }
+    }
+    application.shutdown().expect("clean shutdown");
+}
+
 /// `InputState::model_snapshot` drops any press without a hand assignment, so
 /// a function key missing from this map can never draw its `Fn.png` overlay.
 #[test]

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🐛 Bug Fixes
+
+- Fixed imported keyboard models ignoring keys whose artwork belongs to the other hand.
+
 ## 2.4.1 - 2026-10-28
 
 ### 🎨 Interface

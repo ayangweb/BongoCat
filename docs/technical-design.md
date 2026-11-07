@@ -913,7 +913,7 @@ canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft
 精确名是 `NumLock` 与 Mver 词汇表的 `Kp*`，其中在主键盘上重复的七个键回退到主键盘的键位图
 （`Kp1`…`Kp9`、`Kp0` → `Num1`…`Num9`、`Num0`，`KpEnter` → `Enter`，`KpDivide` → `Slash`）；
 `NumLock`、`KpMultiply`、`KpMinus`、`KpPlus`、`KpDecimal` 在主键盘上没有对应键，缺图时不绘制。
-小键盘整块归左手，因为可复用的数字、Enter 和 Slash 图只存在于 `left-keys`（见 ADR-0040）。键位词表
+预置模型的小键盘归左手；导入模型按自身键位图目录决定手侧（见 ADR-0101）。键位词表
 覆盖标准 104/105 布局、小键盘与 Apple 地球键的全部按键，范围是
 `0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7` ∪ `{0xff03}`（八个修饰键 usage；`0x66`
 `Power` 两边都不产出）。这是**词表覆盖的上界，不等于"两个 adapter 实际能产出的集合"**：`IntlHash`
@@ -936,10 +936,11 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 **只有模型确实提供对应键位图时，按键才产生动作**（见 ADR-0042）：`bongocat-app` 在激活模型时用
 `bongocat-live2d-render::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套
 候选回退），并只把清单里能画出来的键写进 `InputBindings`。写入 runtime 的每模型绑定因此是
-"静态 hand 表 ∩ 该模型的键位图"：缺图的按键不进入 `InputState::model_snapshot`，既不驱动
+预置模型保留静态 hand 表并按键位图收窄；导入模型则在左右目录中查找可绘制资源，优先原静态表的手侧，
+仅另一侧有图时绑定另一侧（见 ADR-0101）。两侧都缺图的按键不进入 `InputState::model_snapshot`，既不驱动
 `CatParamLeftHandDown`/`CatParamRightHandDown`，也不产生按键层，所以按键层与爪部反馈永远一致。
 判断在 runtime 之前完成，renderer 仍只消费不可变 `RenderSnapshot`，不决定动作；该规则只覆盖键位图，
-鼠标指针/按键不属于键位图资源。功能键的范围、名字和左右手归属由
+鼠标指针/按键不属于键位图资源。功能键的范围与名字由
 `bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
 至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
 

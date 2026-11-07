@@ -13,8 +13,7 @@ use bongocat_model::{CommittedModel, ModelOrigin};
 use bongocat_render::{FUNCTION_KEY_USAGES, KeyIdentity, KeySide};
 use std::collections::BTreeMap;
 
-/// The input bindings of a committed model: the static hand table,
-/// intersected with the key images the model actually ships.
+/// The input bindings of a committed model, gated by its own key artwork.
 pub(crate) fn input_bindings_for_committed_model(model: &CommittedModel) -> InputBindings {
     input_bindings_for_model(
         model.origin(),
@@ -44,15 +43,13 @@ pub(crate) fn input_bindings_for_model(
     key_images: &KeyImageInventory,
 ) -> InputBindings {
     pub(crate) const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
-    // Installed models have no per-model binding configuration yet. They must
-    // not fall back to an empty map: `InputState::model_snapshot` drops any
-    // key press without a hand assignment, which silently disabled key
-    // overlays (and paw motion) for every imported third-party model. Default
-    // them to the same keyboard mapping as the "standard"/"keyboard" presets;
-    // each key still has to survive the artwork check below, so a model without
-    // assets for a side simply reacts to nothing on that side.
-    let keyboard_model =
-        origin == ModelOrigin::Installed || matches!(model_id, "standard" | "keyboard");
+    if origin == ModelOrigin::Installed {
+        return InputBindings::with_gamepad_hands(
+            installed_keyboard_hands(key_images),
+            gamepad_hands_for_model(key_images),
+        );
+    }
+    let keyboard_model = matches!(model_id, "standard" | "keyboard");
     let mut key_hands = BTreeMap::new();
     if keyboard_model {
         // Every key of the standard 104/105-key layout belongs to the left hand
@@ -117,12 +114,42 @@ pub(crate) fn input_bindings_for_model(
             key_images,
         );
     }
-    if origin == ModelOrigin::Installed || matches!(model_id, "keyboard" | "gamepad") {
+    if matches!(model_id, "keyboard" | "gamepad") {
         for usage in RIGHT_ARROW.hid_usage()..=0x52 {
             bind_drawable_key(&mut key_hands, usage, HandSide::Right, key_images);
         }
     }
     InputBindings::with_gamepad_hands(key_hands, gamepad_hands_for_model(key_images))
+}
+
+/// Imported keyboards may split the main block between both paws. Resolve each
+/// supported key against both directories, using the existing side first when
+/// both contain drawable artwork. Missing artwork still leaves the key inert.
+fn installed_keyboard_hands(key_images: &KeyImageInventory) -> BTreeMap<PhysicalKey, HandSide> {
+    let mut hands = BTreeMap::new();
+    let usages = (0x04..=0x65)
+        .chain([0x67])
+        .chain(
+            FUNCTION_KEY_USAGES
+                .into_iter()
+                .flat_map(|(first, last)| first..=last),
+        )
+        .chain(0xe0..=0xe7)
+        .chain([bongocat_render::GLOBE_KEY_USAGE]);
+    for usage in usages {
+        let sides = if (0x4f..=0x52).contains(&usage) {
+            [HandSide::Right, HandSide::Left]
+        } else {
+            [HandSide::Left, HandSide::Right]
+        };
+        for side in sides {
+            bind_drawable_key(&mut hands, usage, side, key_images);
+            if hands.contains_key(&PhysicalKey::from_hid_usage(usage)) {
+                break;
+            }
+        }
+    }
+    hands
 }
 
 /// The hand each gamepad button is drawn with, decided by the model's own
