@@ -15,9 +15,9 @@
 //! short tap cannot slip past the recorder.
 
 use super::*;
-use gpui_kit::AnyElement;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::Sizable as _;
+use gpui_kit::{AnyElement, Axis};
 
 /// How often the recorder looks at the pressed set while it is armed.
 ///
@@ -65,6 +65,11 @@ pub(super) fn hold_modifier_row(
         ),
     )
     .description(hold_modifier_row_description(language))
+    // Stacked at every width, not only in the narrow layout. Beside the
+    // description the recorder is left with two fifths of the row, which does not
+    // hold the prompt at the default window size, and the packaged field cell
+    // does not shrink below its content.
+    .layout(Axis::Vertical)
     .disabled(editing_blocked)
 }
 
@@ -169,7 +174,7 @@ pub(super) fn hold_modifier_control(
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(text),
+                .child(div().min_w_0().truncate().child(text)),
         );
     if !disabled {
         frame = frame
@@ -256,6 +261,9 @@ pub(super) fn hold_modifier_control(
                     }),
                 ),
         )
+        // The recorder keeps its own width instead of stretching across the row,
+        // and as a flex item it can still shrink to the row when a prompt is longer.
+        .map(|frame| div().w_full().flex().child(frame))
         .into_any_element()
 }
 

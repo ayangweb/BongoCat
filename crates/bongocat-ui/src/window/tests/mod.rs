@@ -324,6 +324,34 @@ impl Render for OverlayRowHarness {
     }
 }
 
+/// The recorder row as the page builds it, above a probe as wide as any row.
+struct HoldModifierRowHarness {
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+}
+
+impl Render for HoldModifierRowHarness {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let page = SettingPage::new("Overlay").group(
+            SettingGroup::new()
+                .item(hold_modifier_row(&self.view, self.language, false))
+                .item(SettingItem::render(|_, _, _| {
+                    div()
+                        .id("hold-modifier-row-probe")
+                        .test_support()
+                        .w_full()
+                        .h(px(1.))
+                })),
+        );
+        div().size_full().child(
+            Settings::new("hold-modifier-row-page")
+                .sidebar_width(px(220.0))
+                .with_group_variant(GroupBoxVariant::Outline)
+                .page(page),
+        )
+    }
+}
+
 /// The bounds an element was painted at.
 fn rendered_bounds(visual: &mut VisualTestContext, id: ElementId) -> Bounds<Pixels> {
     visual.update(|window, _| {

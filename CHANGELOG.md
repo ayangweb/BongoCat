@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🐛 Bug Fixes
+
+- Fixed the recorder for "Hold a modifier key to interact" extending past the edge of the settings window.
+
 ## 2.4.1 - 2026-10-28
 
 ### 🎨 Interface

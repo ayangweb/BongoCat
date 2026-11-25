@@ -661,3 +661,67 @@ fn structural_editing_blocking_renders_the_recorder_inert(cx: &mut TestAppContex
     );
     assert!(endpoint.try_recv().is_err());
 }
+
+/// The recorder stays inside its row at every supported settings window width.
+///
+/// The row is rendered as the page renders it, description included: the
+/// description is what takes the width the recorder used to overflow. The probe is
+/// a full-width sibling in the same group, so its right edge is the edge every
+/// control on the page has to respect.
+#[gpui_kit::test]
+fn the_recorder_stays_inside_its_row_in_every_language(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let mut overflowing = Vec::new();
+    for language in SettingsLanguage::ALL {
+        for recording in [false, true] {
+            let (client, _endpoint) = crate::SettingsClient::bounded(8);
+            let (_, visual) = cx.add_window_view(move |window, cx| {
+                let view = cx.new(|cx| {
+                    SettingsView::new(
+                        client,
+                        SettingsWindowSeed {
+                            language,
+                            appearance_theme: SettingsTheme::System,
+                        },
+                        Rc::new(|_| {}),
+                        Rc::new(|_| {}),
+                        window,
+                        cx,
+                    )
+                });
+                view.update(cx, |view, _| {
+                    view.snapshot = Some(overlay_snapshot(12));
+                    view.window_hidden = false;
+                    view.hold_modifier_recording = recording;
+                });
+                Root::new(
+                    cx.new(|_| HoldModifierRowHarness { view, language }),
+                    window,
+                    cx,
+                )
+            });
+            for width in [WINDOW_MIN_WIDTH, 746.0, WINDOW_WIDTH] {
+                visual.simulate_resize(size(px(width), px(600.0)));
+                visual.run_until_parked();
+                visual.update(|window, cx| window.render_frame(cx));
+                let row = rendered_bounds(visual, ElementId::from("hold-modifier-row-probe"));
+                let frame = rendered_bounds(visual, ElementId::from("hold-modifier-recorder"));
+                let clear = rendered_bounds(visual, ElementId::from("hold-modifier-clear"));
+                if frame.left() < row.left()
+                    || frame.right() > row.right()
+                    || clear.right() > frame.right()
+                {
+                    overflowing.push(format!(
+                        "{language:?} recording={recording} at {width}: row {row:?}, \
+                         recorder {frame:?}, clear {clear:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        overflowing.is_empty(),
+        "the recorder left its row:\n{}",
+        overflowing.join("\n")
+    );
+}
