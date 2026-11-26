@@ -111,6 +111,77 @@ impl SettingsView {
                 cx,
             )
         });
+        // The three multiplayer dropdowns are rebuilt from the snapshot's
+        // settings rather than from the configuration alone, so a change that
+        // is still waiting in the debounce window is what the control shows.
+        let network = self.network_settings_value();
+        let network_language = snapshot.resolved_language;
+        self.network_listen_mode_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(network_listen_mode_options(network_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &network_listen_mode_display_name(network.server.listen, network_language),
+                window,
+                cx,
+            )
+        });
+        // The address dropdown is rebuilt from the snapshot so a change still
+        // in the debounce window is what it shows, and its selected entry is the
+        // actual address when the source is manual — a preset that matches, or
+        // the sentinel that means "type one" when nothing does.
+        let address = network.client.url.clone().unwrap_or_default();
+        let selected = match network.client.source {
+            SettingsNetworkClientSource::FollowLocal => network_client_address_sentinel(
+                SettingsNetworkClientSource::FollowLocal,
+                network_language,
+            )
+            .to_owned(),
+            SettingsNetworkClientSource::Manual => {
+                if NETWORK_CLIENT_URL_PRESET_HOSTS
+                    .into_iter()
+                    .any(|host| address == network_relay_url(host, network.server.port))
+                {
+                    address
+                } else {
+                    network_client_address_sentinel(
+                        SettingsNetworkClientSource::Manual,
+                        network_language,
+                    )
+                    .to_owned()
+                }
+            }
+        };
+        self.network_client_address_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(network_client_address_options(
+                    network_language,
+                    network.server.port,
+                )),
+                window,
+                cx,
+            );
+            select.set_selected_value(&selected, window, cx);
+        });
+        for (input, token) in [
+            (
+                &self.network_client_token_input,
+                network.client.token.as_deref(),
+            ),
+            (
+                &self.network_relay_token_input,
+                network.server.token.as_deref(),
+            ),
+        ] {
+            let token = token.unwrap_or_default();
+            if input.read(cx).value().as_ref() != token {
+                input.update(cx, |input, cx| {
+                    input.set_value(token.to_owned(), window, cx)
+                });
+            }
+        }
         self.random_behavior_mode_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(random_behavior_mode_options(snapshot.resolved_language)),
@@ -228,6 +299,41 @@ impl SettingsView {
                 cx,
             )
         });
+        let network_listen_mode_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(network_listen_mode_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let network_client_address_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(network_client_address_options(
+                    seed.language,
+                    DEFAULT_NETWORK_PORT,
+                )),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let network_client_token_input = cx.new(|cx| InputState::new(window, cx).masked(true));
+        let network_relay_token_input = cx.new(|cx| InputState::new(window, cx).masked(true));
+        for (input, setter) in [
+            (
+                &network_client_token_input,
+                Self::set_network_client_token as fn(&mut Self, String, &mut Context<Self>),
+            ),
+            (&network_relay_token_input, Self::set_network_server_token),
+        ] {
+            cx.subscribe(input, move |view, input, event: &InputEvent, cx| {
+                if !view.syncing_component_inputs && matches!(event, InputEvent::Change) {
+                    setter(view, input.read(cx).value().to_string(), cx);
+                }
+            })
+            .detach();
+        }
         // Both gamepad auto switch dropdowns open on their "last used" choice,
         // which is the configured default: the first frame already shows the
         // state a fresh configuration is in.
@@ -319,6 +425,53 @@ impl SettingsView {
             },
         )
         .detach();
+        cx.subscribe(
+            &network_listen_mode_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(mode) =
+                        network_listen_mode_from_display_name(name, display_language)
+                {
+                    view.set_network_server_listen(mode, cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &network_client_address_select,
+            |view, _, event: &SelectEvent<SearchableVec<String>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(choice)) = event {
+                    let follow = network_client_address_sentinel(
+                        SettingsNetworkClientSource::FollowLocal,
+                        display_language,
+                    );
+                    let manual = network_client_address_sentinel(
+                        SettingsNetworkClientSource::Manual,
+                        display_language,
+                    );
+                    if choice == follow {
+                        view.set_network_client_source(
+                            SettingsNetworkClientSource::FollowLocal,
+                            cx,
+                        );
+                    } else if choice == manual {
+                        view.set_network_client_source(SettingsNetworkClientSource::Manual, cx);
+                    } else {
+                        // A preset: the address itself was the choice.
+                        view.set_network_client_url(choice.clone(), cx);
+                    }
+                }
+            },
+        )
+        .detach();
         for (state, select) in [
             (
                 GamepadConnectionState::Connected,
@@ -352,8 +505,17 @@ impl SettingsView {
             client,
             seed,
             snapshot: None,
+            platform_notifications: platform::InputNotifications::default(),
             pending: None,
             pending_notification: None,
+            #[cfg(target_os = "linux")]
+            alpha_system_status: None,
+            #[cfg(target_os = "linux")]
+            alpha_status_checked: false,
+            #[cfg(target_os = "linux")]
+            alpha_operation_pending: false,
+            #[cfg(target_os = "linux")]
+            alpha_management_error: None,
             model_import_success_pending: false,
             model_import_failed_pending: false,
             about_copy_success_pending: false,
@@ -374,11 +536,15 @@ impl SettingsView {
             gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer::default(),
             gamepad_dead_zone_timer_generation: 0,
             maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),
+            pointer_sensitivity_percent_debouncer: crate::SettingsPatchDebouncer::default(),
             maximum_fps_timer_generation: 0,
+            pointer_sensitivity_percent_timer_generation: 0,
             random_behavior_debouncer: crate::SettingsPatchDebouncer::default(),
             random_behavior_timer_generation: 0,
             logging_settings_debouncer: crate::SettingsPatchDebouncer::default(),
             logging_settings_timer_generation: 0,
+            network_draft: None,
+            network_apply_pending: false,
             flush_pending_requested: false,
             quit_after_flush: false,
             model_delete_confirmation: None,
@@ -408,6 +574,11 @@ impl SettingsView {
             random_behavior_mode_select,
             gamepad_connected_model_select,
             gamepad_disconnected_model_select,
+            network_listen_mode_select,
+            network_client_address_select,
+            network_selected_peer_names: Default::default(),
+            network_client_token_input,
+            network_relay_token_input,
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),

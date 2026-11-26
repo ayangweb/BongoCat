@@ -10,6 +10,12 @@ use super::*;
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
+    #[serde(default = "default_pointer_sensitivity_percent")]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 1, max = 400))
+    )]
+    pub pointer_sensitivity_percent: u16,
     pub gamepad: GamepadInputConfig,
     /// How the pointer is read before any model sees it.
     ///
@@ -54,4 +60,8 @@ pub struct GamepadInputConfig {
         schemars(range(min = 0.0, max = 1.0))
     )]
     pub trigger_dead_zone: f64,
+}
+
+const fn default_pointer_sensitivity_percent() -> u16 {
+    100
 }

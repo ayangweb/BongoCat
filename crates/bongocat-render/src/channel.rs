@@ -19,6 +19,7 @@ pub(crate) struct LatestFrameState {
     pub(crate) feedback: Option<ModelCommitFeedback>,
     pub(crate) closed: bool,
     pub(crate) diagnostics: RenderTransportDiagnostics,
+    output: Option<std::sync::Weak<OutputSlot>>,
 }
 
 #[derive(Default)]
@@ -51,6 +52,13 @@ impl RenderProducer {
         }
         state.last_transport_sequence = Some(frame.transport_sequence);
         state.diagnostics.published = state.diagnostics.published.saturating_add(1);
+        if frame.model_commit.is_none()
+            && let Some(output) = state.output.as_ref().and_then(std::sync::Weak::upgrade)
+            && let Ok(mut latest) = output.value.try_lock()
+        {
+            *latest = Some(frame.clone());
+            output.ready.notify_one();
+        }
         if frame.model_commit.is_some() {
             if state.pending_model_commit.replace(frame).is_some() {
                 state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
@@ -101,7 +109,49 @@ pub struct RenderConsumer {
     pub(crate) slot: Arc<LatestFrameSlot>,
 }
 
+#[derive(Default)]
+pub(crate) struct OutputSlot {
+    pub(crate) value: Mutex<Option<RenderFrame>>,
+    ready: std::sync::Condvar,
+}
+
+/// A nonblocking, latest-frame-only view for the independent video output.
+/// Model preparation frames are excluded until the runtime publishes the
+/// committed generation as normal data.
+pub struct RenderSubscription {
+    pub(crate) slot: Arc<OutputSlot>,
+}
+
+impl RenderSubscription {
+    pub fn take_latest(&self) -> Option<RenderFrame> {
+        self.slot.value.lock().ok()?.take()
+    }
+
+    pub fn wait_latest(&self, timeout: std::time::Duration) -> Option<RenderFrame> {
+        let latest = self.slot.value.lock().ok()?;
+        let (mut latest, _) = self
+            .slot
+            .ready
+            .wait_timeout_while(latest, timeout, |latest| latest.is_none())
+            .ok()?;
+        latest.take()
+    }
+}
+
 impl RenderConsumer {
+    /// Subscribe one independent video output; a dropped subscription is inert.
+    /// Publishing never waits for the subscriber's lock.
+    pub fn subscribe_latest(&self) -> RenderSubscription {
+        let output = Arc::new(OutputSlot::default());
+        let mut state = self
+            .slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.output = Some(Arc::downgrade(&output));
+        RenderSubscription { slot: output }
+    }
+
     /// Consume only a reliable model commit frame, leaving current-generation
     /// coalesced data available for the next visible render pass.
     pub fn take_model_commit(&self) -> Option<RenderFrame> {

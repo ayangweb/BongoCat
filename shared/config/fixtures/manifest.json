@@ -295,6 +295,16 @@
       "id": "behavior-name-model-id",
       "file": "invalid-behavior-name-model-id.json",
       "expected": "reject"
+    },
+    {
+      "id": "alpha-output-enabled",
+      "file": "accept-alpha-output.json",
+      "expected": "accept"
+    },
+    {
+      "id": "alpha-output-absent",
+      "file": "accept-without-alpha-output.json",
+      "expected": "accept"
     }
   ]
 }

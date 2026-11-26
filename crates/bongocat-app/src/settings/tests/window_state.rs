@@ -43,6 +43,9 @@ fn settings_window_layout_is_saved_while_running_and_survives_product_updates() 
     client
         .update_overlay_window_placement(-640, 220, 420, 560)
         .expect("publish overlay placement");
+    client
+        .update_device_overlay_window_placement("peer-a".to_owned(), 400, 80, 420, 560)
+        .expect("publish peer overlay placement");
     let initial = client
         .read_snapshot_blocking()
         .expect("wait for queued window placement writes");
@@ -79,6 +82,13 @@ fn settings_window_layout_is_saved_while_running_and_survives_product_updates() 
     assert_eq!(
         persisted_state.overlay_window,
         Some(OverlayWindowPlacement::new(-640, 220, 420, 560).expect("valid overlay placement"))
+    );
+    assert_eq!(
+        persisted_state
+            .device_overlay_windows
+            .get("peer-a")
+            .copied(),
+        Some(OverlayWindowPlacement::new(400, 80, 420, 560).expect("valid peer placement"))
     );
     client.shutdown_blocking().expect("service shutdown");
     service.join().expect("service join");

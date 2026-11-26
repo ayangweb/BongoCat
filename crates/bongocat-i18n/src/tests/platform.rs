@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn current_platform_id_is_one_of_the_supported_platforms() {
     assert!(
-        matches!(current_platform_id(), "macos" | "windows"),
+        matches!(current_platform_id(), "linux" | "macos" | "windows"),
         "platform id must be a known suffix, got {:?}",
         current_platform_id()
     );
@@ -17,6 +17,7 @@ fn platform_text_picks_the_current_platform_override() {
     // the platform-relative key returns the platform-specific copy on the
     // build host and the fallback copy on every other platform.
     let expected_override = match current_platform_id() {
+        "linux" => text("en-US", "settings.app_system.status_icon.label.linux"),
         "macos" => text("en-US", "settings.app_system.status_icon.label.macos"),
         "windows" => text("en-US", "settings.app_system.status_icon.label.windows"),
         _ => text("en-US", "settings.app_system.status_icon.label"),
@@ -28,6 +29,7 @@ fn platform_text_picks_the_current_platform_override() {
     assert_eq!(
         platform_text("zh-CN", "settings.app_system.status_icon.label"),
         match current_platform_id() {
+            "linux" => text("zh-CN", "settings.app_system.status_icon.label.linux"),
             "macos" => text("zh-CN", "settings.app_system.status_icon.label.macos"),
             "windows" => text("zh-CN", "settings.app_system.status_icon.label.windows"),
             _ => text("zh-CN", "settings.app_system.status_icon.label"),

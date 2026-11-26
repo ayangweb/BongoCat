@@ -31,6 +31,9 @@
     "plugins": {
       "title": "外掛中心",
       "empty": "暫無可用外掛程式。"
+    },
+    "multiplayer": {
+      "title": "連線"
     }
   },
   "system_menu": {
@@ -67,6 +70,11 @@
       "title": "建議以系統管理員身分執行",
       "description": "BongoCat 需要系統管理員權限，才能在其他應用程式以系統管理員權限執行時繼續接收鍵盤與滑鼠輸入。\n\n設定方式：按右鍵 BongoCat → 內容 → 相容性 → 勾選「以系統管理員身分執行此程式」。",
       "open_program_folder": "結束並前往設定"
+    },
+    "linux": {
+      "title": "允許監聽鍵盤和滑鼠？",
+      "description": "BongoCat 需要讀取輸入裝置，才能回應其他應用程式中的鍵盤和滑鼠操作。點擊確定後，系統會要求管理員授權；僅輸入監聽輔助程序取得權限，設定和模型視窗仍以一般使用者執行。選擇稍後設定可繼續使用，但鍵鼠回應暫時無法使用。",
+      "confirm": "確定"
     }
   },
   "about": {
@@ -331,7 +339,10 @@
       "dock_icon_update_failed": "無法更新 Dock 圖示。",
       "window_hide_failed": "無法隱藏設定視窗",
       "window_layout_save_failed": "無法儲存視窗版面配置",
-      "application_shutdown_failed": "BongoCat 未能完全關閉"
+      "application_shutdown_failed": "BongoCat 未能完全關閉",
+      "network_relay_failed": "無法啟動伺服器。請檢查監聽位址和連接埠。",
+      "network_room_failed": "無法加入房間。請檢查位址和金鑰。",
+      "network_restore_failed": "無法恢復先前的連線工作階段。請檢查連線後再試一次。"
     }
   },
   "settings": {
@@ -467,6 +478,10 @@
         "force_move": {
           "label": "強制移動滑鼠",
           "description": "在擷取指標的應用程式（例如全螢幕遊戲）中也能繼續跟隨滑鼠移動。"
+        },
+        "sensitivity": {
+          "label": "滑鼠追蹤靈敏度（%）",
+          "description": "100% 為預設速度。數值越小移動越慢；到達邊界後，多餘的位移會被捨棄。"
         }
       },
       "keyboard": {
@@ -534,7 +549,8 @@
       "status_icon": {
         "label": {
           "macos": "顯示選單列圖示",
-          "windows": "顯示系統匣圖示"
+          "windows": "顯示系統匣圖示",
+          "linux": "顯示系統匣圖示"
         }
       },
       "taskbar_icon": {
@@ -561,6 +577,168 @@
         "unsupported_platform": "目前系統不支援開機自動啟動",
         "unsupported_os": "目前作業系統不支援開機自動啟動",
         "unsupported_build": "開發版本不支援開機自動啟動"
+      }
+    },
+    "alpha": {
+      "camera": "虛擬攝影機",
+      "driver": "驅動程式",
+      "enable": "啟用 Alpha 輸出",
+      "error": {
+        "authorization": "授權失敗或已取消，請檢查系統授權代理是否運作",
+        "busy": "攝影機操作進行中",
+        "config": "無法儲存輸出設定",
+        "conflict": "無法驗證攝影機所有權",
+        "driver": "請先安裝 v4l2loopback 驅動程式",
+        "operation": "攝影機操作失敗",
+        "permission": "無法設定攝影機權限",
+        "rollback": "安裝失敗且回復需要處理",
+        "service": "設定服務不可用",
+        "stale": "設定已變更，請重新整理後重試",
+        "stop": "無法停止輸出，請重試",
+        "unsupported": "所需工具或服務不可用"
+      },
+      "install": "安裝虛擬攝影機",
+      "management": "裝置管理",
+      "module": "核心模組",
+      "output": "輸出",
+      "refresh": "重新偵測",
+      "retry": "重試輸出",
+      "title": "Alpha 輸出",
+      "uninstall": "解除安裝虛擬攝影機",
+      "value": {
+        "available": "可用",
+        "checking": "正在偵測…",
+        "conflict": "裝置所有權衝突",
+        "control_missing": "未安裝 v4l2loopback-ctl",
+        "driver_missing": "未安裝驅動程式",
+        "failed": "失敗",
+        "format": "不支援的格式",
+        "installed": "已安裝",
+        "loaded": "已載入",
+        "module_tools_missing": "核心模組工具不可用",
+        "not_installed": "未安裝",
+        "not_loaded": "未載入",
+        "off": "已關閉",
+        "permission": "權限不足",
+        "pkexec_missing": "未安裝 pkexec",
+        "recovery": "請重新安裝虛擬攝影機",
+        "running": "運作中",
+        "starting": "正在啟動",
+        "stopping": "正在停止",
+        "udev_missing": "未安裝 udevadm",
+        "unavailable": "裝置不可用",
+        "unknown": "未知",
+        "unsupported": "不可用"
+      }
+    },
+    "multiplayer": {
+      "editor": {
+        "connect": "連線",
+        "change_connection": "變更連線…",
+        "edit_connection": "設定連線…",
+        "apply_relay": "套用伺服器設定",
+        "edit_relay": "設定伺服器…",
+        "cancel": "取消",
+        "disconnect": "中斷連線"
+      },
+      "device": {
+        "title": "本機",
+        "id": {
+          "label": "裝置 ID"
+        },
+        "name": {
+          "label": "顯示名稱"
+        }
+      },
+      "display": {
+        "title": "顯示的裝置",
+        "self": {
+          "label": "本機（跟隨自己的輸入）"
+        },
+        "peer": {
+          "sharing": "共享中",
+          "not_sharing": "未共享",
+          "offline": "離線",
+          "saved": "已選裝置",
+          "unnamed": "未命名裝置"
+        },
+        "empty": "從房間裝置中選擇要顯示的貓。"
+      },
+      "client": {
+        "title": "用戶端",
+        "source": {
+          "label": "連線方式",
+          "options": {
+            "follow_local": "跟隨本機的連線服務",
+            "manual": "手動指定位址"
+          }
+        },
+        "url": {
+          "label": "位址"
+        },
+        "token": {
+          "label": "房間金鑰"
+        },
+        "publish": {
+          "label": "把我的輸入送到房間"
+        }
+      },
+      "server": {
+        "title": "伺服器",
+        "enabled": {
+          "label": "在本機執行連線服務"
+        },
+        "listen": {
+          "label": "監聽方式",
+          "options": {
+            "local_only": "僅本機",
+            "ipv4": "僅區域網路（IPv4）",
+            "dual_stack": "區域網路與本機",
+            "custom": "自訂一個位址"
+          }
+        },
+        "address": {
+          "label": "位址"
+        },
+        "port": {
+          "label": "連接埠"
+        },
+        "token": {
+          "label": "房間金鑰"
+        }
+      },
+      "status": {
+        "title": "狀態",
+        "server": {
+          "label": "伺服器",
+          "stopped": "未執行"
+        },
+        "client": {
+          "label": "房間",
+          "state": {
+            "off": "未連線",
+            "connecting": "連線中…",
+            "connected": "已連線",
+            "reconnecting": "重新連線中…",
+            "failed": "連線失敗"
+          }
+        },
+        "peers": {
+          "label": "房間內其他裝置",
+          "none": "不在房間內"
+        },
+        "device_id": {
+          "label": "本機裝置 ID",
+          "copy": "複製",
+          "copy_failed": "無法複製本機裝置 ID。"
+        },
+        "latency": {
+          "label": "延遲",
+          "none": "未連線"
+        }
+      },
+      "status_and_devices": {
+        "title": "狀態與裝置選擇"
       }
     }
   },
@@ -601,5 +779,13 @@
       "reported": "外掛錯誤：%{name}（%{reason}）",
       "preview_failed": "外掛預覽失敗：%{name}"
     }
+  },
+  "linux_input": {
+    "unavailable": "輸入服務無法使用。請確認已安裝 pkexec、libinput，且桌面驗證代理程式正在執行，然後重新開啟應用程式。",
+    "denied": "尚未完成輸入授權。請重新開啟應用程式並完成驗證，以使用鍵盤與滑鼠控制模型。",
+    "stopped": "輸入服務已停止。請重新開啟應用程式，並檢查授權及目前的桌面工作階段。"
+  },
+  "linux_tray": {
+    "unavailable": "無法顯示系統匣圖示。請確認桌面支援系統匣；GNOME 需要 AppIndicator 擴充功能。"
   }
 }

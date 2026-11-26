@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 pub struct MonotonicMillis(u64);
 
 impl MonotonicMillis {
+    /// Return a process-wide monotonic timestamp for input producers.
+    ///
+    /// Network arrivals and local platform capture use the same origin so they
+    /// can be ordered safely by one runtime. Remote timestamps are re-stamped
+    /// on arrival and are never compared across machines.
+    pub fn now() -> Self {
+        static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = ORIGIN.get_or_init(std::time::Instant::now).elapsed();
+        Self::new(elapsed.as_millis().min(u128::from(u64::MAX)) as u64)
+    }
+
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
@@ -26,7 +37,9 @@ impl MonotonicMillis {
 /// need a second physical-key type.
 pub const GLOBE_KEY_USAGE: u16 = 0xff03;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct PhysicalKey(u16);
 
 impl PhysicalKey {
@@ -232,7 +245,9 @@ impl PressedModifiers {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum MouseButton {
     Left,
     Right,
@@ -242,13 +257,17 @@ pub enum MouseButton {
     Other(u8),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct GamepadConnection {
     pub device_id: u8,
     pub generation: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum GamepadButton {
     South,
     East,
@@ -329,13 +348,17 @@ impl GamepadButton {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct GamepadButtonKey {
     pub connection: GamepadConnection,
     pub button: GamepadButton,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum GamepadAxis {
     LeftStickX,
     LeftStickY,
@@ -366,7 +389,9 @@ pub struct GamepadAxisKey {
     pub axis: GamepadAxis,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum InputControl {
     Key(PhysicalKey),
     Mouse(MouseButton),
@@ -409,7 +434,7 @@ impl InputBindings {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InputEdge {
     Down,
     Up,

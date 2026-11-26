@@ -103,6 +103,8 @@ pub(super) struct SettingsSnapshotClock {
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     observed_overlay_visible: Option<bool>,
+    observed_video_output_status: Option<bongocat_runtime::VideoOutputStatus>,
+    observed_network_status: Option<bongocat_ui_protocol::SettingsNetworkStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
 }
@@ -116,6 +118,8 @@ impl SettingsSnapshotClock {
             observed_input_diagnostics: None,
             observed_startup_item: None,
             observed_overlay_visible: None,
+            observed_video_output_status: None,
+            observed_network_status: None,
             diagnostics_export: None,
             input_capability: InputCapabilityCache {
                 checked_at: None,
@@ -173,6 +177,19 @@ impl SettingsSnapshotClock {
         previous
     }
 
+    pub(super) fn observe_video_output_status(
+        &mut self,
+        status: bongocat_runtime::VideoOutputStatus,
+    ) {
+        if self
+            .observed_video_output_status
+            .is_some_and(|previous| previous != status)
+        {
+            self.mark_changed();
+        }
+        self.observed_video_output_status = Some(status);
+    }
+
     pub(super) fn observe_overlay_visible(&mut self, visible: bool) {
         if self
             .observed_overlay_visible
@@ -181,6 +198,22 @@ impl SettingsSnapshotClock {
             self.mark_changed();
         }
         self.observed_overlay_visible = Some(visible);
+    }
+
+    /// Watch the multiplayer status, which moves on its own while a room is
+    /// being joined, lost and retried.
+    ///
+    /// Observed here rather than polled by the window because the window only
+    /// asks "did anything change"; without this, a settings page left open
+    /// would keep showing the status it was opened with.
+    pub(super) fn observe_network_status(
+        &mut self,
+        status: bongocat_ui_protocol::SettingsNetworkStatus,
+    ) {
+        let previous = self.observed_network_status.replace(status.clone());
+        if previous.is_some_and(|previous| previous != status) {
+            self.mark_changed();
+        }
     }
 
     pub(super) fn observe_diagnostics_export(&mut self, status: SettingsDiagnosticsExportStatus) {
@@ -240,6 +273,7 @@ pub(super) fn snapshot(
         check_for_updates_automatically: application.config().updates.check_automatically,
         check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,
+        overlay_always_on_top_available: application.overlay_always_on_top_available,
         overlay: SettingsOverlay {
             window_mode: runtime.overlay_settings.window_mode,
             window_background_color: runtime.overlay_settings.window_background_color,
@@ -278,6 +312,7 @@ pub(super) fn snapshot(
             show_all_pressed_keys: runtime.model_settings.show_all_pressed_keys,
             ignore_pointer: runtime.model_settings.ignore_pointer,
         },
+        pointer_sensitivity_percent: application.config().input.pointer_sensitivity_percent,
         gamepad_axis_settings: SettingsGamepadAxisSettings {
             stick_dead_zone_percent: (runtime.gamepad_axis_settings.stick_dead_zone * 100.0)
                 .round()
@@ -296,6 +331,12 @@ pub(super) fn snapshot(
         toggle_repeated_expression: application.config().model.toggle_repeated_expression,
         allow_motion_overlap: application.config().model.allow_motion_overlap,
         logging: settings_logging_from_config(&application.config().logging),
+        network: crate::config_projection::settings_network_from_config(
+            &application.config().network,
+        ),
+        network_status: settings_network_status(&bongocat_net::network_status()),
+        alpha_output_enabled: application.config().alpha_output.enabled,
+        alpha_output_status: settings_alpha_output_status(runtime.video_output_status),
         shortcuts: settings_shortcuts(application.config()),
         model_behavior_names: model_behavior_names(application, &model_catalog),
         startup_item,
@@ -332,6 +373,8 @@ pub(super) fn observe_snapshot_state(
     let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
     clock.observe_overlay_visible(runtime.overlay_visible);
+    clock.observe_video_output_status(runtime.video_output_status);
+    clock.observe_network_status(settings_network_status(&bongocat_net::network_status()));
     let input_diagnostics = settings_input_diagnostics(
         &runtime.input,
         runtime.platform_input,
@@ -434,4 +477,21 @@ pub(super) fn observe_snapshot_state(
     }
     clock.coalesce_changes_since(revision_before);
     (runtime, input_diagnostics)
+}
+
+fn settings_alpha_output_status(
+    status: bongocat_runtime::VideoOutputStatus,
+) -> bongocat_ui_protocol::SettingsAlphaOutputStatus {
+    use bongocat_runtime::VideoOutputStatus as Runtime;
+    use bongocat_ui_protocol::SettingsAlphaOutputStatus as Settings;
+    match status {
+        Runtime::Disabled => Settings::Disabled,
+        Runtime::Starting => Settings::Starting,
+        Runtime::Running => Settings::Running,
+        Runtime::Stopping => Settings::Stopping,
+        Runtime::DeviceUnavailable => Settings::DeviceUnavailable,
+        Runtime::PermissionDenied => Settings::PermissionDenied,
+        Runtime::UnsupportedFormat => Settings::UnsupportedFormat,
+        Runtime::Failed => Settings::Failed,
+    }
 }

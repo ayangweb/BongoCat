@@ -36,7 +36,7 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
     let capture = Rc::clone(&built);
     let (_, visual) = cx.add_window_view(move |window, cx| {
         let view = cx.new(|cx| {
-            SettingsView::new(
+            let view = SettingsView::new(
                 client,
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
@@ -46,7 +46,14 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
                 Rc::new(|_| {}),
                 window,
                 cx,
-            )
+            );
+            #[cfg(target_os = "linux")]
+            let view = {
+                let mut view = view;
+                view.alpha_status_checked = true;
+                view
+            };
+            view
         });
         capture.borrow_mut().replace(view.clone());
         Root::new(view, window, cx)

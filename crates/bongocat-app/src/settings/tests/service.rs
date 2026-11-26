@@ -2,6 +2,66 @@
 
 use super::*;
 
+#[cfg(target_os = "linux")]
+#[test]
+fn network_settings_save_only_after_the_runtime_accepts_the_change() {
+    let base = tempdir().unwrap();
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout.clone()).unwrap();
+    let signals = ApplicationMainThreadSignals::default().with_network_apply(|network| {
+        if network.server.port == 18788 {
+            return Err(SettingsError::new(SettingsErrorCode::NetworkRelayFailed));
+        }
+        Ok(crate::NetworkRuntimeSelection {
+            has_room: false,
+            publishes_input: false,
+        })
+    });
+    let (_send, receive) = std::sync::mpsc::sync_channel(1);
+    let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
+        application,
+        receive,
+        signals.clone(),
+    )
+    .unwrap();
+    let client = service.client();
+    let before = client.read_snapshot_blocking().unwrap();
+    let revision = before.config_revision.unwrap();
+    let mut next = before.network.clone();
+    next.server.port = 18788;
+    assert_eq!(
+        client
+            .set_network_settings_blocking(revision, next.clone())
+            .unwrap_err()
+            .code(),
+        SettingsErrorCode::NetworkRelayFailed,
+    );
+    assert_eq!(
+        client.read_snapshot_blocking().unwrap().network,
+        before.network
+    );
+    assert!(signals.take_network_display().is_none());
+    next.server.port = 18789;
+    let after = client
+        .set_network_settings_blocking(revision, next)
+        .unwrap();
+    assert_eq!(after.network.server.port, 18789);
+    assert!(signals.take_network_display().is_some());
+    client.shutdown_blocking().unwrap();
+    service.join().unwrap();
+    assert_eq!(
+        ConfigStore::new(layout)
+            .unwrap()
+            .load_or_default()
+            .unwrap()
+            .config
+            .network
+            .server
+            .port,
+        18789
+    );
+}
+
 #[test]
 fn service_uses_defaults_when_current_and_backups_are_invalid() {
     let base = tempdir().expect("temporary storage");
@@ -945,4 +1005,169 @@ fn invalid_random_behavior_settings_leave_config_and_runtime_unchanged() {
     }
     client.shutdown_blocking().expect("service shutdown");
     service.join().expect("service join");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn alpha_uninstall_waits_for_output_and_shutdown_cancels_the_wait() {
+    let base = tempdir().expect("temporary storage");
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout).expect("application start");
+    let signals = ApplicationMainThreadSignals::default();
+    let (_sender, receiver) = std::sync::mpsc::channel();
+    let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
+        application,
+        receiver,
+        signals.clone(),
+    )
+    .expect("service start");
+    let client = service.client();
+    let initial = client.read_snapshot_blocking().unwrap();
+    let enabled = client
+        .set_alpha_output_enabled_blocking(initial.config_revision.unwrap(), true)
+        .unwrap();
+    let _ = signals.take_alpha_output_request();
+    let revision = enabled.config_revision.unwrap();
+    let other_client = client.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let operation = std::thread::spawn(move || {
+        let result = other_client.manage_alpha_camera_blocking(
+            revision,
+            bongocat_ui_protocol::SettingsAlphaManagementAction::Uninstall,
+        );
+        sender.send(result).unwrap();
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let request = loop {
+        if let Some(request) = signals.take_alpha_output_request() {
+            break request;
+        }
+        assert!(std::time::Instant::now() < deadline, "no stop request");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(!request.enabled());
+    let stop = request.into_stop().expect("stop token");
+    assert!(!stop.is_complete());
+    let snapshot = client.read_snapshot_blocking().unwrap();
+    assert!(!snapshot.alpha_output_enabled);
+    assert!(
+        receiver.try_recv().is_err(),
+        "uninstall ran before output stopped"
+    );
+    let error = client
+        .set_alpha_output_enabled_blocking(snapshot.config_revision.unwrap(), true)
+        .unwrap_err();
+    assert_eq!(
+        error.code(),
+        bongocat_ui_protocol::SettingsErrorCode::RuntimeUnavailable
+    );
+    assert_eq!(
+        client.manage_alpha_camera_blocking(
+            snapshot.config_revision.unwrap(),
+            bongocat_ui_protocol::SettingsAlphaManagementAction::Install
+        ),
+        Err(bongocat_ui_protocol::SettingsAlphaManagementError::Busy)
+    );
+    client.shutdown_blocking().unwrap();
+    assert_eq!(
+        receiver.recv_timeout(Duration::from_secs(1)).unwrap(),
+        Err(bongocat_ui_protocol::SettingsAlphaManagementError::OutputStopFailed)
+    );
+    operation.join().unwrap();
+    service.join().unwrap();
+}
+
+#[test]
+fn alpha_output_stop_acknowledges_only_the_requested_stop() {
+    let signals = ApplicationMainThreadSignals::default();
+    let first = signals.request_alpha_output_stop();
+    assert!(!first.is_complete());
+    let request = signals.take_alpha_output_request().expect("stop request");
+    assert!(!request.enabled());
+    let completion = request.into_stop().expect("stop completion");
+    assert!(!first.is_complete());
+    completion.complete();
+    assert!(first.is_complete());
+
+    let superseded = signals.request_alpha_output_stop();
+    signals.request_alpha_output(true);
+    let replacement = signals.take_alpha_output_request().expect("replacement");
+    assert!(replacement.enabled());
+    assert!(replacement.into_stop().is_none());
+    assert!(!superseded.is_complete());
+}
+
+#[test]
+fn alpha_output_setting_persists_signals_and_projects_runtime_status() {
+    let base = tempdir().expect("temporary storage");
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout.clone()).expect("application start");
+    let runtime = application.runtime_client();
+    let signals = ApplicationMainThreadSignals::default();
+    let (_sender, receiver) = std::sync::mpsc::channel();
+    let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
+        application,
+        receiver,
+        signals.clone(),
+    )
+    .expect("service start");
+    let client = service.client();
+    let initial = client.read_snapshot_blocking().expect("initial snapshot");
+    let system = client
+        .read_alpha_system_status_blocking()
+        .expect("system status");
+    #[cfg(target_os = "linux")]
+    {
+        let observed = bongocat_platform::inspect_alpha_system(crate::BUILD_ENVIRONMENT);
+        assert_eq!(system.driver_installed, observed.driver_installed);
+        assert_eq!(system.module_loaded, Some(observed.module_loaded));
+        assert_eq!(system.management_available, observed.management_available);
+    }
+    #[cfg(not(target_os = "linux"))]
+    assert_eq!(
+        system.camera,
+        bongocat_ui_protocol::SettingsAlphaInstallationStatus::Unsupported
+    );
+    assert!(!initial.alpha_output_enabled);
+    assert_eq!(
+        initial.alpha_output_status,
+        bongocat_ui_protocol::SettingsAlphaOutputStatus::Disabled
+    );
+    let revision = initial.config_revision.expect("configuration revision");
+    let updated = client
+        .set_alpha_output_enabled_blocking(revision, true)
+        .expect("enable output");
+    assert!(updated.alpha_output_enabled);
+    assert_eq!(
+        signals
+            .take_alpha_output_request()
+            .map(|request| request.enabled()),
+        Some(true)
+    );
+    assert!(
+        client
+            .set_alpha_output_enabled_blocking(revision, false)
+            .is_err()
+    );
+    assert!(signals.take_alpha_output_request().is_none());
+    let sequence = runtime
+        .send(bongocat_runtime::RuntimeCommand::SetVideoOutputStatus(
+            bongocat_runtime::VideoOutputStatus::DeviceUnavailable,
+        ))
+        .expect("publish device failure");
+    runtime
+        .wait_for_command(sequence, Duration::from_secs(2))
+        .expect("runtime status");
+    let failed = client.read_snapshot_blocking().expect("failure snapshot");
+    assert!(failed.alpha_output_enabled);
+    assert_eq!(
+        failed.alpha_output_status,
+        bongocat_ui_protocol::SettingsAlphaOutputStatus::DeviceUnavailable
+    );
+    assert!(failed.revision > updated.revision);
+    client.shutdown_blocking().expect("shutdown");
+    service.join().expect("join service");
+    let restarted = Application::start_with_layout(layout).expect("restart application");
+    assert!(restarted.config().alpha_output.enabled);
+    restarted.shutdown().expect("restart shutdown");
 }

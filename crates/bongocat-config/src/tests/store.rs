@@ -463,3 +463,39 @@ fn interrupted_commit_crash_probe_child() {
         thread::sleep(Duration::from_secs(1));
     }
 }
+
+#[test]
+fn alpha_output_preference_survives_config_store_restart() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+    {
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        assert!(!config.alpha_output.enabled);
+        config.alpha_output.enabled = true;
+        store.commit(&config).expect("save enabled output");
+    }
+    let reopened = ConfigStore::new(layout).expect("reopened config store");
+    assert!(
+        reopened
+            .load_or_default()
+            .expect("persisted config")
+            .config
+            .alpha_output
+            .enabled
+    );
+}
+
+#[test]
+fn config_written_before_alpha_output_starts_without_recovery() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+    let store = ConfigStore::new(layout).expect("config store");
+    let old = include_bytes!("../../../../shared/config/fixtures/accept-without-alpha-output.json");
+    fs::write(&store.layout().config, old).expect("old config");
+    let loaded = store.load_or_default().expect("load old config");
+    assert!(!loaded.config.alpha_output.enabled);
+    assert!(loaded.recovery.is_none());
+    assert!(config_quarantine_paths(store.layout()).is_empty());
+    assert_eq!(fs::read(&store.layout().config).expect("old bytes"), old);
+}

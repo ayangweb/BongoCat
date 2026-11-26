@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- Added Linux Wayland multiplayer with up to three cats, immediate room and display settings, per-device window placement, and one transparent virtual camera for OBS. Reinstall the camera after reboot and authorize it when prompted.
+
 ## 2.4.1 - 2026-10-28
 
 ### 🎨 Interface

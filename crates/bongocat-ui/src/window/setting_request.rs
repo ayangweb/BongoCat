@@ -76,6 +76,13 @@ impl SettingsView {
             Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
             _ => None,
         };
+        let sent_pointer_sensitivity_percent = match value.as_ref() {
+            Some(SettingValue::PointerSensitivity {
+                pointer_sensitivity_percent,
+                ..
+            }) => Some(*pointer_sensitivity_percent),
+            _ => None,
+        };
         let sent_random_behavior = match value.as_ref() {
             Some(SettingValue::RandomBehaviorSettings { settings, .. }) => Some(*settings),
             _ => None,
@@ -154,6 +161,23 @@ impl SettingsView {
                 }) => {
                     client
                         .set_logging_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::NetworkSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_network_settings(expected_config_revision, settings)
+                        .await
+                }
+                #[cfg(target_os = "linux")]
+                Some(SettingValue::AlphaOutputEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_alpha_output_enabled(expected_config_revision, enabled)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -255,6 +279,17 @@ impl SettingsView {
                 }) => {
                     client
                         .set_maximum_fps(expected_config_revision, maximum_fps)
+                        .await
+                }
+                Some(SettingValue::PointerSensitivity {
+                    expected_config_revision,
+                    pointer_sensitivity_percent,
+                }) => {
+                    client
+                        .set_pointer_sensitivity(
+                            expected_config_revision,
+                            pointer_sensitivity_percent,
+                        )
                         .await
                 }
                 Some(SettingValue::ModelSettings {
@@ -433,6 +468,15 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
+                    && let Some(pointer_sensitivity_percent) = sent_pointer_sensitivity_percent
+                {
+                    view.pointer_sensitivity_percent_debouncer
+                        .mark_sent(&pointer_sensitivity_percent);
+                    if view.pointer_sensitivity_percent_debouncer.is_pending() {
+                        view.schedule_pointer_sensitivity_percent_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(settings) = sent_random_behavior
                 {
                     view.random_behavior_debouncer.mark_sent(&settings);
@@ -447,6 +491,12 @@ impl SettingsView {
                     if view.logging_settings_debouncer.is_pending() {
                         view.schedule_logging_settings_flush(cx);
                     }
+                }
+                if operation == PendingOperation::NetworkSettings
+                    && std::mem::take(&mut view.network_apply_pending)
+                    && result.is_ok()
+                {
+                    view.network_draft = None;
                 }
                 if result.is_err() {
                     if operation == PendingOperation::AppearanceTheme {
@@ -474,6 +524,9 @@ impl SettingsView {
                     }
                     if sent_maximum_fps.is_some() {
                         view.schedule_maximum_fps_flush(cx);
+                    }
+                    if sent_pointer_sensitivity_percent.is_some() {
+                        view.schedule_pointer_sensitivity_percent_flush(cx);
                     }
                     if sent_random_behavior.is_some() {
                         view.schedule_random_behavior_flush(cx);

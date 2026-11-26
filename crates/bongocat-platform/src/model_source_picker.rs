@@ -119,7 +119,7 @@ where
 }
 
 /// Let the user choose the model folder to import.
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub(crate) fn pick_model_folder<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
 where
     F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
@@ -158,7 +158,7 @@ where
     })
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub(crate) fn pick_model_cover<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
 where
     F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,

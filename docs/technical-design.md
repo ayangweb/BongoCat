@@ -1323,6 +1323,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
   居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 window state 回退显示且不被覆盖。
+- Linux 的 Wayland layer-shell 模型窗口按设备 ID 将位置保存到本机。切换展示设备时恢复该
+  设备的位置。普通 Wayland 窗口的位置由合成器管理。
 - window state 通过环境内独立的 `window-state.writer.lock` 和原子替换提交，提交后重读 typed window state，失败恢复
   替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
   合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；

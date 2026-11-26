@@ -7,6 +7,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OverlayErrorKind {
     Fatal,
+    #[cfg(not(target_os = "linux"))]
     TemporaryPresentationUnavailable,
 }
 
@@ -25,6 +26,7 @@ impl OverlayError {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
     pub(crate) fn temporary_presentation_unavailable(detail: impl Into<String>) -> Self {
         Self {
             kind: OverlayErrorKind::TemporaryPresentationUnavailable,
@@ -32,6 +34,7 @@ impl OverlayError {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
     pub(crate) const fn is_temporary_presentation_unavailable(&self) -> bool {
         matches!(
             self.kind,

@@ -54,6 +54,110 @@ want it again.
 Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 [MMmmmoko](https://github.com/MMmmmoko).
 
+## About this fork
+
+This is a personal fork of [ayangweb/BongoCat](https://github.com/ayangweb/BongoCat), kept for
+its author's own machines. It is **not** the upstream project: issues opened here do not reach
+upstream, and this fork does not promise to stay compatible with upstream releases. Everything
+it starts from belongs to upstream; the changes below are what this fork adds on top.
+
+- **Linux / Wayland support.** Built on top of
+  [PR #1114](https://github.com/ayangweb/BongoCat/pull/1114) by
+  [@xiaozhangup](https://github.com/xiaozhangup), which ports the pet to Linux through a
+  layer-shell overlay (tested on Hyprland).
+- **OBS Alpha output on Linux.** Send the currently displayed cat to OBS through an optional
+  transparent virtual camera, including when the cat follows another device.
+- **Cross-device multiplayer.** Inspired by the room-key + relay design of
+  [JMTeCHNoLOGY/BongoCat](https://github.com/JMTeCHNoLOGY/BongoCat), reimplemented from scratch
+  for this codebase in `crates/bongocat-net`: one machine serves a room with `--relay`, and
+  another machine joins it — `--publish-url` sends that machine's input to the room, `--watch`
+  draws another machine's pet instead of its own. The settings window carries a multiplayer
+  page with the same parts (this machine, devices to draw, join a room, serve a relay) plus a
+  live status group. The multiplayer runtime is wired up on Linux today; on other platforms
+  the page can be configured but nothing joins.
+- The rest of this README describes the upstream project, so lines like "runs on macOS and
+  Windows" or "works offline" no longer hold for this fork.
+
+This fork is licensed under the same [Apache License 2.0](./LICENSE) as upstream, and the
+upstream authors hold the copyright to everything this fork starts from.
+
+## Features added in this fork
+
+The Linux work builds on [Wayland support in PR #1114](https://github.com/ayangweb/BongoCat/pull/1114).
+This fork adds multiplayer, per-device window placement, and a transparent OBS source.
+
+### Three cats on one desktop
+
+Show the local cat and up to two remote cats in separate windows. Each follows its own device input and restores its position by device ID.
+
+![Three multiplayer cats on a Wayland desktop](./screenshots/multiplayer-three-cats.png)
+
+### Multiplayer status and device controls
+
+The status panel shows the local device ID with a Copy button. Use the switches below to choose which room devices to display.
+
+![Multiplayer status with the local device ID and Copy button](./screenshots/multiplayer-local-device-id.png)
+
+![Local and remote device display switches](./screenshots/multiplayer-device-switches.png)
+
+### One transparent source for OBS
+
+The Linux V4L2 camera composites the selected cats into one transparent frame and preserves their relative positions. This image is a captured camera frame.
+
+![Three cats in one transparent V4L2 frame](./screenshots/obs-alpha-composite.png)
+
+## Run the Linux build
+
+From the repository root, build the Development version with:
+
+```sh
+just build --environment development --target x86_64-unknown-linux-gnu
+```
+
+Run the versioned executable in `target/package/`. For version 2.4.1, use
+`./target/package/BongoCat-2.4.1-linux-x64.bin`.
+
+### Where Linux saves cat positions
+
+On Wayland layer-shell, BongoCat saves cat positions by device ID in the
+local build environment’s `window-state.json` on normal exit. Selecting the
+same device again restores its position. Ordinary Wayland windows are
+positioned by the compositor.
+
+In Multiplayer, choose up to two remote devices by display name to show
+alongside the local cat. Use the room server settings to host a room on
+this machine.
+
+## Transparent OBS source on Linux
+
+The camera outputs the selected cats together in a single transparent frame.
+Their relative positions follow the local layout. A selected device that
+goes offline leaves a transparent gap until it reconnects.
+
+The Alpha output is available on Linux / Wayland. It has been checked with OBS 33.0.1 and
+v4l2loopback 0.15.4; support in other combinations depends on their Alpha format support.
+
+1. Install the v4l2loopback driver and `v4l2loopback-ctl` using your distribution's packages.
+   The system also needs `pkexec`, a running graphical polkit authentication agent and udev.
+   BongoCat does not install the driver.
+2. In **Settings → Model window → Alpha output**, select **Refresh**, then
+   **Install virtual camera** and approve the system authorization. Turn on
+   **Enable Alpha output**. The switch is off by default.
+3. In OBS, add a **Video Capture Device** source and choose **BongoCat Alpha**
+   (or **BongoCat Alpha (Development)** for a development build). The source carries the cat
+   and model artwork with transparency at 1280 × 720 and 30 FPS. Keyboard and pointer input
+   follow the devices selected in BongoCat's multiplayer settings.
+
+After upgrading an existing Alpha installation to the current version, select
+**Install virtual camera** once and authorize it to update the device identity record.
+The existing camera is kept when its recorded device still matches.
+
+The camera is not recreated automatically after a system restart. Return to Alpha output and
+install it again with authorization; if output reports an error, select **Retry output**.
+To remove it, select **Uninstall virtual camera** and authorize the operation. This stops
+Alpha output and removes BongoCat's camera and permission rule; the driver and other cameras
+remain installed.
+
 ## Features
 
 - Runs on macOS and Windows.

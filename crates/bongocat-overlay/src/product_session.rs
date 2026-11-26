@@ -46,6 +46,8 @@ pub(crate) fn start_platform_input<T>(
 }
 
 pub struct ProductOverlaySession {
+    #[cfg(target_os = "linux")]
+    pub(crate) inner: linux::ProductOverlaySession,
     #[cfg(target_os = "macos")]
     pub(crate) inner: macos::ProductOverlaySession,
     #[cfg(target_os = "windows")]
@@ -139,9 +141,13 @@ impl ProductOverlaySession {
             .map(|inner| Self { inner })
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
-            windows::ProductOverlaySession::start(
+            #[cfg(target_os = "linux")]
+            use linux as backend;
+            #[cfg(target_os = "windows")]
+            use windows as backend;
+            backend::ProductOverlaySession::start(
                 runtime_client,
                 input_producer,
                 cursor_producer,
@@ -160,7 +166,7 @@ impl ProductOverlaySession {
             self.inner.run_for(duration)
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.inner.run_for(duration)
         }
@@ -172,7 +178,7 @@ impl ProductOverlaySession {
             self.inner.tick()
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.inner.tick()
         }
@@ -184,7 +190,7 @@ impl ProductOverlaySession {
             self.inner.window_bounds()
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.inner.window_bounds()
         }
@@ -229,7 +235,7 @@ impl ProductOverlaySession {
             self.inner.stop_input()
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.inner.stop_input()
         }
@@ -241,9 +247,88 @@ impl ProductOverlaySession {
             self.inner.finish_after_runtime_shutdown()
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.inner.finish_after_runtime_shutdown()
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl ProductOverlaySession {
+    pub fn tick_linux_window(
+        &mut self,
+        settings: bongocat_runtime::OverlaySettings,
+        local_modifiers: bongocat_input::PressedModifiers,
+        input_available: bool,
+    ) -> Result<OverlayTickOutcome, OverlayError> {
+        self.inner
+            .tick_with_window_behavior(Some((settings, local_modifiers, input_available)))
+    }
+
+    pub fn set_linux_display_selected(&mut self, selected: bool) {
+        self.inner.set_display_selected(selected);
+    }
+
+    pub fn restore_linux_position(&self, x: i32, y: i32) {
+        self.inner.restore_position(x, y);
+    }
+
+    pub fn start_linux_peer(
+        &self,
+        runtime: RuntimeClient,
+        consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        saved_bounds: Option<OverlayWindowBounds>,
+    ) -> Result<Self, OverlayError> {
+        self.inner
+            .start_peer(runtime, consumer, options, saved_bounds)
+            .map(|inner| Self { inner })
+    }
+
+    pub fn sync_linux_alpha_scene<'a>(
+        &self,
+        primary_selected: bool,
+        peers: impl IntoIterator<Item = (&'a mut Self, bool)>,
+    ) {
+        self.inner.sync_alpha_scene(
+            primary_selected,
+            peers
+                .into_iter()
+                .map(|(peer, selected)| (&mut peer.inner, selected)),
+        );
+    }
+
+    pub fn linux_close_requested(&self) -> bool {
+        self.inner.close_requested()
+    }
+    pub fn set_linux_alpha_output_enabled(
+        &mut self,
+        enabled: bool,
+        environment: bongocat_config::BuildEnvironment,
+    ) {
+        self.inner.set_alpha_output_enabled(enabled, environment);
+    }
+
+    pub fn linux_alpha_output_status(&mut self) -> crate::AlphaOutputStatus {
+        self.inner.alpha_output_status()
+    }
+
+    pub fn linux_always_on_top_available(&self) -> bool {
+        self.inner.always_on_top_available()
+    }
+    pub fn set_linux_menu_presentation(
+        &mut self,
+        presentation: bongocat_platform::SystemMenuPresentation,
+        palette: bongocat_platform::SystemMenuPalette,
+    ) {
+        self.inner.set_menu_presentation(presentation, palette);
+    }
+    pub fn take_linux_menu_action(&mut self) -> Option<bongocat_platform::SystemMenuAction> {
+        self.inner.take_menu_action()
+    }
+    /// Start input capture after the Linux permission explanation is confirmed.
+    pub fn start_linux_input(&mut self) {
+        self.inner.start_input();
     }
 }

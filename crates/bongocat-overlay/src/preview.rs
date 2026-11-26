@@ -61,12 +61,20 @@ pub fn run_model_switch_preview(
         )
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (model_id, model_root, switch_cycles);
+        Err(OverlayError::new(
+            "model-switch preview is not available on Linux",
+        ))
+    }
     #[cfg(target_os = "windows")]
     {
         windows::run_model_switch_preview(model_id, model_root, switch_cycles)
     }
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn validate_model_generation_advance(
     active_generation: u64,
     candidate_generation: u64,

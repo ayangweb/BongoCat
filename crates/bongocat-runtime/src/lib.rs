@@ -460,11 +460,33 @@ pub struct PendingModelSnapshot {
     pub model: ModelSnapshot,
 }
 
+/// Runtime-visible state of a separate video output.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum VideoOutputStatus {
+    #[default]
+    Disabled,
+    Starting,
+    Running,
+    Stopping,
+    DeviceUnavailable,
+    PermissionDenied,
+    UnsupportedFormat,
+    Failed,
+}
+
+impl VideoOutputStatus {
+    pub const fn needs_frames(self) -> bool {
+        matches!(self, Self::Starting | Self::Running)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
     /// Drive one deterministic runtime evaluation using the injected clock.
     Tick,
     SetOverlayVisible(bool),
+    /// Publish the real state of the separate video consumer.
+    SetVideoOutputStatus(VideoOutputStatus),
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
     SetRandomBehaviorSettings(RandomBehaviorSettings),
@@ -519,6 +541,7 @@ impl ShortcutAction {
 pub struct FrameScheduling {
     pub maximum_fps: u16,
     pub overlay_visible: bool,
+    pub video_output_active: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -526,6 +549,8 @@ pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
+    pub video_output_active: bool,
+    pub video_output_status: VideoOutputStatus,
     pub overlay_settings: OverlaySettings,
     pub maximum_fps: u16,
     pub random_behavior_settings: RandomBehaviorSettings,
@@ -577,6 +602,8 @@ impl RuntimeSnapshot {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
+            video_output_active: false,
+            video_output_status: VideoOutputStatus::Disabled,
             overlay_settings: OverlaySettings::default(),
             maximum_fps: DEFAULT_MAXIMUM_FPS,
             random_behavior_settings: RandomBehaviorSettings::default(),

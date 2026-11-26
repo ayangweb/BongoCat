@@ -66,6 +66,45 @@ fn window_background_keeps_the_latest_color_while_a_save_is_in_flight(cx: &mut T
     }));
 }
 
+#[gpui_kit::test]
+fn connection_draft_waits_for_apply_and_survives_a_failed_request(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+    view.update(visual, |view, cx| {
+        view.edit_network(NetworkEditor::Connection, cx);
+        view.set_network_client_source(SettingsNetworkClientSource::Manual, cx);
+        view.set_network_client_url("ws://192.168.1.20:8787".into(), cx);
+        view.set_network_client_token("test-key".into(), cx);
+    });
+    visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err());
+    view.update(visual, |view, cx| view.apply_network_edit(cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetNetworkSettings {
+        settings, reply, ..
+    } = endpoint.try_recv().unwrap()
+    else {
+        panic!("expected one composed connection command");
+    };
+    assert!(settings.client.enabled);
+    assert_eq!(
+        settings.client.url.as_deref(),
+        Some("ws://192.168.1.20:8787")
+    );
+    assert_eq!(settings.client.token.as_deref(), Some("test-key"));
+    reply
+        .respond(Err(SettingsError::new(
+            SettingsErrorCode::NetworkRoomFailed,
+        )))
+        .unwrap();
+    visual.run_until_parked();
+    assert!(view.read_with(visual, |view, _| view.network_draft.is_some()));
+    view.update(visual, |view, cx| view.cancel_network_edit(cx));
+    assert!(view.read_with(visual, |view, _| view.network_draft.is_none()));
+}
+
 #[test]
 fn settings_error_display_matches_the_english_catalog_copy() {
     for code in SettingsErrorCode::ALL {
@@ -92,6 +131,397 @@ fn shutdown_flush_chains_each_patch_from_the_latest_confirmed_revision() {
     let second_expected_revision = current_revision.expect("first patch must confirm");
     assert_eq!(second_expected_revision, 8);
     assert!(accepts_snapshot_revision(current_revision, 9));
+}
+
+#[cfg(target_os = "linux")]
+struct AlphaPageHarness {
+    view: Entity<SettingsView>,
+    snapshot: SettingsSnapshot,
+    status: crate::SettingsAlphaSystemStatus,
+}
+
+#[cfg(target_os = "linux")]
+impl Render for AlphaPageHarness {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(
+                Settings::new("alpha-test-settings").page(SettingPage::new("Alpha").group(
+                    alpha_output::group(
+                        &self.view,
+                        Some(&self.snapshot),
+                        SettingsLanguage::English,
+                        Some(self.status),
+                        false,
+                    ),
+                )),
+            )
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_install_button_sends_the_management_command(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut snapshot = crate::tests::snapshot(7, true, true);
+    snapshot.config_revision = Some(7);
+    let status = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(true),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::NotInstalled,
+    };
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, _| {
+            view.alpha_status_checked = true;
+            view.snapshot = Some(snapshot.clone());
+        });
+        Root::new(
+            cx.new(|_| AlphaPageHarness {
+                view,
+                snapshot,
+                status,
+            }),
+            window,
+            cx,
+        )
+    });
+    visual.simulate_resize(size(px(800.0), px(1200.0)));
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.update(|window, cx| window.click("alpha-install", cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::ManageAlphaCamera {
+        expected_config_revision,
+        action,
+        reply,
+    } = endpoint.try_recv().expect("install command")
+    else {
+        panic!("clicking install must request camera management");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(action, crate::SettingsAlphaManagementAction::Install);
+    reply
+        .respond(Err(
+            crate::SettingsAlphaManagementError::AuthorizationDenied,
+        ))
+        .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_install_button_is_disabled_without_the_driver(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut snapshot = crate::tests::snapshot(7, true, true);
+    snapshot.config_revision = Some(7);
+    let status = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(false),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::NotInstalled,
+    };
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, _| {
+            view.alpha_status_checked = true;
+            view.snapshot = Some(snapshot.clone());
+        });
+        Root::new(
+            cx.new(|_| AlphaPageHarness {
+                view,
+                snapshot,
+                status,
+            }),
+            window,
+            cx,
+        )
+    });
+    visual.simulate_resize(size(px(800.0), px(1200.0)));
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.update(|window, cx| window.click("alpha-install", cx));
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "clicking the disabled install button must not invoke management"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_install_button_remains_reachable_at_minimum_window_size(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut snapshot = crate::tests::snapshot(7, true, true);
+    snapshot.config_revision = Some(7);
+    let status = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(true),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::NotInstalled,
+    };
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, _| {
+            view.alpha_status_checked = true;
+            view.snapshot = Some(snapshot.clone());
+        });
+        Root::new(
+            cx.new(|_| AlphaPageHarness {
+                view,
+                snapshot,
+                status,
+            }),
+            window,
+            cx,
+        )
+    });
+    visual.simulate_resize(size(px(800.0), px(600.0)));
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.simulate_event(gpui_kit::ScrollWheelEvent {
+        position: point(px(600.0), px(450.0)),
+        delta: gpui_kit::ScrollDelta::Pixels(point(px(0.0), px(-800.0))),
+        modifiers: Modifiers::default(),
+        touch_phase: gpui_kit::TouchPhase::Moved,
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.update(|window, cx| window.click("alpha-install", cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::ManageAlphaCamera {
+        expected_config_revision,
+        action,
+        reply,
+    } = endpoint.try_recv().expect("install command")
+    else {
+        panic!("clicking install must request camera management");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(action, crate::SettingsAlphaManagementAction::Install);
+    reply
+        .respond(Err(
+            crate::SettingsAlphaManagementError::AuthorizationDenied,
+        ))
+        .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_uninstall_button_sends_the_management_command(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut snapshot = crate::tests::snapshot(7, true, true);
+    snapshot.config_revision = Some(7);
+    let status = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(true),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::Installed,
+    };
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, _| {
+            view.alpha_status_checked = true;
+            view.snapshot = Some(snapshot.clone());
+        });
+        Root::new(
+            cx.new(|_| AlphaPageHarness {
+                view,
+                snapshot,
+                status,
+            }),
+            window,
+            cx,
+        )
+    });
+    visual.simulate_resize(size(px(800.0), px(1200.0)));
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.update(|window, cx| window.click("alpha-uninstall", cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::ManageAlphaCamera {
+        expected_config_revision,
+        action,
+        reply,
+    } = endpoint.try_recv().expect("uninstall command")
+    else {
+        panic!("clicking uninstall must request camera management");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(action, crate::SettingsAlphaManagementAction::Uninstall);
+    reply
+        .respond(Err(
+            crate::SettingsAlphaManagementError::AuthorizationDenied,
+        ))
+        .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_install_reports_denial_and_rechecks_real_state(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    view.update(visual, |view, _| view.snapshot = Some(initial.clone()));
+    view.update(visual, |view, cx| {
+        view.manage_alpha_camera(crate::SettingsAlphaManagementAction::Install, cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::ManageAlphaCamera {
+        expected_config_revision,
+        action,
+        reply,
+    } = endpoint.try_recv().expect("management command")
+    else {
+        panic!("install must request camera management");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(action, crate::SettingsAlphaManagementAction::Install);
+    assert!(view.read_with(visual, |view, _| view.alpha_operation_pending));
+    reply
+        .respond(Err(
+            crate::SettingsAlphaManagementError::AuthorizationDenied,
+        ))
+        .unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::ReadAlphaSystemStatus { reply } =
+        endpoint.try_recv().expect("status refresh")
+    else {
+        panic!("denial must refresh device state");
+    };
+    let observed = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(true),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::NotInstalled,
+    };
+    reply.respond(Ok(observed)).unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::ReadSnapshot { reply } =
+        endpoint.try_recv().expect("snapshot refresh")
+    else {
+        panic!("denial must refresh the settings snapshot");
+    };
+    reply.respond(Ok(initial)).unwrap();
+    visual.run_until_parked();
+    assert!(view.read_with(visual, |view, _| {
+        !view.alpha_operation_pending && view.alpha_system_status == Some(observed)
+    }));
+    assert!(
+        !alpha_output::error_text(
+            SettingsLanguage::ChineseSimplified,
+            crate::SettingsAlphaManagementError::AuthorizationDenied
+        )
+        .is_empty()
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_refresh_shows_the_observed_system_state(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, cx| view.refresh_alpha_status(cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::ReadAlphaSystemStatus { reply } =
+        endpoint.try_recv().expect("Alpha status request")
+    else {
+        panic!("refresh must request the system status");
+    };
+    let observed = crate::SettingsAlphaSystemStatus {
+        driver_installed: Some(true),
+        module_loaded: Some(false),
+        management_available: true,
+        management_unavailable: None,
+        camera: crate::SettingsAlphaInstallationStatus::NotInstalled,
+    };
+    reply.respond(Ok(observed)).unwrap();
+    visual.run_until_parked();
+    assert_eq!(
+        view.read_with(visual, |view, _| view.alpha_system_status),
+        Some(observed)
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[gpui_kit::test]
+fn alpha_switch_sends_a_typed_persisted_setting(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    initial.alpha_output_enabled = false;
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+    view.update(visual, |view, cx| view.set_alpha_output_enabled(true, cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetAlphaOutputEnabled {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint.try_recv().expect("Alpha output command")
+    else {
+        panic!("the switch must use the typed Alpha output command");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert!(enabled);
+    let mut confirmed = crate::tests::snapshot(8, true, true);
+    confirmed.config_revision = Some(8);
+    confirmed.alpha_output_enabled = true;
+    reply.respond(Ok(confirmed)).unwrap();
+    visual.run_until_parked();
+    assert!(view.read_with(visual, |view, _| {
+        view.snapshot.as_ref().unwrap().alpha_output_enabled
+    }));
 }
 
 #[gpui_kit::test]

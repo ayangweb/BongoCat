@@ -17,7 +17,9 @@ pub use command::{
     ModelBehaviorAction, ModelBehaviorBinding, ModelBehaviorParseError, ShortcutBinding,
     ShortcutCommand, ShortcutCommandParseError,
 };
-pub use compiled::{CompiledShortcut, CompiledShortcuts, ShortcutTable, ShortcutTarget};
+pub use compiled::{
+    CompiledShortcut, CompiledShortcuts, ShortcutTable, ShortcutTablePublication, ShortcutTarget,
+};
 pub use config::{
     BEHAVIOR_SHORTCUT_CAPACITY, ShortcutConfig, assign_default_behavior_shortcuts,
     default_behavior_shortcut,

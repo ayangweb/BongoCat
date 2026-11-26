@@ -140,6 +140,7 @@ impl PointerHoverHide {
     /// Native windows are created with the configured opacity, so a window that
     /// replaces a hover-hidden one has to be corrected before it is drawn or
     /// shown.
+    #[cfg(not(target_os = "linux"))]
     pub(crate) const fn visible(&self) -> f64 {
         self.visible
     }

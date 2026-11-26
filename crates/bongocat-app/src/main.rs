@@ -9,7 +9,7 @@
 //! The product entry point: start every subsystem, hand the windows to GPUI and
 //! own the run loop.
 //!
-//! `main()` and the closure it hands `run` stay here on purpose. That closure is
+//! `run_product()` and the closure it hands `run` stay here on purpose. That closure is
 //! where the shutdown ordering lives — block new frame ticks, stop the input
 //! producers, confirm the frame source, stop the runtime, flush configuration,
 //! stop audio, release the renderer, destroy the overlay, close GPUI — and it
@@ -19,72 +19,94 @@
 //! protocol, `product_windows` the product's windows, and the rest one concern
 //! each.
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "linux")))]
 mod binary_tests;
+#[cfg(any(test, not(target_os = "linux")))]
 mod dev_plugins;
 mod gamepad_observer;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 mod model_cover;
+#[cfg(target_os = "linux")]
+mod net_publish;
+#[cfg(not(target_os = "linux"))]
 mod overlay_placement;
+#[cfg(not(target_os = "linux"))]
 mod plugin_input;
+#[cfg(not(target_os = "linux"))]
 mod preset_root;
 mod product_icons;
+mod product_lifecycle;
 mod product_options;
+mod product_settings;
+#[cfg(not(target_os = "linux"))]
 mod product_shutdown;
+#[cfg(not(target_os = "linux"))]
 mod product_windows;
+#[cfg(not(target_os = "linux"))]
 mod smoke;
+#[cfg(not(target_os = "linux"))]
 mod smoke_status;
 mod system_menu;
 // Windows only in a product build, since the taskbar button is; the tests read
 // the settle decision on every platform, which is the point of keeping it apart
 // from the smoke that polls with it.
 #[cfg(any(target_os = "windows", test))]
+#[cfg(not(target_os = "linux"))]
 mod taskbar_settle;
+#[cfg(not(target_os = "linux"))]
 mod update_schedule;
 
 use async_io::Timer;
+#[cfg(not(target_os = "linux"))]
 use bongocat_app::{
     ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent, application_shortcut_dispatcher,
 };
+#[cfg(not(target_os = "linux"))]
 use bongocat_live2d::CoreLogHandle;
+#[cfg(not(target_os = "linux"))]
+use bongocat_overlay::{OverlayContextMenuRequest, OverlayWindowBounds};
 use bongocat_overlay::{
-    OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome,
-    OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession,
+    OverlayInteractionSinks, OverlayResizeOutcome, OverlaySessionOptions, ProductOverlaySession,
 };
+#[cfg(not(target_os = "linux"))]
 use bongocat_platform::GlobalShortcutService;
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
 };
+#[cfg(not(target_os = "linux"))]
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
+#[cfg(not(target_os = "linux"))]
 use bongocat_runtime::{hover_hide_delay_ms, idle_hide_delay_ms};
-use bongocat_ui::{
-    SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
-    open_settings_window,
-};
+use bongocat_ui::SettingsWindowSeed;
+#[cfg(not(target_os = "linux"))]
+use bongocat_ui::{SettingsView, SettingsWindowHandle};
+#[cfg(not(target_os = "linux"))]
 use bongocat_ui_protocol::{
-    AutomaticUpdateSettings, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsModelAvailability, SettingsModelKey, SettingsModelOrigin, SettingsOverlay,
-    SettingsSnapshot,
+    AutomaticUpdateSettings, SettingsModelAvailability, SettingsModelKey, SettingsModelOrigin,
+    SettingsOverlay, SettingsSnapshot,
 };
+use bongocat_ui_protocol::{SettingsClient, SettingsError, SettingsErrorCode};
 use gpui_kit::{
     App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
     platform::current_platform,
 };
+#[cfg(not(target_os = "linux"))]
 use gpui_kit::{AsyncApp, Context, Window};
 use reqwest_client::ReqwestClient;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
 use std::{
     env,
     io::{self, Write},
-    path::Path,
-    path::PathBuf,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
+#[cfg(not(target_os = "linux"))]
+use std::{path::Path, path::PathBuf, time::Instant};
 #[cfg(target_os = "windows")]
 use taskbar_settle::{
     TASKBAR_ICON_SETTLE_ATTEMPTS, TASKBAR_ICON_SETTLE_INTERVAL, TaskbarIconSample,
@@ -92,17 +114,24 @@ use taskbar_settle::{
 };
 
 use gamepad_observer::GamepadConnectionObserver;
-use model_cover::{COVER_CAPTURE_POLL_INTERVAL_MS, capture_model_cover_without_blocking};
+use gpui_kit::BorrowAppContext;
+#[cfg(not(target_os = "linux"))]
+use model_cover::{COVER_CAPTURE_POLL_INTERVAL_MS, capture_imported_model_cover};
+#[cfg(not(target_os = "linux"))]
 use overlay_placement::OverlayPlacementDebouncer;
+#[cfg(not(target_os = "linux"))]
 use preset_root::preset_root;
 #[cfg(target_os = "macos")]
 use product_icons::ProductDockIcon;
+#[cfg(not(target_os = "linux"))]
 use product_icons::ProductStatusIcon;
 #[cfg(target_os = "windows")]
 use product_icons::ProductTaskbarIcon;
 use product_options::RunOptions;
+use product_settings::ProductSettingsWindow;
 #[cfg(target_os = "macos")]
 use product_shutdown::exit_after_automated_smoke;
+#[cfg(not(target_os = "linux"))]
 use product_shutdown::{
     FrameSourceShutdown, ProductRunError, begin_product_shutdown, native_theme_for_startup,
     quit_after_startup_failure, record_failure, request_product_quit,
@@ -118,21 +147,39 @@ use product_windows::{
 use product_windows::{
     apply_taskbar_icon_visibility, product_taskbar_icon_state, take_update_restart_request,
 };
+#[cfg(not(target_os = "linux"))]
 use product_windows::{
     ensure_settings_window, handle_shortcut_toggle_settings, open_update_window_and_check,
-    product_overlay_state, publish_overlay_scale, published_update_phase, request_update_check,
-    show_update_window, update_settings_window, update_window_is_open,
+    product_overlay_state, published_update_phase, request_update_check, show_update_window,
+    update_settings_window, update_window_is_open,
 };
 #[cfg(target_os = "windows")]
 use smoke_status::write_smoke_marker;
+#[cfg(not(target_os = "linux"))]
 use smoke_status::{SMOKE_FIRST_FRAME_WAIT_TICKS, write_smoke_status};
+#[cfg(not(target_os = "linux"))]
 use system_menu::{
     apply_system_menu_overlay_action, refresh_system_menu_presentation, system_menu_presentation,
 };
+#[cfg(not(target_os = "linux"))]
 use update_schedule::{
     AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS, AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL,
     AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY, AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL,
     AUTOMATIC_UPDATE_SETTINGS_RETRY_INTERVAL, automatic_update_schedule_delay,
+};
+
+#[cfg(target_os = "linux")]
+use bongocat_app::{Application, ApplicationMainThreadSignals, ApplicationSettingsService};
+#[cfg(target_os = "linux")]
+use bongocat_platform::{LinuxSystemTray, SystemMenuAction};
+#[cfg(target_os = "linux")]
+use gpui_kit::component::{
+    WindowExt,
+    notification::{Notification, NotificationType},
+};
+#[cfg(target_os = "linux")]
+use product_lifecycle::{
+    FrameSourceShutdown, ProductRunError, finish_product_services, record_failure,
 };
 
 fn gpui_application() -> GpuiApplication {
@@ -209,6 +256,7 @@ async fn settle_taskbar_icon(
     ))
 }
 
+#[cfg(not(target_os = "linux"))]
 struct ProductCoordinator {
     _core_log: CoreLogHandle,
     #[cfg(target_os = "macos")]
@@ -223,29 +271,11 @@ struct ProductCoordinator {
     /// service composes.
     plugin_service: Option<bongocat_plugin_service::PluginService>,
     /// The currently open settings window, if any; close destroys it.
-    settings_window: Option<SettingsWindowHandle>,
-    /// Process-local memory for the last settings sidebar page.
-    settings_navigation_memory: SettingsNavigationMemory,
+    settings: ProductSettingsWindow,
     /// The worker that owns the update pipeline.
     update_service: Option<bongocat_app::ApplicationUpdateService>,
     /// The open update window, if any; close destroys it.
     update_window: Option<bongocat_ui::UpdateWindowHandle>,
-    /// The display language a product window opens with.
-    ///
-    /// Seeded from the startup snapshot and refreshed by the system menu loop, which
-    /// already reads the settings snapshot every 50 ms. A window is created and shown
-    /// before its own first snapshot arrives, so opening on the default would render
-    /// one frame of it: the settings window used to redraw from English into the
-    /// user's language as soon as the snapshot landed. Reading it here keeps the
-    /// windows off a blocking read on the GPUI thread.
-    product_language: bongocat_ui_protocol::SettingsLanguage,
-    /// The appearance a product window opens with.
-    ///
-    /// The same reason as `product_language`: a window has to apply the product's
-    /// theme on its first frame, and the settings snapshot only reaches it on the next
-    /// poll. Opening on the default would let the update window clear an override the
-    /// settings window has already installed (ADR-0048).
-    product_appearance_theme: bongocat_ui_protocol::SettingsTheme,
     /// When a completed install that needs a restart was first observed.
     #[cfg(target_os = "macos")]
     update_installed_since: Option<Instant>,
@@ -285,6 +315,7 @@ struct ProductCoordinator {
     shutdown_flush_complete: Arc<AtomicBool>,
 }
 
+#[cfg(not(target_os = "linux"))]
 impl Global for ProductCoordinator {}
 
 #[cfg(target_os = "windows")]
@@ -296,6 +327,28 @@ fn build_single_instance_environment() -> SingleInstanceEnvironment {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--input-helper")) {
+            return bongocat_input_helper::run();
+        }
+        if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--alpha-helper")) {
+            let mut args = env::args().skip(2);
+            let operation = args.next().ok_or("missing Alpha helper operation")?;
+            if args.next().is_some() || !bongocat_input_helper::is_root() {
+                return Err("invalid Alpha helper invocation".into());
+            }
+            match bongocat_platform::run_alpha_helper(bongocat_app::BUILD_ENVIRONMENT, &operation) {
+                Ok(()) => return Ok(()),
+                Err(error) => std::process::exit(error.exit_code()),
+            }
+        }
+        if bongocat_input_helper::is_root() {
+            return Err(
+                "Run the GUI as a regular user; it requests input authorization separately".into(),
+            );
+        }
+    }
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
         Err(error) if error.help => {
@@ -306,6 +359,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
+
+    // The relay is headless: it must answer before anything opens a GPU surface or a
+    // window, because a relay may well run on a machine that has no display at all.
+    if run_options.relay {
+        return run_relay(&run_options);
+    }
+
+    run_product(run_options)
+}
+
+/// Translates the parsed relay flags into the relay's own configuration.
+///
+/// The listen mode is validated here rather than by `clap` so that an unknown value
+/// can name every accepted spelling instead of failing with a generic parse error.
+fn run_relay(options: &RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let bind = match options.relay_listen.as_str() {
+        "local" => bongocat_net::relay::BindMode::LocalOnly,
+        "ipv4" => bongocat_net::relay::BindMode::Ipv4Only,
+        "dual" => bongocat_net::relay::BindMode::DualStack,
+        other => {
+            return Err(format!(
+                "unknown --relay-listen value {other:?}; expected `local`, `ipv4`, or `dual`"
+            )
+            .into());
+        }
+    };
+    let token = match options.relay_token.as_deref() {
+        Some(token) if !token.is_empty() => token.to_owned(),
+        Some(_) => return Err("--relay-token must not be empty".into()),
+        None => {
+            // Printing it is the only way to hand it over: a headless relay has no UI to
+            // show it in, and a built-in default would be a token everyone shares.
+            let generated = bongocat_net::generate_token();
+            // Written through `writeln!` rather than `eprintln!`: the workspace denies
+            // the print macros, and a generated token nobody can read is useless.
+            let _ = writeln!(io::stderr(), "relay token (generated): {generated}");
+            generated
+        }
+    };
+    let config = bongocat_net::relay::RelayConfig {
+        bind,
+        port: options.relay_port,
+        token,
+    };
+    bongocat_net::relay::run(config).map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     // The native surfaces that can only follow the *system* theme — the ComCtl32 alerts,
     // the Win32 menus and the shell file dialog — render dark only if the process asks
     // for it before the first window exists, so this is the earliest point that can ask.
@@ -355,6 +457,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
+    // `--hide` starts the session with the overlay already invisible rather than
+    // switching it off after the first frame, which would show the pet and then
+    // take it away. Visibility is runtime state, so the status icon and the
+    // settings switch still bring it back for this session.
+    if run_options.hide {
+        application.set_overlay_visible(false)?;
+    }
+    application.set_overlay_always_on_top_available(true);
     let application_log = application.log_handle();
     // The plugin service starts before the overlay, because the overlay is what
     // draws the layer the service composes: the window has to be handed the
@@ -489,7 +599,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
     let render_consumer = application.take_render_consumer()?;
-    let expect_visible_frame = true;
+    // A hidden run draws no visible content, so a frame count of zero is not a
+    // failure there: only the mode that promised a visible pet owns that check.
+    let expect_visible_frame = !run_options.hide;
     let frame_runtime_client = runtime_client.clone();
     let frame_source_shutdown = FrameSourceShutdown::default();
     let failures = Arc::new(Mutex::new(Vec::new()));
@@ -677,12 +789,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay,
             settings_service: Some(settings_service),
             plugin_service,
-            settings_window: None,
-            settings_navigation_memory: SettingsNavigationMemory::new(),
+            settings: ProductSettingsWindow::new(SettingsWindowSeed {
+                language: initial_settings_snapshot.resolved_language,
+                appearance_theme: initial_settings_snapshot.appearance_theme,
+            }),
             update_service: Some(update_service),
             update_window: None,
-            product_language: initial_settings_snapshot.resolved_language,
-            product_appearance_theme: initial_settings_snapshot.appearance_theme,
             #[cfg(target_os = "macos")]
             update_installed_since: None,
             #[cfg(target_os = "macos")]
@@ -758,30 +870,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 for request in cover_capture_signals.take_model_cover_captures() {
-                    let key = request.key().clone();
-                    let captured = match
-                        capture_model_cover_without_blocking(Arc::clone(request.model())).await
-                    {
-                        Ok(captured) => cover_capture_client
-                            .replace_model_cover(key.clone(), captured.png().to_vec())
-                            .await
-                            .is_ok(),
-                        Err(_) => false,
-                    };
-                    if !captured {
-                        cover_capture_log.record(
-                            ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
-                                .with_context(ApplicationLogContext::Operation("cover_capture"))
-                                .with_context(ApplicationLogContext::Reason(
-                                    "overlay_capture_failed",
-                                )),
-                        );
-                        // Undo the import before reporting it, so the model is
-                        // never revealed: the settings window reads the catalog
-                        // this removal republishes, and the card for a model that
-                        // is no longer installed cannot appear at all.
-                        let _ = cover_capture_client.delete_model(key.clone()).await;
-                    }
+                    let (key, captured) = capture_imported_model_cover(
+                        &cover_capture_client, request, &cover_capture_log,
+                    ).await;
                     // The settings window keeps every model this import installed
                     // out of the grid until its capture reports back, so the
                     // report has to arrive either way: a failed capture removes
@@ -790,7 +881,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cx.update(|cx| {
                         let Some(window) = cx
                             .try_global::<ProductCoordinator>()
-                            .and_then(|coordinator| coordinator.settings_window.clone())
+                            .and_then(|coordinator| coordinator.settings.window.clone())
                         else {
                             return;
                         };
@@ -850,12 +941,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let settings_window = cx
                 .global::<ProductCoordinator>()
-                .settings_window
+                .settings.window
                 .clone();
             if let Some(window_handle) = settings_window
                 && window_handle.read(cx).is_err()
             {
-                cx.global_mut::<ProductCoordinator>().settings_window = None;
+                cx.global_mut::<ProductCoordinator>().settings.window = None;
             }
             // Both product windows are destroyed on close. The update worker keeps
             // running independently, including while its window is gone.
@@ -1020,12 +1111,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             return Ok(());
                         }
                         #[cfg(target_os = "macos")]
-                        if cx.global::<ProductCoordinator>().product_language != language {
+                        if cx.global::<ProductCoordinator>().settings.seed.language != language {
                             macos_menu::set_language(language, cx);
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
-                        coordinator.product_language = language;
-                        coordinator.product_appearance_theme = appearance_theme;
+                        coordinator.settings.seed.language = language;
+                        coordinator.settings.seed.appearance_theme = appearance_theme;
                         coordinator
                             .system_menu
                             .as_mut()
@@ -1112,7 +1203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 })
                         });
                         match client {
-                            Ok(client) => apply_system_menu_overlay_action(client, action).await,
+                            Ok(client) => apply_system_menu_overlay_action(client, action).await.map_err(|error| error.to_string()),
                             Err(error) => Err(error),
                         }
                     }
@@ -1306,7 +1397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 (
                                     false,
                                     Some(error.to_string()),
-                                    coordinator.settings_window.clone(),
+                                    coordinator.settings.window.clone(),
                                     Some(Arc::clone(&coordinator.failures)),
                                     None,
                                 )
@@ -1424,7 +1515,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 (
                                     Some(error.to_string()),
                                     Some(Arc::clone(&coordinator.failures)),
-                                    coordinator.settings_window.clone(),
+                                    coordinator.settings.window.clone(),
                                 )
                             }
                         }
@@ -1463,7 +1554,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if request_shutdown_flush {
                     let flush_requested = cx.update(|cx| {
                         cx.try_global::<ProductCoordinator>()
-                            .and_then(|coordinator| coordinator.settings_window.clone())
+                            .and_then(|coordinator| coordinator.settings.window.clone())
                             .is_some_and(|window| window.request_quit_after_flush(cx).is_ok())
                     });
                     if !flush_requested {
@@ -1482,7 +1573,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // after it has already resized the window, so this only brings
                 // the stored configuration to the same number.
                 if let Some(outcome) = resize_outcome {
-                    publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
+                    product_settings::publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
                 }
                 // Gamepad connectivity is a product behaviour the settings
                 // service owns, so the frame source only reports the transition.
@@ -1717,7 +1808,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let coordinator = cx.global::<ProductCoordinator>();
                         (
                             coordinator
-                                .settings_window
+                                .settings.window
                                 .clone()
                                 .ok_or_else(|| "settings window is not open".to_owned())?,
                             coordinator.frame_ticks,
@@ -1758,7 +1849,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let observed = cx.update(|cx| {
                         let coordinator = cx.global::<ProductCoordinator>();
                         (
-                            coordinator.settings_window.is_none(),
+                            coordinator.settings.window.is_none(),
                             original_window.read(cx).is_err(),
                         )
                     });
@@ -1781,7 +1872,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let remembered_page = 2;
                 cx.update(|cx| {
                     cx.global_mut::<ProductCoordinator>()
-                        .settings_navigation_memory
+                        .settings.navigation
                         .set_page_index(remembered_page);
                 });
 
@@ -1798,7 +1889,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     handle_shortcut_toggle_settings(cx);
                     let reopened = cx
                         .global::<ProductCoordinator>()
-                        .settings_window
+                        .settings.window
                         .clone()
                         .ok_or_else(|| "settings shortcut did not recreate the window".to_owned())?;
                     if cx.windows().len() != 1 {
@@ -1827,7 +1918,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let restored = cx.update(|cx| -> Result<(), String> {
                     let window_handle =
                         cx.global::<ProductCoordinator>()
-                            .settings_window
+                            .settings.window
                             .clone()
                             .ok_or_else(|| "settings window was not recreated".to_owned())?;
                     let revision = window_handle
@@ -1839,7 +1930,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                     if cx.global::<ProductCoordinator>()
-                        .settings_navigation_memory
+                        .settings.navigation
                         .page_index()
                         != remembered_page
                     {
@@ -1994,7 +2085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         let window = cx
                             .global::<ProductCoordinator>()
-                            .settings_window
+                            .settings.window
                             .clone()
                             .ok_or_else(|| {
                                 "Open Settings did not retain a settings window".to_owned()
@@ -2224,7 +2315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let dock_result = async {
                         let window_handle = cx.update(ensure_settings_window)?;
                         let assert_window_preserved = |cx: &mut App| -> Result<(), String> {
-                            if cx.global::<ProductCoordinator>().settings_window.as_ref()
+                            if cx.global::<ProductCoordinator>().settings.window.as_ref()
                                 != Some(&window_handle)
                             {
                                 return Err("Dock toggle replaced the settings window".to_owned());
@@ -2357,7 +2448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let baseline = cx.update(|cx| -> Result<_, String> {
                     let coordinator = cx.global::<ProductCoordinator>();
                     let original_window = coordinator
-                        .settings_window
+                        .settings.window
                         .clone()
                         .ok_or_else(|| "settings window is not open".to_owned())?;
                     let frame_ticks = coordinator.frame_ticks;
@@ -2385,7 +2476,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let observed = cx.update(|cx| {
                         let coordinator = cx.global::<ProductCoordinator>();
                         (
-                            coordinator.settings_window.is_none(),
+                            coordinator.settings.window.is_none(),
                             original_window.read(cx).is_err(),
                         )
                     });
@@ -2419,7 +2510,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if coordinator.frame_ticks <= baseline_ticks {
                             return Ok(false);
                         }
-                        let reopened = coordinator.settings_window.clone().ok_or_else(|| {
+                        let reopened = coordinator.settings.window.clone().ok_or_else(|| {
                             "application reopen did not create a settings window".to_owned()
                         })?;
                         if reopened == original_window {
@@ -2515,7 +2606,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let observed = cx.update(|cx| {
                         let coordinator = cx.global::<ProductCoordinator>();
                         (
-                            coordinator.settings_window.is_none(),
+                            coordinator.settings.window.is_none(),
                             settings_window.read(cx).is_err(),
                         )
                     });
@@ -2566,7 +2657,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .to_owned(),
                             );
                         }
-                        let reopened = coordinator.settings_window.clone().ok_or_else(|| {
+                        let reopened = coordinator.settings.window.clone().ok_or_else(|| {
                             "instance wake did not create a settings window".to_owned()
                         })?;
                         if cx.windows().len() != 1 {
@@ -2665,4 +2756,855 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Err(Box::new(ProductRunError { failures }))
     }
+}
+
+#[cfg(target_os = "linux")]
+struct Product {
+    shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
+    overlay: Option<ProductOverlaySession>,
+    peer: Option<(bongocat_runtime::RuntimeOwner, ProductOverlaySession)>,
+    extra: Option<(bongocat_runtime::RuntimeOwner, ProductOverlaySession)>,
+    placements: std::collections::BTreeMap<String, bongocat_overlay::OverlayWindowBounds>,
+    local_device: String,
+    primary_device: Option<String>,
+    peer_device: Option<String>,
+    extra_device: Option<String>,
+    network: Arc<Mutex<net_publish::TransportController>>,
+    tray: Option<LinuxSystemTray>,
+    service: Option<ApplicationSettingsService>,
+    settings: ProductSettingsWindow,
+    frame_source: FrameSourceShutdown,
+    failures: Arc<Mutex<Vec<String>>>,
+    quit: Arc<AtomicBool>,
+    close_requested: bool,
+}
+#[cfg(target_os = "linux")]
+impl Global for Product {}
+#[cfg(target_os = "linux")]
+impl Product {
+    fn remember_positions(&mut self) {
+        for (device, overlay) in [
+            (self.primary_device.as_ref(), self.overlay.as_ref()),
+            (
+                self.peer_device.as_ref(),
+                self.peer.as_ref().map(|(_, overlay)| overlay),
+            ),
+            (
+                self.extra_device.as_ref(),
+                self.extra.as_ref().map(|(_, overlay)| overlay),
+            ),
+        ] {
+            if let Some(device) = device
+                && let Some(bounds) = overlay.and_then(|overlay| overlay.window_bounds().ok())
+            {
+                self.placements.insert(device.clone(), bounds);
+            }
+        }
+    }
+
+    fn begin_shutdown(&mut self) -> Option<impl Future<Output = ()> + use<>> {
+        // Product-owned quit completes this work before GPUI quits. The OS quit
+        // callback can also reach here, after that work has already been taken.
+        self.remember_positions();
+        let mut overlay = self.overlay.take()?;
+        self.quit.store(true, Ordering::Release);
+        self.frame_source.request_stop();
+        self.tray.take();
+        if let Some(shortcuts) = self.shortcut_service.take()
+            && let Err(error) = shortcuts.stop()
+        {
+            record_failure(&self.failures, error.to_string());
+        }
+        if let Err(error) = overlay.stop_input() {
+            record_failure(&self.failures, error.to_string());
+        }
+        let service = self.service.take().expect("running settings service");
+        let peers = [self.peer.take(), self.extra.take()];
+        let placements = std::mem::take(&mut self.placements);
+        let network = self.network.clone();
+        let frame_source = self.frame_source.clone();
+        let failures = self.failures.clone();
+        Some(async move {
+            network
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .shutdown();
+            let client = service.client();
+            for (device, bounds) in placements {
+                for _ in 0..20 {
+                    if client
+                        .update_device_overlay_window_placement(
+                            device.clone(),
+                            bounds.x,
+                            bounds.y,
+                            bounds.width,
+                            bounds.height,
+                        )
+                        .is_ok()
+                    {
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+            }
+            for (runtime, overlay) in peers.into_iter().flatten() {
+                frame_source.wait_for_stop().await;
+                if let Err(error) = runtime.shutdown(Duration::from_secs(2)) {
+                    record_failure(&failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&failures, error.to_string());
+                }
+            }
+            finish_product_services(overlay, service, &frame_source, false, false, &failures).await;
+        })
+    }
+}
+#[cfg(target_os = "linux")]
+include!(concat!(env!("OUT_DIR"), "/linux_presets.rs"));
+
+#[cfg(target_os = "linux")]
+fn presets() -> std::io::Result<tempfile::TempDir> {
+    let directory = tempfile::Builder::new()
+        .prefix("bongocat-models-")
+        .tempdir()?;
+    for (relative, bytes) in PRESET_FILES {
+        let path = directory.path().join(relative);
+        std::fs::create_dir_all(path.parent().expect("bundled model parent"))?;
+        std::fs::write(path, bytes)?;
+    }
+    Ok(directory)
+}
+#[cfg(target_os = "linux")]
+fn start_linux_product_input(cx: &mut App, hidden: bool) {
+    if hidden || bongocat_platform::unprivileged_input_is_possible() {
+        if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+            overlay.start_linux_input();
+        }
+    } else {
+        let settings = &cx.global::<Product>().settings;
+        let language = settings.seed.language;
+        if let Some(settings) = settings.window.clone() {
+            let _ = settings.update(cx, |_, window, cx| {
+                window.defer(cx, move |window, cx| {
+                    bongocat_ui::show_linux_input_permission(
+                        language,
+                        |cx| {
+                            cx.defer(|cx| {
+                                if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                                    overlay.start_linux_input();
+                                }
+                            });
+                        },
+                        window,
+                        cx,
+                    );
+                });
+            });
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    if options.automated_verification() {
+        return Err("Linux smoke modes have not been implemented".into());
+    }
+    let run_duration = options.run_duration();
+    if gpui_kit::guess_compositor() != "Wayland" {
+        return Err("BongoCat Linux requires a Wayland session".into());
+    }
+    let preset_directory = presets()?;
+    let hidden = options.hide;
+    let mut application = Application::start(preset_directory.path())?;
+    // `--hide` starts the session with the overlay already invisible instead of
+    // switching it off afterwards: the runtime publishes the first frame the
+    // session draws, so turning it off later would show the pet for a frame and
+    // then take it away. Visibility is runtime state, so everything that shows
+    // the overlay again — the status icon, the settings switch — still works.
+    if hidden {
+        application.set_overlay_visible(false)?;
+    }
+    application.install_process_panic_hook();
+    let _core_log = bongocat_live2d::CoreLogHandle::install(
+        application.logs_directory(),
+        application.log_settings_controller(),
+    )?;
+    // A relay that is switched on needs a room key before the plan is read, and
+    // the key is generated here rather than at the relay so it is stored: it has
+    // to be the same after a restart, or every peer would have to be
+    // reconfigured each time this machine comes back.
+    // The identity is unconditional: every run announces itself, not just a run
+    // that serves a relay, and two machines that both start from the template
+    // would collide even when neither is serving anything.
+    application.ensure_network_device_identity()?;
+    if application.config().network.server.enabled {
+        application.ensure_network_server_token()?;
+    }
+    let network_plan = net_publish::plan(&options, &application.config().network);
+    let mut display = network_plan.initial_display();
+    let mut room_available = network_plan.join.is_some();
+    let fixed_watch = options.watch;
+    // Read before `options` is handed to the session below, which consumes it.
+    let watching = network_plan.watching();
+    application.restore_startup_model()?;
+    let mut peer_runtime = (!fixed_watch)
+        .then(|| application.start_peer_runtime())
+        .transpose()?;
+    let mut extra_runtime = (!fixed_watch)
+        .then(|| application.start_peer_runtime())
+        .transpose()?;
+    let net_publish::NetworkSession {
+        input: input_producer,
+        local_input,
+        display: display_routing,
+        control: network,
+    } = net_publish::start(
+        options.clone(),
+        &network_plan,
+        application.input_producer(),
+        application.cursor_producer(),
+        peer_runtime.as_ref().map(|(runtime, _)| runtime.client()),
+        extra_runtime.as_ref().map(|(runtime, _)| runtime.client()),
+    )?;
+    let local_device = application.config().network.device.id.clone();
+    let placements: std::collections::BTreeMap<_, _> = application
+        .device_overlay_window_placements()
+        .iter()
+        .map(|(id, bounds)| {
+            (
+                id.clone(),
+                bongocat_overlay::OverlayWindowBounds::new(
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height,
+                ),
+            )
+        })
+        .collect();
+    let primary_device = if display.local {
+        Some(local_device.clone())
+    } else {
+        display.first_device().map(str::to_owned)
+    };
+    let peer_device = display
+        .both()
+        .then(|| display.first_device().map(str::to_owned))
+        .flatten();
+    let config = &application.config().overlay;
+    let options = OverlaySessionOptions {
+        click_through: config.click_through,
+        always_on_top: config.always_on_top,
+        keep_inside_screen: config.keep_inside_screen,
+        window_bounds: primary_device
+            .as_ref()
+            .and_then(|id| placements.get(id).copied())
+            .or_else(|| {
+                application.overlay_window_placement().map(|placement| {
+                    bongocat_overlay::OverlayWindowBounds::new(
+                        placement.x,
+                        placement.y,
+                        placement.width,
+                        placement.height,
+                    )
+                })
+            }),
+        scale_percent: config.scale_percent,
+        opacity_percent: config.opacity_percent,
+        corner_radius_percent: config.corner_radius_percent,
+        maximum_fps: config.maximum_fps,
+        ..Default::default()
+    };
+    let peer_bounds = peer_device
+        .as_ref()
+        .and_then(|id| placements.get(id).copied());
+    bongocat_platform::set_linux_pointer_sensitivity(
+        application.config().input.pointer_sensitivity_percent,
+    );
+    let application_log = application.log_handle();
+    let runtime = application.runtime_client();
+    let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
+    let mut overlay = ProductOverlaySession::start_with_interaction_sinks(
+        runtime.clone(),
+        input_producer,
+        application.cursor_producer(),
+        application.gamepad_axis_producer(),
+        application.take_render_consumer()?,
+        options,
+        OverlayInteractionSinks {
+            context_menu_sender: None,
+            resize_sender: Some(resize_sender),
+            hud_consumer: None,
+            hud_interaction_sender: None,
+            hud_viewport_reporter: None,
+        },
+    )?;
+    overlay.set_linux_display_selected(display.local);
+    let peer = if network_plan.shows_both()
+        && let Some((runtime, consumer)) = peer_runtime.take()
+    {
+        let mut overlay =
+            overlay.start_linux_peer(runtime.client(), consumer, options, peer_bounds)?;
+        overlay.set_linux_display_selected(false);
+        Some((runtime, overlay))
+    } else {
+        None
+    };
+    let extra_device = display.extra_device().map(str::to_owned);
+    let extra = if let Some(id) = &extra_device
+        && let Some((runtime, consumer)) = extra_runtime.take()
+    {
+        let anchor = peer.as_ref().map_or(&overlay, |(_, peer)| peer);
+        let saved = placements.get(id).copied();
+        let mut extra = anchor.start_linux_peer(runtime.client(), consumer, options, saved)?;
+        extra.set_linux_display_selected(false);
+        Some((runtime, extra))
+    } else {
+        None
+    };
+    overlay.set_linux_alpha_output_enabled(
+        application.config().alpha_output.enabled,
+        bongocat_app::BUILD_ENVIRONMENT,
+    );
+    application.set_overlay_always_on_top_available(overlay.linux_always_on_top_available());
+    let (sender, receiver) = std::sync::mpsc::sync_channel(64);
+    let shortcut_service = bongocat_platform::GlobalShortcutService::start(
+        application.shortcut_table(),
+        bongocat_app::application_shortcut_dispatcher(runtime, sender),
+    )?;
+    let tick_runtime = application.runtime_client();
+    let network = Arc::new(Mutex::new(network));
+    let network_apply = network.clone();
+    let signals = ApplicationMainThreadSignals::default().with_network_apply(move |config| {
+        let mut network = network_apply
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        network.apply(config).map_err(|error| {
+            SettingsError::new(match error {
+                net_publish::NetworkApplyError::Relay => SettingsErrorCode::NetworkRelayFailed,
+                net_publish::NetworkApplyError::Room => SettingsErrorCode::NetworkRoomFailed,
+                net_publish::NetworkApplyError::Restore => SettingsErrorCode::NetworkRestoreFailed,
+            })
+        })?;
+        Ok(bongocat_app::NetworkRuntimeSelection {
+            has_room: network.connected_room_configured(),
+            publishes_input: network.publishing_configured(),
+        })
+    });
+    let (status_sender, status_receiver) = std::sync::mpsc::sync_channel(4);
+    let service = ApplicationSettingsService::start_with_product_capabilities(
+        application,
+        receiver,
+        signals.clone(),
+        Arc::new(product_icons::ProductStatusIcon {
+            sender: status_sender,
+        }),
+    )?;
+    let client = service.client();
+    let snapshot = async_io::block_on(client.read_snapshot())?;
+    let seed = SettingsWindowSeed {
+        language: snapshot.resolved_language,
+        appearance_theme: snapshot.appearance_theme,
+    };
+    let presentation = system_menu::system_menu_presentation(&snapshot);
+    let (tray, tray_actions, tray_error) =
+        match LinuxSystemTray::start(presentation.clone(), snapshot.status_icon_visible) {
+            Ok((tray, receiver)) => (Some(tray), Some(receiver), false),
+            Err(error) => {
+                report_error("system tray", error);
+                (None, None, true)
+            }
+        };
+    let quit = Arc::new(AtomicBool::new(false));
+    let frame_source = FrameSourceShutdown::default();
+    let failures = Arc::new(Mutex::new(Vec::new()));
+    let run_failures = failures.clone();
+    gpui_application().with_assets(AllAssets).run(move |cx| {
+        gpui_kit::init(cx);
+        cx.set_global(Product {
+            shortcut_service: Some(shortcut_service),
+            overlay: Some(overlay),
+            peer,
+            extra,
+            placements,
+            local_device,
+            primary_device,
+            peer_device,
+            extra_device,
+            network,
+            tray,
+            service: Some(service),
+            settings: ProductSettingsWindow::new(seed),
+            frame_source: frame_source.clone(),
+            failures: failures.clone(),
+            quit: quit.clone(),
+            close_requested: false,
+        });
+        // A hidden run shows no window at all, so the settings window stays shut
+        // until the status icon asks for it. That window is the only other entry
+        // point besides the icon, and it is the one that carries the permission
+        // explanation below, so the hidden path starts capture on its own.
+        if !hidden {
+            open_settings(cx);
+        }
+        let palette = bongocat_ui::linux_system_menu_palette(cx);
+        cx.global_mut::<Product>()
+            .overlay
+            .as_mut()
+            .expect("running overlay")
+            .set_linux_menu_presentation(presentation.clone(), palette);
+        if !watching {
+            start_linux_product_input(cx, hidden);
+        }
+        if tray_error && let Some(settings) = cx.global::<Product>().settings.window.clone() {
+            let _ = settings.update(cx, |_, window, cx| {
+                window.push_notification(
+                    Notification::new()
+                        .message(bongocat_i18n::text(
+                            seed.language.catalog_locale(),
+                            "linux_tray.unavailable",
+                        ))
+                        .with_type(NotificationType::Error),
+                    cx,
+                );
+            });
+        }
+        let menu_client = client.clone();
+        let menu_quit = quit.clone();
+        cx.spawn(async move |cx| {
+            let mut last_presentation = None;
+            while !menu_quit.load(Ordering::Acquire) {
+                Timer::after(Duration::from_secs(1)).await;
+                let Ok(snapshot) = menu_client.read_snapshot().await else {
+                    break;
+                };
+                let next = system_menu::system_menu_presentation(&snapshot);
+                cx.update(|cx| {
+                    let palette = bongocat_ui::linux_system_menu_palette(cx);
+                    let product = cx.global_mut::<Product>();
+                    product.settings.seed = SettingsWindowSeed {
+                        language: snapshot.resolved_language,
+                        appearance_theme: snapshot.appearance_theme,
+                    };
+                    if last_presentation
+                        .as_ref()
+                        .is_some_and(|(presentation, colors)| {
+                            presentation == &next && *colors == palette
+                        })
+                    {
+                        return;
+                    }
+                    if let Some(overlay) = &mut product.overlay {
+                        overlay.set_linux_menu_presentation(next.clone(), palette);
+                    }
+                    if let Some(tray) = &product.tray
+                        && let Err(error) = tray.set_presentation(next.clone())
+                    {
+                        report_error("tray update", error);
+                    }
+                    last_presentation = Some((next.clone(), palette));
+                });
+            }
+        })
+        .detach();
+        cx.on_app_quit(|cx| {
+            let shutdown = cx.global_mut::<Product>().begin_shutdown();
+            async move {
+                if let Some(shutdown) = shutdown {
+                    shutdown.await;
+                }
+            }
+        })
+        .detach();
+        let cover_signals = signals.clone();
+        let cover_client = client.clone();
+        let cover_quit = quit.clone();
+        cx.spawn(async move |cx| {
+            while !cover_quit.load(Ordering::Acquire) {
+                Timer::after(Duration::from_millis(
+                    model_cover::COVER_CAPTURE_POLL_INTERVAL_MS,
+                ))
+                .await;
+                if cover_quit.load(Ordering::Acquire) {
+                    break;
+                }
+                for capture in cover_signals.take_model_cover_captures() {
+                    let (key, captured) = model_cover::capture_imported_model_cover(
+                        &cover_client,
+                        capture,
+                        &application_log,
+                    )
+                    .await;
+                    cx.update(|cx| {
+                        if let Some(window) = cx.global::<Product>().settings.window.clone() {
+                            let _ = window.update(cx, |view, _, cx| {
+                                view.finish_model_cover_capture(&key, captured, cx)
+                            });
+                        }
+                    });
+                }
+            }
+        })
+        .detach();
+        cx.spawn(async move |cx| {
+            let frame_guard = frame_source.run_guard();
+            let mut gamepad_observer = GamepadConnectionObserver::default();
+            let started = std::time::Instant::now();
+            let mut last_tick = started;
+            let mut pending_alpha_stop: Option<bongocat_app::AlphaOutputStop> = None;
+            let mut input_requested = !watching;
+            loop {
+                let scheduling = tick_runtime.frame_scheduling();
+                let interval = bongocat_runtime::frame_interval_for_runtime(
+                    scheduling.maximum_fps,
+                    (scheduling.overlay_visible && display.primary())
+                        || scheduling.video_output_active,
+                )
+                .expect("validated frame rate");
+                Timer::after(interval.saturating_sub(last_tick.elapsed())).await;
+                if frame_source.stop_requested() {
+                    break;
+                }
+                last_tick = std::time::Instant::now();
+                if !run_duration.is_zero() && started.elapsed() >= run_duration {
+                    quit.store(true, Ordering::Release);
+                }
+                let done = cx.update(|cx| {
+                    if quit.load(Ordering::Acquire) {
+                        if let Some(settings) = cx.global::<Product>().settings.window.clone() {
+                            let _ = settings.update(cx, |_, window, _| window.remove_window());
+                        }
+                        let shutdown = cx
+                            .global_mut::<Product>()
+                            .begin_shutdown()
+                            .expect("frame source still owns the running product");
+                        cx.spawn(async move |cx| {
+                            shutdown.await;
+                            cx.update(|cx| cx.quit());
+                        })
+                        .detach();
+                        return true;
+                    }
+                    if let Some(request) = signals.take_alpha_output_request()
+                        && let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
+                    {
+                        overlay.set_linux_alpha_output_enabled(
+                            request.enabled(),
+                            bongocat_app::BUILD_ENVIRONMENT,
+                        );
+                        pending_alpha_stop = request.into_stop();
+                    }
+                    if let Some(bongocat_app::NetworkDisplayUpdate {
+                        local_device,
+                        devices,
+                        runtime: available,
+                    }) = signals.take_network_display()
+                        && !fixed_watch
+                    {
+                        if let Some(available) = available {
+                            room_available = available.has_room;
+                        }
+                        let next =
+                            net_publish::DisplaySelection::from_devices(&devices, room_available);
+                        let product = cx.global_mut::<Product>();
+                        product.remember_positions();
+                        product.local_device = local_device;
+                        let primary_device = if next.local {
+                            Some(product.local_device.clone())
+                        } else {
+                            next.first_device().map(str::to_owned)
+                        };
+                        let peer_device = next
+                            .both()
+                            .then(|| next.first_device().map(str::to_owned))
+                            .flatten();
+                        let peer_bounds = peer_device
+                            .as_ref()
+                            .and_then(|id| product.placements.get(id).copied());
+                        if next.both()
+                            && product.peer.is_none()
+                            && let Some((runtime, consumer)) = peer_runtime.take()
+                            && let Some(primary) = &product.overlay
+                        {
+                            match primary.start_linux_peer(
+                                runtime.client(),
+                                consumer,
+                                options,
+                                peer_bounds,
+                            ) {
+                                Ok(overlay) => product.peer = Some((runtime, overlay)),
+                                Err(error) => report_error("peer overlay", error),
+                            }
+                        }
+                        let extra_device = next.extra_device().map(str::to_owned);
+                        let extra_bounds = extra_device
+                            .as_ref()
+                            .and_then(|id| product.placements.get(id).copied());
+                        if extra_device.is_some()
+                            && product.extra.is_none()
+                            && let Some((runtime, consumer)) = extra_runtime.take()
+                            && let Some(anchor) = product
+                                .peer
+                                .as_ref()
+                                .map(|(_, overlay)| overlay)
+                                .or(product.overlay.as_ref())
+                        {
+                            match anchor.start_linux_peer(
+                                runtime.client(),
+                                consumer,
+                                options,
+                                extra_bounds,
+                            ) {
+                                Ok(overlay) => product.extra = Some((runtime, overlay)),
+                                Err(error) => report_error("extra overlay", error),
+                            }
+                        }
+                        if (!next.both() || product.peer.is_some())
+                            && (extra_device.is_none() || product.extra.is_some())
+                        {
+                            if primary_device != product.primary_device
+                                && let Some(saved) = primary_device
+                                    .as_ref()
+                                    .and_then(|id| product.placements.get(id))
+                                && let Some(overlay) = &product.overlay
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            if peer_device != product.peer_device
+                                && let Some(saved) = peer_bounds
+                                && let Some((_, overlay)) = &product.peer
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            if extra_device != product.extra_device
+                                && let Some(saved) = extra_bounds
+                                && let Some((_, overlay)) = &product.extra
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            product.extra_device = extra_device;
+                            product.primary_device = primary_device;
+                            product.peer_device = peer_device;
+                            display_routing.select(next.clone());
+                            let needs_input = !input_requested
+                                && (next.local
+                                    || available.is_some_and(|state| state.publishes_input));
+                            display = next;
+                            if needs_input {
+                                input_requested = true;
+                                start_linux_product_input(cx, false);
+                            }
+                        }
+                    }
+                    let window_behavior = tick_runtime.snapshot();
+                    if !input_requested
+                        && window_behavior
+                            .overlay_settings
+                            .hold_modifier_to_interact
+                            .is_some()
+                        && window_behavior.overlay_settings.click_through
+                        && scheduling.overlay_visible
+                    {
+                        input_requested = true;
+                        start_linux_product_input(cx, hidden);
+                    }
+                    let window_settings = window_behavior.overlay_settings;
+                    let local_modifiers = local_input.local_modifiers();
+                    let remote_available =
+                        display.remote_available(bongocat_net::network_status().room.as_ref());
+                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                        overlay.set_linux_display_selected(display.local || remote_available);
+                        if let Err(e) = overlay.tick_linux_window(
+                            window_settings,
+                            local_modifiers,
+                            if display.local {
+                                window_behavior.platform_input.service_status
+                                    == bongocat_runtime::PlatformInputServiceStatus::Running
+                            } else {
+                                remote_available
+                            },
+                        ) {
+                            record_failure(&failures, e.to_string());
+                            quit.store(true, Ordering::Release);
+                        }
+                        if pending_alpha_stop.is_some()
+                            && overlay.linux_alpha_output_status()
+                                == bongocat_overlay::AlphaOutputStatus::Disabled
+                            && let Some(stop) = pending_alpha_stop.take()
+                        {
+                            stop.complete();
+                        }
+                    }
+                    let room = bongocat_net::network_status().room;
+                    let product = cx.global_mut::<Product>();
+                    for (window, visible) in [
+                        (&mut product.peer, display.both() && remote_available),
+                        (&mut product.extra, display.extra_available(room.as_ref())),
+                    ] {
+                        if let Some((runtime, overlay)) = window {
+                            overlay.set_linux_display_selected(visible);
+                            let peer = runtime.client();
+                            if peer.snapshot().overlay_visible != scheduling.overlay_visible {
+                                let _ =
+                                    peer.send(bongocat_runtime::RuntimeCommand::SetOverlayVisible(
+                                        scheduling.overlay_visible,
+                                    ));
+                            }
+                            if let Err(error) =
+                                overlay.tick_linux_window(window_settings, local_modifiers, visible)
+                            {
+                                record_failure(&failures, error.to_string());
+                                quit.store(true, Ordering::Release);
+                            }
+                        }
+                    }
+                    if let Some(primary) = &product.overlay {
+                        primary.sync_linux_alpha_scene(
+                            display.primary(),
+                            [
+                                product
+                                    .peer
+                                    .as_mut()
+                                    .map(|(_, overlay)| (overlay, display.both())),
+                                product.extra.as_mut().map(|(_, overlay)| {
+                                    (overlay, display.extra_device().is_some())
+                                }),
+                            ]
+                            .into_iter()
+                            .flatten(),
+                        );
+                    }
+                    if let Ok(resized) = resize_receiver.try_recv() {
+                        let client = client.clone();
+                        cx.spawn(async move |_| {
+                            product_settings::publish_overlay_scale(&client, resized.scale_percent)
+                                .await;
+                        })
+                        .detach();
+                    }
+                    let mut tray_quit = false;
+                    while let Some(action) = cx
+                        .global_mut::<Product>()
+                        .overlay
+                        .as_mut()
+                        .and_then(|overlay| overlay.take_linux_menu_action())
+                        .or_else(|| {
+                            tray_actions
+                                .as_ref()
+                                .and_then(|receiver| receiver.try_recv().ok())
+                        })
+                    {
+                        match action {
+                            SystemMenuAction::OpenSettings => signals.request_open_settings(),
+                            SystemMenuAction::Quit => tray_quit = true,
+                            SystemMenuAction::ToggleOverlayVisibility
+                            | SystemMenuAction::ToggleClickThrough
+                            | SystemMenuAction::ToggleAlwaysOnTop => {
+                                let client = client.clone();
+                                cx.spawn(async move |cx| {
+                                    if let Err(error) =
+                                        system_menu::apply_system_menu_overlay_action(
+                                            client.clone(),
+                                            action,
+                                        )
+                                        .await
+                                    {
+                                        cx.update(|cx| {
+                                            if let Some(settings) =
+                                                cx.global::<Product>().settings.window.clone()
+                                            {
+                                                let _ = settings.update(cx, |view, _, cx| {
+                                                    view.report_service_error(error, cx)
+                                                });
+                                            }
+                                        });
+                                    }
+                                })
+                                .detach();
+                            }
+                            _ => {}
+                        }
+                    }
+                    let product = cx.global_mut::<Product>();
+                    while let Ok(request) = status_receiver.try_recv() {
+                        let result = product
+                            .tray
+                            .as_ref()
+                            .ok_or(SettingsError::new(
+                                SettingsErrorCode::StatusIconUpdateFailed,
+                            ))
+                            .and_then(|tray| {
+                                tray.set_visible(request.visible).map_err(|_| {
+                                    SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
+                                })
+                            });
+                        let _ = request.reply.send(result);
+                    }
+                    let close = (tray_quit
+                        || product
+                            .overlay
+                            .as_ref()
+                            .is_some_and(|o| o.linux_close_requested()))
+                        && !product.close_requested;
+                    if close {
+                        product.close_requested = true;
+                        if let Some(settings) =
+                            product.settings.window.clone().filter(|w| w.is_open())
+                        {
+                            if settings.request_quit_after_flush(cx).is_err() {
+                                quit.store(true, Ordering::Release);
+                            }
+                        } else {
+                            quit.store(true, Ordering::Release);
+                        }
+                    }
+                    if signals.take_open_settings_request() {
+                        open_settings(cx);
+                    }
+                    false
+                });
+                if done || frame_source.stop_requested() {
+                    break;
+                }
+                gamepad_observer.observe(tick_runtime.connected_gamepad_count(), &client);
+            }
+            drop(frame_guard);
+        })
+        .detach();
+    });
+    let failures = run_failures.lock().unwrap().clone();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(ProductRunError { failures }.into())
+    }
+}
+#[cfg(target_os = "linux")]
+fn open_settings(cx: &mut App) {
+    let result = cx.update_global::<Product, _>(|product, cx| {
+        let service = product.service.as_ref().expect("running settings service");
+        let quit = product.quit.clone();
+        product.settings.ensure(
+            service.client(),
+            service.window_state(),
+            None,
+            move |_| {
+                quit.store(true, Ordering::Release);
+            },
+            |_| {},
+            cx,
+        )
+    });
+    if let Err(error) = result {
+        let product = cx.global::<Product>();
+        record_failure(&product.failures, error);
+        product.quit.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn report_error(context: &str, error: impl std::fmt::Display) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr().lock(), "{context}: {error}");
 }

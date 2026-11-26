@@ -21,6 +21,9 @@ pub(crate) enum PendingOperation {
     AutomaticUpdateCheck,
     CheckForUpdatesIntervalHours,
     LoggingSettings,
+    NetworkSettings,
+    #[cfg(target_os = "linux")]
+    AlphaOutput,
     OverlayVisibility,
     OverlaySettings,
     OverlayScale,
@@ -33,6 +36,7 @@ pub(crate) enum PendingOperation {
     BehaviorShortcuts,
     RandomBehavior,
     MaximumFps,
+    PointerSensitivity,
     ModelSettings,
     GamepadAxisSettings,
     CursorSettings,
@@ -88,6 +92,18 @@ pub(crate) enum SettingValue {
         expected_config_revision: u64,
         settings: SettingsLogging,
     },
+    // The three parts of the multiplayer section travel together: the device
+    // this machine calls itself, what it joins and what it serves are one
+    // persisted object, so a change to any of them is one write.
+    NetworkSettings {
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
+    },
+    #[cfg(target_os = "linux")]
+    AlphaOutputEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
     OverlayVisible {
         expected_config_revision: u64,
         visible: bool,
@@ -140,6 +156,10 @@ pub(crate) enum SettingValue {
     MaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
+    },
+    PointerSensitivity {
+        expected_config_revision: u64,
+        pointer_sensitivity_percent: u16,
     },
     ModelSettings {
         expected_config_revision: u64,

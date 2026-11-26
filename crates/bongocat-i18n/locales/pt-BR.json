@@ -31,6 +31,9 @@
     "plugins": {
       "title": "Central de plugins",
       "empty": "Nenhum plugin disponível."
+    },
+    "multiplayer": {
+      "title": "Multijogador"
     }
   },
   "system_menu": {
@@ -67,6 +70,11 @@
       "title": "Recomendado executar com acesso de administrador",
       "description": "O BongoCat precisa de acesso de administrador para continuar recebendo a entrada do teclado e do mouse enquanto outro aplicativo é executado com privilégios de administrador.\n\nPara configurar: clique com o botão direito em BongoCat → Propriedades → Compatibilidade → ative \"Executar este programa como administrador\".",
       "open_program_folder": "Sair e abrir as configurações"
+    },
+    "linux": {
+      "title": "Permitir o monitoramento do teclado e mouse?",
+      "description": "O BongoCat precisa acessar os dispositivos de entrada para reagir ao teclado e mouse em outros aplicativos. Ao confirmar, o sistema solicitará autorização de administrador. Apenas o processo auxiliar de entrada recebe esse acesso; as configurações e a janela do modelo continuam como usuário comum. Configure depois para continuar sem reações de teclado e mouse.",
+      "confirm": "OK"
     }
   },
   "about": {
@@ -331,7 +339,10 @@
       "dock_icon_update_failed": "Não foi possível atualizar o ícone do Dock.",
       "window_hide_failed": "Não foi possível ocultar a janela de configurações",
       "window_layout_save_failed": "Não foi possível salvar o layout da janela",
-      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo"
+      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo",
+      "network_relay_failed": "Não foi possível iniciar o Servidor da sala. Verifique o endereço e a porta de escuta.",
+      "network_room_failed": "Não foi possível entrar na sala. Verifique o endereço e a chave.",
+      "network_restore_failed": "Não foi possível restaurar a sessão anterior. Verifique a conexão e tente novamente."
     }
   },
   "settings": {
@@ -467,6 +478,10 @@
         "force_move": {
           "label": "Forçar movimento do mouse",
           "description": "Continua seguindo o mouse em aplicativos que capturam o ponteiro, como jogos em tela cheia."
+        },
+        "sensitivity": {
+          "label": "Sensibilidade do rastreamento do mouse (%)",
+          "description": "100% é a velocidade padrão. Valores menores tornam o movimento mais lento; o deslocamento excedente no limite é descartado."
         }
       },
       "keyboard": {
@@ -534,7 +549,8 @@
       "status_icon": {
         "label": {
           "macos": "Mostrar o ícone na barra de menus",
-          "windows": "Mostrar o ícone na bandeja do sistema"
+          "windows": "Mostrar o ícone na bandeja do sistema",
+          "linux": "Mostrar ícone na bandeja do sistema"
         }
       },
       "taskbar_icon": {
@@ -561,6 +577,168 @@
         "unsupported_platform": "A inicialização automática não está disponível neste sistema",
         "unsupported_os": "A inicialização automática não está disponível neste sistema operacional",
         "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
+      }
+    },
+    "alpha": {
+      "camera": "Câmera virtual",
+      "driver": "Driver",
+      "enable": "Ativar saída Alpha",
+      "error": {
+        "authorization": "A autorização falhou ou foi cancelada; verifique o agente de autenticação",
+        "busy": "Uma operação da câmera está em andamento",
+        "config": "Não foi possível salvar a configuração",
+        "conflict": "Não foi possível verificar a propriedade da câmera",
+        "driver": "Instale primeiro o driver v4l2loopback",
+        "operation": "A operação da câmera falhou",
+        "permission": "Não foi possível definir a permissão da câmera",
+        "rollback": "A instalação falhou e a reversão requer atenção",
+        "service": "Serviço de configurações indisponível",
+        "stale": "As configurações mudaram; atualize e tente novamente",
+        "stop": "Não foi possível parar a saída; tente novamente",
+        "unsupported": "Ferramentas ou serviços necessários indisponíveis"
+      },
+      "install": "Instalar câmera virtual",
+      "management": "Gerenciamento de dispositivos",
+      "module": "Módulo do kernel",
+      "output": "Saída",
+      "refresh": "Verificar novamente",
+      "retry": "Tentar saída novamente",
+      "title": "Saída Alpha",
+      "uninstall": "Desinstalar câmera virtual",
+      "value": {
+        "available": "Disponível",
+        "checking": "Verificando…",
+        "conflict": "Conflito de propriedade",
+        "control_missing": "v4l2loopback-ctl não instalado",
+        "driver_missing": "Driver não instalado",
+        "failed": "Falhou",
+        "format": "Formato não suportado",
+        "installed": "Instalado",
+        "loaded": "Carregado",
+        "module_tools_missing": "Ferramentas de módulo indisponíveis",
+        "not_installed": "Não instalado",
+        "not_loaded": "Não carregado",
+        "off": "Desativada",
+        "permission": "Permissão negada",
+        "pkexec_missing": "pkexec não instalado",
+        "recovery": "Reinstale a câmera virtual",
+        "running": "Em execução",
+        "starting": "Iniciando",
+        "stopping": "Parando",
+        "udev_missing": "udevadm não instalado",
+        "unavailable": "Dispositivo indisponível",
+        "unknown": "Desconhecido",
+        "unsupported": "Indisponível"
+      }
+    },
+    "multiplayer": {
+      "editor": {
+        "connect": "Conectar",
+        "change_connection": "Alterar conexão…",
+        "edit_connection": "Configurar conexão…",
+        "apply_relay": "Aplicar configurações do servidor",
+        "edit_relay": "Configurar servidor…",
+        "cancel": "Cancelar",
+        "disconnect": "Desconectar"
+      },
+      "device": {
+        "title": "Esta máquina",
+        "id": {
+          "label": "ID do dispositivo"
+        },
+        "name": {
+          "label": "Nome exibido"
+        }
+      },
+      "display": {
+        "title": "Dispositivos exibidos",
+        "self": {
+          "label": "Esta máquina (seguir a minha própria entrada)"
+        },
+        "peer": {
+          "sharing": "compartilhando",
+          "not_sharing": "não compartilhando",
+          "offline": "offline",
+          "saved": "Dispositivo selecionado",
+          "unnamed": "Dispositivo sem nome"
+        },
+        "empty": "Escolha quais dispositivos da sala exibir."
+      },
+      "client": {
+        "title": "Entrar em uma sala",
+        "source": {
+          "label": "Modo de conexão",
+          "options": {
+            "follow_local": "Seguir o serviço nesta máquina",
+            "manual": "Informar um endereço eu mesmo"
+          }
+        },
+        "url": {
+          "label": "Endereço"
+        },
+        "token": {
+          "label": "Chave da sala"
+        },
+        "publish": {
+          "label": "Enviar a minha entrada para a sala"
+        }
+      },
+      "server": {
+        "title": "Servidor da sala",
+        "enabled": {
+          "label": "Executar o serviço nesta máquina"
+        },
+        "listen": {
+          "label": "Escutar em",
+          "options": {
+            "local_only": "Somente esta máquina",
+            "ipv4": "Somente a rede local",
+            "dual_stack": "A rede local e esta máquina",
+            "custom": "Um endereço que eu escolher"
+          }
+        },
+        "address": {
+          "label": "Endereço"
+        },
+        "port": {
+          "label": "Porta"
+        },
+        "token": {
+          "label": "Chave da sala"
+        }
+      },
+      "status": {
+        "title": "Status",
+        "server": {
+          "label": "Servidor da sala",
+          "stopped": "Não está em execução"
+        },
+        "client": {
+          "label": "Sala",
+          "state": {
+            "off": "Não conectado",
+            "connecting": "Conectando…",
+            "connected": "Conectado",
+            "reconnecting": "Reconectando…",
+            "failed": "Falha na conexão"
+          }
+        },
+        "peers": {
+          "label": "Outras máquinas na sala",
+          "none": "Fora da sala"
+        },
+        "device_id": {
+          "label": "ID deste dispositivo",
+          "copy": "Copiar",
+          "copy_failed": "Não foi possível copiar o ID deste dispositivo."
+        },
+        "latency": {
+          "label": "Latência",
+          "none": "não conectado"
+        }
+      },
+      "status_and_devices": {
+        "title": "Status e dispositivos"
       }
     }
   },
@@ -601,5 +779,13 @@
       "reported": "Erro do plugin: %{name} — %{reason}",
       "preview_failed": "Falha na prévia do plugin: %{name}"
     }
+  },
+  "linux_input": {
+    "unavailable": "Serviço de entrada indisponível. Verifique se pkexec, libinput e um agente de autenticação do ambiente gráfico estão disponíveis e reabra o aplicativo.",
+    "denied": "A autorização de entrada não foi concluída. Reabra o aplicativo e conclua a autenticação para animar o modelo com o teclado e o mouse.",
+    "stopped": "O serviço de entrada parou. Reabra o aplicativo e verifique a autorização e a sessão atual do ambiente gráfico."
+  },
+  "linux_tray": {
+    "unavailable": "Não foi possível mostrar o ícone na bandeja. Verifique se o ambiente gráfico oferece suporte à bandeja do sistema; o GNOME exige uma extensão AppIndicator."
   }
 }

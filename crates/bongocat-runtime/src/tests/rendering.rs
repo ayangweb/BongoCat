@@ -92,6 +92,7 @@ fn frame_scheduling_agrees_with_the_published_snapshot() {
         FrameScheduling {
             maximum_fps: ready.maximum_fps,
             overlay_visible: ready.overlay_visible,
+            video_output_active: ready.video_output_active,
         }
     );
 
@@ -109,4 +110,48 @@ fn frame_scheduling_agrees_with_the_published_snapshot() {
         frame_interval_for_runtime(scheduling.maximum_fps, scheduling.overlay_visible),
         frame_interval_for_runtime(changed.maximum_fps, changed.overlay_visible)
     );
+}
+
+#[test]
+fn video_output_keeps_hidden_model_frames_advancing() {
+    let (owner, consumer) = RuntimeOwner::start_with_rendering(false, 8);
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let sequence = client
+        .send(RuntimeCommand::SetVideoOutputStatus(
+            VideoOutputStatus::Running,
+        ))
+        .expect("enable output");
+    let active = client
+        .wait_for_command(sequence, TIMEOUT)
+        .expect("output enabled");
+    assert!(!active.overlay_visible);
+    assert!(active.video_output_active);
+    assert!(client.frame_scheduling().video_output_active);
+    let activation = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("activate model");
+    let prepared = wait_for_prepared_model(&client, &consumer, activation);
+    report_model_prepared(&client, &consumer, &prepared);
+    let first = wait_for_render_frame(&consumer, |frame| {
+        frame.model_generation == prepared.model_generation
+            && frame.frame_number > prepared.frame_number
+    });
+    let later = wait_for_render_frame(&consumer, |frame| {
+        frame.model_generation == first.model_generation && frame.frame_number > first.frame_number
+    });
+    assert!(later.frame_number > first.frame_number);
+    let sequence = client
+        .send(RuntimeCommand::SetVideoOutputStatus(
+            VideoOutputStatus::Disabled,
+        ))
+        .expect("disable output");
+    let inactive = client
+        .wait_for_command(sequence, TIMEOUT)
+        .expect("output disabled");
+    assert!(!inactive.overlay_visible);
+    assert!(!inactive.video_output_active);
+    owner.shutdown(TIMEOUT).expect("runtime shutdown");
 }

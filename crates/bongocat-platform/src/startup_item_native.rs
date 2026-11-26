@@ -37,7 +37,7 @@ pub(super) fn set_enabled(
             .map_err(|_| StartupItemError::DisableFailed)?;
         state(environment)
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     {
         let current = backend
             .is_enabled()
@@ -56,7 +56,7 @@ pub(super) fn set_enabled(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(not(target_os = "windows"))]
 fn enable_error(error: auto_launch::Error) -> StartupItemError {
     match error {
         auto_launch::Error::AppPathDoesntExist(_) | auto_launch::Error::AppPathIsNotAbsolute(_) => {
@@ -138,14 +138,14 @@ mod tests {
             Ok(StartupItemState::Enabled)
         );
         assert_eq!(state(environment), Ok(StartupItemState::Enabled));
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         assert!(launch_agent_plist_path(app_name(environment)).exists());
 
         assert_eq!(
             set_enabled(environment, false),
             Ok(StartupItemState::Disabled)
         );
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         assert!(!launch_agent_plist_path(app_name(environment)).exists());
 
         if matches!(original, StartupItemState::Enabled) {
@@ -158,7 +158,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     fn launch_agent_plist_path(app_name: &str) -> std::path::PathBuf {
         let home = std::env::var("HOME").expect("HOME environment variable");
         std::path::Path::new(&home)

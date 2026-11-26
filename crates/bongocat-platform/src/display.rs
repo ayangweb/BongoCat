@@ -24,6 +24,7 @@ impl DisplayBounds {
     /// Edge-touching counts as not visible, which is what keeps a window the
     /// user has dragged onto a second monitor from being clamped back onto the
     /// first one.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn intersects_window(self, x: f32, y: f32, width: f32, height: f32) -> bool {
         x < self.x + self.width
             && x + width > self.x

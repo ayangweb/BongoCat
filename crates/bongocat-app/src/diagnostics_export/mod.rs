@@ -439,7 +439,9 @@ mod tests {
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
         let snapshot = SettingsSnapshot {
+            overlay_always_on_top_available: false,
             revision: 42,
+            pointer_sensitivity_percent: 100,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {
                 product_version: PRODUCT_VERSION.to_owned(),
@@ -490,6 +492,10 @@ mod tests {
             toggle_repeated_expression: false,
             allow_motion_overlap: false,
             logging: SettingsLogging::default(),
+            network: bongocat_ui_protocol::SettingsNetwork::default(),
+            network_status: bongocat_ui_protocol::SettingsNetworkStatus::default(),
+            alpha_output_enabled: false,
+            alpha_output_status: Default::default(),
             shortcuts: SettingsShortcuts::default(),
             model_behavior_names: Vec::new(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

@@ -221,6 +221,25 @@ impl SettingsView {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    pub(super) fn set_alpha_output_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::AlphaOutput,
+            Some(SettingValue::AlphaOutputEnabled {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_overlay_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot
@@ -467,6 +486,229 @@ impl SettingsView {
         if !should_send {
             self.schedule_logging_settings_flush(cx);
         }
+    }
+
+    pub(super) fn network_settings_value(&self) -> SettingsNetwork {
+        let mut network = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.network.clone())
+            .unwrap_or_default();
+        if let Some((editor, draft)) = &self.network_draft {
+            match editor {
+                NetworkEditor::Connection => {
+                    network.device = draft.device.clone();
+                    network.client.source = draft.client.source;
+                    network.client.url.clone_from(&draft.client.url);
+                    network.client.token.clone_from(&draft.client.token);
+                }
+                NetworkEditor::Relay => network.server = draft.server.clone(),
+            }
+        }
+        network
+    }
+
+    pub(super) fn edit_network(&mut self, editor: NetworkEditor, cx: &mut Context<Self>) {
+        if self.pending.is_none()
+            && let Some(snapshot) = &self.snapshot
+        {
+            self.network_draft = Some((editor, snapshot.network.clone()));
+            cx.notify();
+        }
+    }
+
+    pub(super) fn cancel_network_edit(&mut self, cx: &mut Context<Self>) {
+        self.network_draft = None;
+        cx.notify();
+    }
+
+    pub(super) fn apply_network_edit(&mut self, cx: &mut Context<Self>) {
+        if self.pending.is_some() {
+            return;
+        }
+        let Some((editor, draft)) = self.network_draft.clone() else {
+            return;
+        };
+        self.network_apply_pending = true;
+        if !self.commit_network_settings(
+            |settings| match editor {
+                NetworkEditor::Connection => {
+                    settings.device = draft.device;
+                    settings.client.source = draft.client.source;
+                    settings.client.url = draft.client.url;
+                    settings.client.token = draft.client.token;
+                    settings.client.enabled = true;
+                }
+                NetworkEditor::Relay => settings.server = draft.server,
+            },
+            cx,
+        ) {
+            self.network_apply_pending = false;
+            self.cancel_network_edit(cx);
+        }
+    }
+
+    fn patch_network_settings(
+        &mut self,
+        mutate: impl FnOnce(&mut SettingsNetwork),
+        cx: &mut Context<Self>,
+    ) {
+        if let Some((_, draft)) = &mut self.network_draft {
+            mutate(draft);
+            cx.notify();
+        }
+    }
+
+    fn commit_network_settings(
+        &mut self,
+        mutate: impl FnOnce(&mut SettingsNetwork),
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(snapshot) = &self.snapshot else {
+            return false;
+        };
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return false;
+        };
+        let mut settings = snapshot.network.clone();
+        mutate(&mut settings);
+        if settings == snapshot.network || self.pending.is_some() {
+            return false;
+        }
+        self.start_request(
+            PendingOperation::NetworkSettings,
+            Some(SettingValue::NetworkSettings {
+                expected_config_revision,
+                settings,
+            }),
+            cx,
+        );
+        true
+    }
+
+    pub(super) fn set_network_device_id(&mut self, id: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(|settings| settings.device.id = id, cx);
+    }
+
+    pub(super) fn set_network_device_name(&mut self, name: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(|settings| settings.device.name = name, cx);
+    }
+
+    /// Whether this machine's own input drives the pet on this machine.
+    ///
+    /// `self` is a reserved word in the display list rather than a device id,
+    /// so it is kept at the front of the list: the row that names this machine
+    /// cannot be an id another machine might also choose.
+    pub(super) fn set_network_display_self(&mut self, shown: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(
+            |settings| {
+                settings
+                    .client
+                    .display
+                    .retain(|device| device != NETWORK_SELF_DEVICE);
+                if shown {
+                    settings
+                        .client
+                        .display
+                        .insert(0, NETWORK_SELF_DEVICE.to_owned());
+                }
+            },
+            cx,
+        );
+    }
+
+    /// Select a device announced by the room.
+    pub(super) fn set_network_display_device(
+        &mut self,
+        device: String,
+        shown: bool,
+        cx: &mut Context<Self>,
+    ) {
+        // The reserved word would add a row the page cannot tell apart from the
+        // one that names this machine, and the room never announces it either.
+        if device == NETWORK_SELF_DEVICE {
+            return;
+        }
+        self.commit_network_settings(
+            |settings| {
+                let display = &mut settings.client.display;
+                if !shown {
+                    display.retain(|id| id != &device);
+                } else if !display.contains(&device)
+                    && display
+                        .iter()
+                        .filter(|shown| shown.as_str() != NETWORK_SELF_DEVICE)
+                        .count()
+                        < 2
+                {
+                    display.push(device);
+                }
+            },
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(|settings| settings.client.enabled = enabled, cx);
+    }
+
+    pub(super) fn set_network_client_source(
+        &mut self,
+        source: SettingsNetworkClientSource,
+        cx: &mut Context<Self>,
+    ) {
+        self.patch_network_settings(|settings| settings.client.source = source, cx);
+    }
+
+    pub(super) fn set_network_client_url(&mut self, url: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.client.url = normalize_network_optional_text(url),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_token(&mut self, token: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.client.token = normalize_network_optional_text(token),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_client_publish(&mut self, publish: bool, cx: &mut Context<Self>) {
+        self.commit_network_settings(|settings| settings.client.publish = publish, cx);
+    }
+
+    pub(super) fn set_network_server_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.patch_network_settings(|settings| settings.server.enabled = enabled, cx);
+    }
+
+    pub(super) fn set_network_server_listen(
+        &mut self,
+        listen: SettingsNetworkListenMode,
+        cx: &mut Context<Self>,
+    ) {
+        self.patch_network_settings(|settings| settings.server.listen = listen, cx);
+    }
+
+    pub(super) fn set_network_server_address(&mut self, address: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.address = normalize_network_optional_text(address),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_server_port_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.port = normalize_network_port(raw),
+            cx,
+        );
+    }
+
+    pub(super) fn set_network_server_token(&mut self, token: String, cx: &mut Context<Self>) {
+        self.patch_network_settings(
+            |settings| settings.server.token = normalize_network_optional_text(token),
+            cx,
+        );
     }
 
     /// Turn the gamepad-connection model switch on or off.
@@ -1044,6 +1286,44 @@ impl SettingsView {
             .is_some();
         if !should_send {
             self.schedule_maximum_fps_flush(cx);
+        }
+    }
+
+    pub(super) fn set_pointer_sensitivity_percent_value(
+        &mut self,
+        raw: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(1.0, 400.0) as u16;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.pointer_sensitivity_percent == value {
+            return;
+        }
+        let expected_config_revision = snapshot.config_revision;
+        let should_send = self
+            .pointer_sensitivity_percent_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|pointer_sensitivity_percent| {
+                expected_config_revision.map(|expected_config_revision| {
+                    self.start_request(
+                        PendingOperation::PointerSensitivity,
+                        Some(SettingValue::PointerSensitivity {
+                            expected_config_revision,
+                            pointer_sensitivity_percent,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_pointer_sensitivity_percent_flush(cx);
         }
     }
 

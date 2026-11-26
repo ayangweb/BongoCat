@@ -20,6 +20,10 @@ pub(crate) struct Tokens {
     /// chrome uses it; it is here for the confirmation surfaces, which are the
     /// only place the page says "this cannot be undone".
     pub(crate) danger: Hsla,
+    /// The colour of a fact that is working: a connection that is up.
+    pub(crate) success: Hsla,
+    /// The colour of a fact that is in between: connecting, reconnecting.
+    pub(crate) warning: Hsla,
 }
 
 impl Tokens {
@@ -33,6 +37,8 @@ impl Tokens {
             muted: theme.muted_foreground,
             accent: theme.primary,
             danger: theme.danger,
+            success: theme.success,
+            warning: theme.warning,
         }
     }
 }

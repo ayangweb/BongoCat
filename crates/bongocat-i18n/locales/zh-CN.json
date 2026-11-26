@@ -31,6 +31,9 @@
     "plugins": {
       "title": "插件中心",
       "empty": "暂无可用插件。"
+    },
+    "multiplayer": {
+      "title": "联机"
     }
   },
   "system_menu": {
@@ -67,6 +70,11 @@
       "title": "建议以管理员权限运行",
       "description": "BongoCat 需要管理员权限，才能在其他应用以管理员权限运行时继续接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
       "open_program_folder": "退出并前往设置"
+    },
+    "linux": {
+      "title": "允许监听键盘和鼠标？",
+      "description": "BongoCat 需要读取输入设备，才能响应其他应用中的键盘和鼠标操作。点击确定后，系统会请求管理员授权；仅输入监听辅助进程获得权限，设置和模型窗口仍以普通用户运行。选择稍后设置可继续使用，但键鼠响应暂不可用。",
+      "confirm": "确定"
     }
   },
   "about": {
@@ -331,7 +339,10 @@
       "dock_icon_update_failed": "无法更新程序坞图标。",
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
-      "application_shutdown_failed": "BongoCat 未能完全关闭"
+      "application_shutdown_failed": "BongoCat 未能完全关闭",
+      "network_relay_failed": "无法启动服务端。请检查监听地址和端口。",
+      "network_room_failed": "无法加入房间。请检查地址和密钥。",
+      "network_restore_failed": "无法恢复先前的联机会话。请检查连接后重试。"
     }
   },
   "settings": {
@@ -467,6 +478,10 @@
         "force_move": {
           "label": "强制移动鼠标",
           "description": "在捕获指针的应用（例如全屏游戏）中也能继续跟随鼠标移动。"
+        },
+        "sensitivity": {
+          "label": "鼠标跟随灵敏度（%）",
+          "description": "100% 为默认速度；数值越小，移动越慢。到边界后丢弃多余位移。"
         }
       },
       "keyboard": {
@@ -534,7 +549,8 @@
       "status_icon": {
         "label": {
           "macos": "显示菜单栏图标",
-          "windows": "显示系统托盘图标"
+          "windows": "显示系统托盘图标",
+          "linux": "显示系统托盘图标"
         }
       },
       "taskbar_icon": {
@@ -561,6 +577,168 @@
         "unsupported_platform": "当前系统不支持开机自启动",
         "unsupported_os": "当前操作系统不支持开机自启动",
         "unsupported_build": "开发版本不支持开机自启动"
+      }
+    },
+    "alpha": {
+      "camera": "虚拟摄像头",
+      "driver": "驱动",
+      "enable": "启用 Alpha 输出",
+      "error": {
+        "authorization": "授权失败或已取消，请检查系统授权代理是否运行",
+        "busy": "摄像头操作正在进行",
+        "config": "无法保存输出设置",
+        "conflict": "无法验证摄像头所有权",
+        "driver": "请先安装 v4l2loopback 驱动",
+        "operation": "摄像头操作失败",
+        "permission": "无法设置摄像头权限",
+        "rollback": "安装失败且回滚需要处理",
+        "service": "设置服务不可用",
+        "stale": "设置已变更，请刷新后重试",
+        "stop": "无法停止输出，请重试",
+        "unsupported": "所需工具或服务不可用"
+      },
+      "install": "安装虚拟摄像头",
+      "management": "设备管理",
+      "module": "内核模块",
+      "output": "输出",
+      "refresh": "重新检测",
+      "retry": "重试输出",
+      "title": "Alpha 输出",
+      "uninstall": "卸载虚拟摄像头",
+      "value": {
+        "available": "可用",
+        "checking": "正在检测…",
+        "conflict": "设备所有权冲突",
+        "control_missing": "未安装 v4l2loopback-ctl",
+        "driver_missing": "未安装驱动",
+        "failed": "失败",
+        "format": "格式不受支持",
+        "installed": "已安装",
+        "loaded": "已加载",
+        "module_tools_missing": "内核模块工具不可用",
+        "not_installed": "未安装",
+        "not_loaded": "未加载",
+        "off": "已关闭",
+        "permission": "权限不足",
+        "pkexec_missing": "未安装 pkexec",
+        "recovery": "请重新安装虚拟摄像头",
+        "running": "运行中",
+        "starting": "正在启动",
+        "stopping": "正在停止",
+        "udev_missing": "未安装 udevadm",
+        "unavailable": "设备不可用",
+        "unknown": "未知",
+        "unsupported": "不可用"
+      }
+    },
+    "multiplayer": {
+      "editor": {
+        "connect": "连接",
+        "change_connection": "更改连接…",
+        "edit_connection": "设置连接…",
+        "apply_relay": "应用服务端设置",
+        "edit_relay": "配置服务端…",
+        "cancel": "取消",
+        "disconnect": "断开"
+      },
+      "device": {
+        "title": "本机",
+        "id": {
+          "label": "设备 id"
+        },
+        "name": {
+          "label": "显示名称"
+        }
+      },
+      "display": {
+        "title": "展示设备",
+        "self": {
+          "label": "本机（跟随自己的输入）"
+        },
+        "peer": {
+          "sharing": "共享中",
+          "not_sharing": "未共享",
+          "offline": "离线",
+          "saved": "已选设备",
+          "unnamed": "未命名设备"
+        },
+        "empty": "从房间设备中选择要展示的猫。"
+      },
+      "client": {
+        "title": "客户端",
+        "source": {
+          "label": "连接方式",
+          "options": {
+            "follow_local": "跟随本机的联机服务",
+            "manual": "手动指定地址"
+          }
+        },
+        "url": {
+          "label": "地址"
+        },
+        "token": {
+          "label": "房间密钥"
+        },
+        "publish": {
+          "label": "把我的输入发到房间"
+        }
+      },
+      "server": {
+        "title": "服务端",
+        "enabled": {
+          "label": "在本机运行联机服务"
+        },
+        "listen": {
+          "label": "监听方式",
+          "options": {
+            "local_only": "仅本机",
+            "ipv4": "仅局域网（IPv4）",
+            "dual_stack": "局域网与本机",
+            "custom": "自定义一个地址"
+          }
+        },
+        "address": {
+          "label": "地址"
+        },
+        "port": {
+          "label": "端口"
+        },
+        "token": {
+          "label": "房间密钥"
+        }
+      },
+      "status": {
+        "title": "状态",
+        "server": {
+          "label": "服务端",
+          "stopped": "未运行"
+        },
+        "client": {
+          "label": "房间",
+          "state": {
+            "off": "未连接",
+            "connecting": "连接中…",
+            "connected": "已连接",
+            "reconnecting": "重连中…",
+            "failed": "连接失败"
+          }
+        },
+        "peers": {
+          "label": "房间内其他设备",
+          "none": "不在房间内"
+        },
+        "device_id": {
+          "label": "本机设备 ID",
+          "copy": "复制",
+          "copy_failed": "无法复制本机设备 ID。"
+        },
+        "latency": {
+          "label": "延迟",
+          "none": "未连接"
+        }
+      },
+      "status_and_devices": {
+        "title": "状态与设备选择"
       }
     }
   },
@@ -601,5 +779,13 @@
       "reported": "插件错误：%{name}（%{reason}）",
       "preview_failed": "插件预览失败：%{name}"
     }
+  },
+  "linux_input": {
+    "unavailable": "输入服务不可用。请检查系统是否安装 pkexec、libinput，以及桌面认证代理，然后重新打开应用。",
+    "denied": "输入授权未完成。请重新打开应用并允许认证，键鼠动作才能驱动模型。",
+    "stopped": "输入服务已停止，模型无法响应键鼠。请重新打开应用并检查认证与当前桌面会话状态。"
+  },
+  "linux_tray": {
+    "unavailable": "无法显示托盘图标。请确认桌面支持系统托盘；GNOME 需要启用 AppIndicator 扩展。"
   }
 }

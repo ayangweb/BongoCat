@@ -17,7 +17,9 @@ pub use model_source_picker::{ModelSourcePickerError, ModelSourcePickerOutcome};
 mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
 
+#[cfg(not(target_os = "linux"))]
 mod clipboard;
+#[cfg(not(target_os = "linux"))]
 pub use clipboard::{ClipboardError, read_clipboard_text, write_clipboard_text};
 
 mod url_opener;
@@ -48,8 +50,12 @@ pub use theme::{
 };
 
 mod system_menu;
+#[cfg(target_os = "linux")]
+pub use system_menu::{LinuxSystemMenuItem, SystemMenuPalette};
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
+#[cfg(not(target_os = "linux"))]
 mod system_menu_native;
+#[cfg(not(target_os = "linux"))]
 pub use system_menu_native::SystemMenu;
 
 mod startup_item;
@@ -65,13 +71,16 @@ mod startup_task;
 mod startup_permission;
 pub use startup_permission::{
     InputPermission, STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt,
-    StartupPermissionStatus, check_startup_permission, startup_permission_available,
+    StartupPermissionStatus, startup_permission_available,
 };
+
+#[cfg(not(target_os = "linux"))]
+pub use startup_permission::check_startup_permission;
 
 mod native_window;
 pub use native_window::NativeWindowError;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod gilrs_gamepad;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -143,3 +152,15 @@ pub fn set_startup_item_enabled(
 ) -> Result<StartupItemState, StartupItemError> {
     startup_item_native::set_enabled(environment, enabled)
 }
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{
+    ALPHA_CAMERA_DEVELOPMENT_NAME, ALPHA_CAMERA_NAME, ALPHA_FRAME_BYTES, ALPHA_FRAME_HEIGHT,
+    ALPHA_FRAME_WIDTH, AlphaAdminAction, AlphaAdminError, AlphaCameraError, AlphaFrameWrite,
+    AlphaInstallationStatus, AlphaManagementUnavailable, AlphaSystemStatus, LinuxAlphaCamera,
+    LinuxInputService, LinuxSystemTray, alpha_camera_name, inspect_alpha_system,
+    manage_alpha_camera, run_alpha_helper, set_linux_pointer_sensitivity, system_language,
+    unprivileged_input_is_possible,
+};

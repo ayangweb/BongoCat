@@ -1,3 +1,4 @@
+use super::platform;
 use std::{cell::Cell, rc::Rc};
 
 use crate::SettingsLanguage;
@@ -19,6 +20,7 @@ pub(super) enum SettingsNavigationPage {
     InputInteraction,
     Shortcuts,
     Plugins,
+    Multiplayer,
     AppSystem,
     About,
 }
@@ -77,20 +79,23 @@ impl SettingsNavigationPage {
             Self::ModelWindow => 3,
             Self::InputInteraction => 4,
             Self::Shortcuts => 5,
-            Self::AppSystem => 7,
             Self::Plugins => 6,
-            Self::About => 8,
+            Self::Multiplayer => 6 + platform::PLUGIN_CENTER as usize,
+            Self::AppSystem => 7 + platform::PLUGIN_CENTER as usize,
+            Self::About => 8 + platform::PLUGIN_CENTER as usize,
         }
     }
 
-    pub(super) const ALL: [Self; 9] = [
+    pub(super) const ALL: [Self; 9 + platform::PLUGIN_CENTER as usize] = [
         Self::Appearance,
         Self::ModelLibrary,
         Self::ModelBehavior,
         Self::ModelWindow,
         Self::InputInteraction,
         Self::Shortcuts,
+        #[cfg(not(target_os = "linux"))]
         Self::Plugins,
+        Self::Multiplayer,
         Self::AppSystem,
         Self::About,
     ];
@@ -103,6 +108,7 @@ impl SettingsNavigationPage {
             Self::ModelWindow => "navigation.model_window.title",
             Self::InputInteraction => "navigation.input_interaction.title",
             Self::Shortcuts => "navigation.shortcuts.title",
+            Self::Multiplayer => "navigation.multiplayer.title",
             Self::AppSystem => "navigation.app_system.title",
             Self::About => "navigation.about.title",
             Self::Plugins => "navigation.plugins.title",
@@ -121,6 +127,7 @@ impl SettingsNavigationPage {
             Self::ModelWindow => IconName::AppWindow,
             Self::InputInteraction => IconName::MousePointer2,
             Self::Shortcuts => IconName::Keyboard,
+            Self::Multiplayer => IconName::Network,
             Self::AppSystem => IconName::Cog,
             Self::Plugins => IconName::Package,
             Self::About => IconName::Info,
@@ -169,6 +176,7 @@ impl SettingsNavigationPage {
             Self::InputInteraction => &["Interaction", "Input", "交互", "输入"],
             Self::Plugins => &["Extensions", "Add-ons", "扩展", "插件"],
             Self::Shortcuts => &[],
+            Self::Multiplayer => &[],
             Self::AppSystem => &[
                 "Application",
                 "应用",
@@ -232,7 +240,9 @@ mod tests {
                 SettingsNavigationPage::ModelWindow,
                 SettingsNavigationPage::InputInteraction,
                 SettingsNavigationPage::Shortcuts,
+                #[cfg(not(target_os = "linux"))]
                 SettingsNavigationPage::Plugins,
+                SettingsNavigationPage::Multiplayer,
                 SettingsNavigationPage::AppSystem,
                 SettingsNavigationPage::About,
             ]

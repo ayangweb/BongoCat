@@ -9,6 +9,9 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     SnapshotOutdated,
     RuntimeUnavailable,
+    NetworkRelayFailed,
+    NetworkRoomFailed,
+    NetworkRestoreFailed,
     InvalidShortcutBindings,
     ConfigPersistFailed,
     ConfigPermissionDenied,
@@ -51,10 +54,13 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 45] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
+        Self::NetworkRelayFailed,
+        Self::NetworkRoomFailed,
+        Self::NetworkRestoreFailed,
         Self::InvalidShortcutBindings,
         Self::ConfigPersistFailed,
         Self::ConfigPermissionDenied,
@@ -101,6 +107,9 @@ impl SettingsErrorCode {
             Self::ServiceUnavailable => "service_unavailable",
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
+            Self::NetworkRelayFailed => "network_relay_failed",
+            Self::NetworkRoomFailed => "network_room_failed",
+            Self::NetworkRestoreFailed => "network_restore_failed",
             Self::InvalidShortcutBindings => "invalid_shortcut_bindings",
             Self::ConfigPersistFailed => "config_persist_failed",
             Self::ConfigPermissionDenied => "config_permission_denied",
@@ -168,6 +177,15 @@ impl SettingsError {
                 "Settings changed elsewhere. Review the latest settings and try again."
             }
             SettingsErrorCode::RuntimeUnavailable => "The setting did not take effect",
+            SettingsErrorCode::NetworkRelayFailed => {
+                "Could not start the room server. Check the listening address and port."
+            }
+            SettingsErrorCode::NetworkRoomFailed => {
+                "Could not join the room. Check the address and key."
+            }
+            SettingsErrorCode::NetworkRestoreFailed => {
+                "Could not restore the previous network session. Check the connection and try again."
+            }
             SettingsErrorCode::InvalidShortcutBindings => {
                 "Shortcut bindings are invalid or conflict"
             }

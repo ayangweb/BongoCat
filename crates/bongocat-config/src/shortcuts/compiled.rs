@@ -46,22 +46,36 @@ pub struct CompiledShortcuts {
     pub(crate) bindings: Vec<CompiledShortcut>,
 }
 
-/// Shared, atomically replaceable shortcut table used by the input owner.
+/// One coherent publication to the platform shortcut owner.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ShortcutTablePublication {
+    pub shortcuts: CompiledShortcuts,
+    pub capture_suspended: bool,
+}
+
+/// Shared, atomically replaceable shortcut table used by the platform owner.
 /// Configuration commits publish a complete compiled table; readers never
-/// observe partially parsed bindings or hold a config writer lock.
+/// observe partially parsed bindings or capture state from different writes.
 #[derive(Clone, Default)]
 pub struct ShortcutTable {
-    pub(crate) value: Arc<RwLock<CompiledShortcuts>>,
+    pub(crate) value: Arc<RwLock<ShortcutTablePublication>>,
 }
 
 impl ShortcutTable {
     pub fn new(value: CompiledShortcuts) -> Self {
         Self {
-            value: Arc::new(RwLock::new(value)),
+            value: Arc::new(RwLock::new(ShortcutTablePublication {
+                shortcuts: value,
+                capture_suspended: false,
+            })),
         }
     }
 
     pub fn load(&self) -> CompiledShortcuts {
+        self.load_publication().shortcuts
+    }
+
+    pub fn load_publication(&self) -> ShortcutTablePublication {
         self.value
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -69,10 +83,21 @@ impl ShortcutTable {
     }
 
     pub fn replace(&self, value: CompiledShortcuts) {
+        self.replace_publication(value, false);
+    }
+
+    pub fn replace_suspended(&self, value: CompiledShortcuts) {
+        self.replace_publication(value, true);
+    }
+
+    fn replace_publication(&self, shortcuts: CompiledShortcuts, capture_suspended: bool) {
         *self
             .value
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = value;
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = ShortcutTablePublication {
+            shortcuts,
+            capture_suspended,
+        };
     }
 }
 

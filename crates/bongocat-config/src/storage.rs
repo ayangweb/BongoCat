@@ -100,7 +100,7 @@ pub fn platform_layout(
     Ok(StorageLayout::under_application_root(root, environment))
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn platform_layout(
     environment: BuildEnvironment,
 ) -> Result<StorageLayout, PlatformStorageError> {

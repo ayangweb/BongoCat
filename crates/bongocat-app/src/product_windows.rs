@@ -8,32 +8,6 @@
 use super::*;
 use product_shutdown::finish_product_quit;
 
-/// Bring the stored overlay scale to the one a right-button resize drag settled
-/// on.
-///
-/// The drag already resized the native window, so this only aligns the
-/// configuration — and with it the settings page — with what the user sees. A
-/// failed snapshot read, a configuration that already matches, and a missing
-/// config revision are all non-errors: the window keeps working either way, and
-/// the placement write the frame loop already performs is what makes the new
-/// size survive a restart.
-pub(crate) async fn publish_overlay_scale(client: &SettingsClient, scale_percent: u16) {
-    let Ok(snapshot) = client.read_snapshot().await else {
-        return;
-    };
-    let Some(config_revision) = snapshot.config_revision else {
-        return;
-    };
-    if snapshot.overlay.scale_percent == scale_percent {
-        return;
-    }
-    let settings = SettingsOverlay {
-        scale_percent,
-        ..snapshot.overlay
-    };
-    let _ = client.set_overlay_settings(config_revision, settings).await;
-}
-
 /// Run one update against the settings view, retrying while GPUI cannot hand the
 /// window over.
 ///
@@ -86,62 +60,29 @@ fn open_product_window<T>(
 }
 
 pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
-    let existing = cx
-        .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone());
-    if let Some(window_handle) = existing {
-        if window_handle.is_open() {
-            return match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
-                Ok(Ok(())) => {
-                    cx.activate(true);
-                    Ok(window_handle)
-                }
-                Ok(Err(error)) => Err(error),
-                Err(error) => Err(format!(
-                    "settings window is temporarily unavailable to reopen: {error}"
-                )),
-            };
-        }
-        // Only a released view entity is replaced. A transient GPUI borrow
-        // failure above is returned to the caller instead of stacking a second
-        // settings window.
-        cx.global_mut::<ProductCoordinator>().settings_window = None;
+    if !cx.has_global::<ProductCoordinator>() {
+        return Err("settings service owner is unavailable".to_owned());
     }
 
-    let (settings_client, window_state, seed, navigation_memory, plugin_service) = cx
-        .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| {
-            coordinator.settings_service.as_ref().map(|service| {
-                (
-                    service.client(),
-                    service.window_state(),
-                    SettingsWindowSeed {
-                        language: coordinator.product_language,
-                        appearance_theme: coordinator.product_appearance_theme,
-                    },
-                    coordinator.settings_navigation_memory.clone(),
-                    coordinator
-                        .plugin_service
-                        .as_ref()
-                        .map(bongocat_plugin_service::PluginService::client),
-                )
-            })
+    open_product_window(cx, |cx| {
+        cx.update_global::<ProductCoordinator, _>(|coordinator, cx| {
+            let service = coordinator
+                .settings_service
+                .as_ref()
+                .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
+            coordinator.settings.ensure(
+                service.client(),
+                service.window_state(),
+                coordinator
+                    .plugin_service
+                    .as_ref()
+                    .map(bongocat_plugin_service::PluginService::client),
+                finish_product_quit,
+                open_update_window_and_check,
+                cx,
+            )
         })
-        .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
-    let window_handle = open_product_window(cx, |cx| {
-        open_settings_window(
-            settings_client,
-            window_state,
-            seed,
-            navigation_memory,
-            plugin_service,
-            finish_product_quit,
-            open_update_window_and_check,
-            cx,
-        )
-    })?;
-    cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
-    Ok(window_handle)
+    })
 }
 
 /// The open update window, opening it first when there is none.
@@ -174,8 +115,8 @@ pub(crate) fn ensure_update_window(
             coordinator.update_window.clone(),
             update_service.client(),
             settings_client,
-            coordinator.product_language,
-            coordinator.product_appearance_theme,
+            coordinator.settings.seed.language,
+            coordinator.settings.seed.appearance_theme,
         )
     };
     if let Some(window_handle) = existing
@@ -429,7 +370,7 @@ pub(crate) fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool, bo
     };
     let window_handle = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone())
+        .and_then(|coordinator| coordinator.settings.window.clone())
         .ok_or_else(|| "settings window is unavailable".to_owned())?;
     let settings_taskbar_icon = window_handle
         .update(cx, |_, window, _| {
@@ -497,7 +438,7 @@ pub(crate) fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String>
 pub(crate) fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone());
+        .and_then(|coordinator| coordinator.settings.window.clone());
     let Some(window_handle) = existing else {
         ensure_settings_window(cx)?;
         return Ok(());
@@ -510,7 +451,7 @@ pub(crate) fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
         Ok(result) => result?,
         Err(_) => {
             if !window_handle.is_open() {
-                cx.global_mut::<ProductCoordinator>().settings_window = None;
+                cx.global_mut::<ProductCoordinator>().settings.window = None;
                 return Ok(());
             }
             return Err("settings window is temporarily unavailable to close".to_owned());

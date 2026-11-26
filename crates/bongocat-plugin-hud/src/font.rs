@@ -38,6 +38,15 @@ const PLATFORM_FONT_CANDIDATES: &[(&str, u32)] = &[
     (r"C:\Windows\Fonts\malgun.ttf", 0),
 ];
 
+#[cfg(target_os = "linux")]
+const PLATFORM_FONT_CANDIDATES: &[(&str, u32)] = &[
+    ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+    ("/usr/share/fonts/noto/NotoSans-Regular.ttf", 0),
+    ("/usr/share/fonts/TTF/DejaVuSans.ttf", 0),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
+];
+
 /// Load the platform's text face.
 ///
 /// The first candidate that reads and parses wins, so a trimmed-down install

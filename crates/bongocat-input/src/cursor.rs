@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -385,10 +388,12 @@ struct CursorSlotState {
 #[derive(Default)]
 pub(crate) struct CursorSlot {
     state: Mutex<CursorSlotState>,
+    observer: Mutex<Option<CursorObserver>>,
+    suppress_local: AtomicBool,
 }
 
 impl CursorSlot {
-    fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+    fn publish_from(&self, sample: CursorSample, remote: bool) -> Result<(), CursorPublishError> {
         let mut state = self
             .state
             .lock()
@@ -398,19 +403,46 @@ impl CursorSlot {
                 state.diagnostics.rejected_after_stop.saturating_add(1);
             return Err(CursorPublishError::RuntimeStopped(sample));
         }
-        if state
-            .last_published_at
-            .is_some_and(|previous| sample.at < previous)
-        {
-            state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
-            return Err(CursorPublishError::NonMonotonic(sample));
+        if remote || !self.suppress_local.load(Ordering::Acquire) {
+            if state
+                .last_published_at
+                .is_some_and(|previous| sample.at < previous)
+            {
+                state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
+                return Err(CursorPublishError::NonMonotonic(sample));
+            }
+            state.last_published_at = Some(sample.at);
+            state.diagnostics.published = state.diagnostics.published.saturating_add(1);
+            if state.pending.replace(sample).is_some() {
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
         }
-        state.last_published_at = Some(sample.at);
-        state.diagnostics.published = state.diagnostics.published.saturating_add(1);
-        if state.pending.replace(sample).is_some() {
-            state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+        drop(state);
+        // Forward local capture independently of whether the local pet displays it.
+        // Remote samples are never forwarded again, preventing feedback loops.
+        if !remote {
+            let observer = self
+                .observer
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            if let Some(observer) = observer {
+                observer(&sample);
+            }
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+        self.publish_from(sample, false)
+    }
+
+    fn set_observer(&self, observer: Option<CursorObserver>) {
+        *self
+            .observer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = observer;
     }
 
     pub(crate) fn take(&self) -> Option<CursorSample> {
@@ -444,6 +476,9 @@ impl CursorSlot {
     }
 }
 
+/// A mirror for every published sample.
+pub type CursorObserver = Arc<dyn Fn(&CursorSample) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct CursorProducer {
     slot: Arc<CursorSlot>,
@@ -456,8 +491,31 @@ impl CursorProducer {
         }
     }
 
+    /// Registers a mirror that sees every published sample.
+    ///
+    /// The multiplayer bridge uses it to copy the pointer into the room: the
+    /// renderer's `take` must stay the only reader of the slot, so the mirror is
+    /// called from inside `publish` rather than racing it for the same value.
+    /// Only the most recent registration is kept — there is one room to feed.
+    pub fn set_observer(&self, observer: Option<CursorObserver>) {
+        self.slot.set_observer(observer);
+    }
+
     pub fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
-        self.slot.publish(sample)
+        self.slot.publish_from(sample, false)
+    }
+
+    /// Control whether locally captured pointer positions reach this runtime.
+    /// Local positions still reach the registered network observer.
+    pub fn set_local_suppressed(&self, suppressed: bool) {
+        self.slot
+            .suppress_local
+            .store(suppressed, Ordering::Release);
+    }
+
+    /// Publish a selected remote position without echoing it to the observer.
+    pub fn publish_remote(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+        self.slot.publish_from(sample, true)
     }
 
     pub fn take(&self) -> Option<CursorSample> {
@@ -524,6 +582,34 @@ mod tests {
         assert_eq!(reading.position, CursorPosition { x: 30.0, y: 40.0 });
         assert_eq!(reading.viewport, viewport);
         assert_eq!(reading.at, MonotonicMillis::new(7));
+    }
+
+    #[test]
+    fn remote_follow_keeps_local_pointer_out_of_runtime_without_echoing_remote() {
+        let producer = CursorProducer::new();
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&observed);
+        producer.set_observer(Some(Arc::new(move |sample| {
+            captured.lock().unwrap().push(*sample)
+        })));
+
+        producer.set_local_suppressed(true);
+        producer.publish(sample(10.0, 1_000_001)).unwrap();
+        assert_eq!(*observed.lock().unwrap(), vec![sample(10.0, 1_000_001)]);
+        assert_eq!(producer.take(), None);
+
+        producer.publish_remote(sample(70.0, 2)).unwrap();
+        producer.publish(sample(20.0, 1_000_003)).unwrap();
+        assert_eq!(producer.take(), Some(sample(70.0, 2)));
+        assert_eq!(
+            *observed.lock().unwrap(),
+            vec![sample(10.0, 1_000_001), sample(20.0, 1_000_003)]
+        );
+
+        producer.set_local_suppressed(false);
+        producer.publish(sample(30.0, 1_000_004)).unwrap();
+        assert_eq!(producer.take(), Some(sample(30.0, 1_000_004)));
+        assert_eq!(observed.lock().unwrap().len(), 3);
     }
 
     #[test]

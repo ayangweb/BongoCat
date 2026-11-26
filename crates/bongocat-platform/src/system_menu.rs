@@ -20,9 +20,25 @@ pub struct SystemMenuPresentation {
     pub quit: String,
     pub overlay_visible: bool,
     pub click_through_enabled: bool,
+    #[cfg(target_os = "linux")]
+    pub always_on_top_available: bool,
     pub always_on_top_enabled: bool,
+    #[cfg(target_os = "linux")]
+    pub hide_on_pointer_hover_available: bool,
     pub hide_on_pointer_hover_enabled: bool,
     pub update_check_available: bool,
+}
+
+/// Theme colors passed to the Linux SHM menu without GPUI types.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SystemMenuPalette {
+    pub surface: [u8; 4],
+    pub foreground: [u8; 4],
+    pub muted_foreground: [u8; 4],
+    pub separator: [u8; 4],
+    pub hover_background: [u8; 4],
+    pub hover_foreground: [u8; 4],
 }
 
 /// A product action emitted by either native menu surface.
@@ -69,4 +85,45 @@ pub enum SystemMenuError {
     EventQueueClosed,
     #[error("the system menu did not shut down cleanly")]
     ShutdownFailed,
+}
+
+/// The Linux tray exposes the basic model-window actions.
+#[cfg(target_os = "linux")]
+pub enum LinuxSystemMenuItem {
+    Action {
+        action: SystemMenuAction,
+        label: String,
+        checked: bool,
+    },
+    Separator,
+}
+
+#[cfg(target_os = "linux")]
+impl SystemMenuPresentation {
+    pub fn linux_items(&self) -> Vec<LinuxSystemMenuItem> {
+        use LinuxSystemMenuItem::{Action, Separator};
+        vec![
+            Action {
+                action: SystemMenuAction::OpenSettings,
+                label: self.open_settings.clone(),
+                checked: false,
+            },
+            Action {
+                action: SystemMenuAction::ToggleOverlayVisibility,
+                label: self.hide_overlay.clone(),
+                checked: !self.overlay_visible,
+            },
+            Action {
+                action: SystemMenuAction::ToggleClickThrough,
+                label: self.click_through.clone(),
+                checked: self.click_through_enabled,
+            },
+            Separator,
+            Action {
+                action: SystemMenuAction::Quit,
+                label: self.quit.clone(),
+                checked: false,
+            },
+        ]
+    }
 }

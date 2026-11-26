@@ -890,3 +890,69 @@ fn motion_overlap_switch_uses_a_revision_checked_command(cx: &mut TestAppContext
     });
     assert!(endpoint.try_recv().is_err());
 }
+
+/// The peers row counts a room this machine is in, and says so otherwise.
+///
+/// The count the relay reports leaves this machine out, so zero is a real
+/// answer — "in the room, nobody else here yet" — and has to stay a zero rather
+/// than fall back to the not-in-a-room text: a viewer waiting for the other
+/// machine to appear has to be able to tell "connected, still alone" from
+/// "not connected at all", which is the whole reason it opened the page.
+#[test]
+fn the_peers_row_counts_only_the_room_this_machine_is_in() {
+    let english = SettingsLanguage::English;
+    let not_in_a_room = bongocat_i18n::text(
+        english.catalog_locale(),
+        "settings.multiplayer.status.peers.none",
+    );
+
+    assert_eq!(
+        network_client_peers_text(SettingsNetworkClientState::Connected { peers: 0 }, english),
+        "0"
+    );
+    assert_eq!(
+        network_client_peers_text(SettingsNetworkClientState::Connected { peers: 2 }, english),
+        "2"
+    );
+    for state in [
+        SettingsNetworkClientState::Off,
+        SettingsNetworkClientState::Connecting,
+        SettingsNetworkClientState::Reconnecting,
+        SettingsNetworkClientState::Failed,
+    ] {
+        assert_eq!(
+            network_client_peers_text(state, english),
+            not_in_a_room,
+            "a room this machine is not in has no count to show"
+        );
+    }
+}
+
+/// The address dropdown is one list, not two controls.
+///
+/// Its first entry is the "follow the local relay" sentinel, its last is "type
+/// an address myself", and between them sit the real loopback addresses built
+/// from the configured port — so the preset shows exactly what it will dial and
+/// the port it reads is the one the server row holds, not a stale literal.
+#[test]
+fn the_client_address_dropdown_builds_real_addresses_from_the_port() {
+    let english = SettingsLanguage::English;
+    let options = network_client_address_options(english, 8787);
+    assert_eq!(options.len(), 4);
+    assert_eq!(
+        options[0],
+        network_client_address_sentinel(SettingsNetworkClientSource::FollowLocal, english)
+    );
+    assert_eq!(options[1], "ws://127.0.0.1:8787");
+    assert_eq!(options[2], "ws://localhost:8787");
+    assert_eq!(
+        options[3],
+        network_client_address_sentinel(SettingsNetworkClientSource::Manual, english)
+    );
+
+    // A changed port moves the presets with it: the dropdown can never offer a
+    // preset that names a port the user has since edited.
+    let options = network_client_address_options(english, 9999);
+    assert_eq!(options[1], "ws://127.0.0.1:9999");
+    assert_eq!(options[2], "ws://localhost:9999");
+}

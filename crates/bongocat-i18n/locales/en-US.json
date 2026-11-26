@@ -31,6 +31,9 @@
     "plugins": {
       "title": "Plugin Center",
       "empty": "No plugins available."
+    },
+    "multiplayer": {
+      "title": "Multiplayer"
     }
   },
   "system_menu": {
@@ -67,6 +70,11 @@
       "title": "Recommend running with administrator access",
       "description": "BongoCat needs administrator access to keep receiving keyboard and mouse input when another app is running with administrator privileges.\n\nTo set it up: right-click BongoCat → Properties → Compatibility → turn on \"Run this program as an administrator\".",
       "open_program_folder": "Exit and open Settings"
+    },
+    "linux": {
+      "title": "Allow keyboard and mouse monitoring?",
+      "description": "BongoCat needs access to input devices to respond to keyboard and mouse activity in other apps. After you confirm, the system will request administrator authorization. Only the input helper receives elevated access; Settings and the model window continue to run as your user. Choose Set up later to continue without keyboard and mouse reactions.",
+      "confirm": "OK"
     }
   },
   "about": {
@@ -331,7 +339,10 @@
       "dock_icon_update_failed": "Could not update the Dock icon.",
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
-      "application_shutdown_failed": "BongoCat could not close completely"
+      "application_shutdown_failed": "BongoCat could not close completely",
+      "network_relay_failed": "Could not start the room server. Check the listening address and port.",
+      "network_room_failed": "Could not join the room. Check the address and key.",
+      "network_restore_failed": "Could not restore the previous network session. Check the connection and try again."
     }
   },
   "settings": {
@@ -467,6 +478,10 @@
         "force_move": {
           "label": "Force mouse movement",
           "description": "Keep following the mouse in applications that capture the pointer, such as full-screen games."
+        },
+        "sensitivity": {
+          "label": "Mouse tracking sensitivity (%)",
+          "description": "100% is the default speed. Lower values move more slowly; excess travel at the boundary is discarded."
         }
       },
       "keyboard": {
@@ -534,7 +549,8 @@
       "status_icon": {
         "label": {
           "macos": "Show menu bar icon",
-          "windows": "Show system tray icon"
+          "windows": "Show system tray icon",
+          "linux": "Show system tray icon"
         }
       },
       "taskbar_icon": {
@@ -561,6 +577,168 @@
         "unsupported_platform": "Running at startup is unavailable on this system",
         "unsupported_os": "Running at startup is unavailable on this operating system",
         "unsupported_build": "Running at startup is unavailable in development builds"
+      }
+    },
+    "alpha": {
+      "camera": "Virtual camera",
+      "driver": "Driver",
+      "enable": "Enable Alpha output",
+      "error": {
+        "authorization": "Authorization failed or was cancelled; check your authentication agent",
+        "busy": "A camera operation is already running",
+        "config": "Could not save output setting",
+        "conflict": "Camera ownership could not be verified",
+        "driver": "Install the v4l2loopback driver first",
+        "operation": "Camera operation failed",
+        "permission": "Camera permission could not be applied",
+        "rollback": "Installation failed and rollback needs attention",
+        "service": "Settings service unavailable",
+        "stale": "Settings changed; refresh and retry",
+        "stop": "Could not stop output; retry",
+        "unsupported": "Required tools or services unavailable"
+      },
+      "install": "Install virtual camera",
+      "management": "Device management",
+      "module": "Kernel module",
+      "output": "Output",
+      "refresh": "Refresh",
+      "retry": "Retry output",
+      "title": "Alpha output",
+      "uninstall": "Uninstall virtual camera",
+      "value": {
+        "available": "Available",
+        "checking": "Checking…",
+        "conflict": "Ownership conflict",
+        "control_missing": "v4l2loopback-ctl not installed",
+        "driver_missing": "Driver not installed",
+        "failed": "Failed",
+        "format": "Unsupported format",
+        "installed": "Installed",
+        "loaded": "Loaded",
+        "module_tools_missing": "Module tools unavailable",
+        "not_installed": "Not installed",
+        "not_loaded": "Not loaded",
+        "off": "Off",
+        "permission": "Permission denied",
+        "pkexec_missing": "pkexec not installed",
+        "recovery": "Reinstall virtual camera",
+        "running": "Running",
+        "starting": "Starting",
+        "stopping": "Stopping",
+        "udev_missing": "udevadm not installed",
+        "unavailable": "Device unavailable",
+        "unknown": "Unknown",
+        "unsupported": "Unavailable"
+      }
+    },
+    "multiplayer": {
+      "editor": {
+        "connect": "Connect",
+        "change_connection": "Change connection…",
+        "edit_connection": "Set up connection…",
+        "apply_relay": "Apply server settings",
+        "edit_relay": "Configure server…",
+        "cancel": "Cancel",
+        "disconnect": "Disconnect"
+      },
+      "device": {
+        "title": "This machine",
+        "id": {
+          "label": "Device id"
+        },
+        "name": {
+          "label": "Display name"
+        }
+      },
+      "display": {
+        "title": "Devices to draw",
+        "self": {
+          "label": "This machine (follow my own input)"
+        },
+        "peer": {
+          "sharing": "sharing",
+          "not_sharing": "not sharing",
+          "offline": "offline",
+          "saved": "Saved device",
+          "unnamed": "Unnamed device"
+        },
+        "empty": "Choose which room devices to display."
+      },
+      "client": {
+        "title": "Join a room",
+        "source": {
+          "label": "Connection method",
+          "options": {
+            "follow_local": "Use the room server on this machine",
+            "manual": "Type an address myself"
+          }
+        },
+        "url": {
+          "label": "Address"
+        },
+        "token": {
+          "label": "Room key"
+        },
+        "publish": {
+          "label": "Send my input to the room"
+        }
+      },
+      "server": {
+        "title": "Room server",
+        "enabled": {
+          "label": "Run a room server on this machine"
+        },
+        "listen": {
+          "label": "Listen on",
+          "options": {
+            "local_only": "This machine only",
+            "ipv4": "The local network only",
+            "dual_stack": "The local network and this machine",
+            "custom": "One address I name"
+          }
+        },
+        "address": {
+          "label": "Address"
+        },
+        "port": {
+          "label": "Port"
+        },
+        "token": {
+          "label": "Room key"
+        }
+      },
+      "status": {
+        "title": "Status",
+        "server": {
+          "label": "Room server",
+          "stopped": "Not running"
+        },
+        "client": {
+          "label": "Room",
+          "state": {
+            "off": "Not connected",
+            "connecting": "Connecting…",
+            "connected": "Connected",
+            "reconnecting": "Reconnecting…",
+            "failed": "Connection failed"
+          }
+        },
+        "peers": {
+          "label": "Other machines in the room",
+          "none": "Not in a room"
+        },
+        "device_id": {
+          "label": "Local device ID",
+          "copy": "Copy",
+          "copy_failed": "Could not copy the local device ID."
+        },
+        "latency": {
+          "label": "Latency",
+          "none": "not connected"
+        }
+      },
+      "status_and_devices": {
+        "title": "Status & devices"
       }
     }
   },
@@ -601,5 +779,13 @@
       "reported": "Plugin error: %{name} — %{reason}",
       "preview_failed": "Plugin preview failed: %{name}"
     }
+  },
+  "linux_input": {
+    "unavailable": "Input service unavailable. Check that pkexec, libinput and a desktop authentication agent are available, then reopen the app.",
+    "denied": "Input authorization was not completed. Reopen the app and approve authentication to animate the model from keyboard and mouse input.",
+    "stopped": "The input service stopped. Reopen the app and check authorization and the current desktop session."
+  },
+  "linux_tray": {
+    "unavailable": "The tray icon could not be shown. Check that the desktop supports system trays; GNOME requires an AppIndicator extension."
   }
 }

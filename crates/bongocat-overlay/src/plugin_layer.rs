@@ -152,6 +152,7 @@ impl OverlayPluginLayer {
     }
 
     /// Repaint only on hover transitions, always from the unmodified texture.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn update_pointer(&mut self, point: Option<(f32, f32)>) -> bool {
         let Some(layer) = &mut self.layer else {
             return false;

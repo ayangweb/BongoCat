@@ -81,6 +81,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "device_overlay_windows": {
+      "additionalProperties": {
+        "$ref": "#/$defs/OverlayWindowPlacement"
+      },
+      "type": "object"
+    },
     "overlay_window": {
       "anyOf": [
         {

@@ -20,6 +20,69 @@ pub struct AutomaticUpdateSettings {
     pub interval_hours: u16,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsAlphaOutputStatus {
+    #[default]
+    Disabled,
+    Starting,
+    Running,
+    Stopping,
+    DeviceUnavailable,
+    PermissionDenied,
+    UnsupportedFormat,
+    Failed,
+}
+
+/// A fresh observation of the operating system, requested explicitly by the UI.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsAlphaSystemStatus {
+    pub driver_installed: Option<bool>,
+    pub module_loaded: Option<bool>,
+    pub management_available: bool,
+    pub management_unavailable: Option<SettingsAlphaManagementUnavailable>,
+    pub camera: SettingsAlphaInstallationStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementUnavailable {
+    Authorization,
+    LoopbackControl,
+    Udev,
+    ModuleTools,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementAction {
+    Install,
+    Uninstall,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementError {
+    ServiceUnavailable,
+    SnapshotOutdated,
+    Busy,
+    OutputStopFailed,
+    ConfigPersistFailed,
+    AuthorizationDenied,
+    DriverMissing,
+    UnsupportedSystem,
+    OwnershipConflict,
+    PermissionDenied,
+    RollbackFailed,
+    OperationFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaInstallationStatus {
+    NotInstalled,
+    Installed,
+    RecoveryRequired,
+    Conflict,
+    Unknown,
+    Unsupported,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -40,6 +103,7 @@ pub struct SettingsSnapshot {
     pub check_for_updates_automatically: bool,
     pub check_for_updates_interval_hours: u16,
     pub overlay_visible: bool,
+    pub overlay_always_on_top_available: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
     /// Whether the application command bindings are allowed to reach the
@@ -47,6 +111,7 @@ pub struct SettingsSnapshot {
     /// window shortcuts" switch above the command rows.
     pub command_shortcuts_enabled: bool,
     pub behavior_shortcuts_enabled: bool,
+    pub pointer_sensitivity_percent: u16,
     pub maximum_fps: u16,
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
@@ -71,6 +136,17 @@ pub struct SettingsSnapshot {
     pub toggle_repeated_expression: bool,
     pub allow_motion_overlap: bool,
     pub logging: SettingsLogging,
+    /// How this machine takes part in a room, as the user configured it.
+    pub network: SettingsNetwork,
+    /// What the multiplayer side of this process is doing right now.
+    ///
+    /// Separate from `network` because the two move at different rates: the
+    /// settings change when a user edits them, the status changes while a
+    /// room is being joined, and a page that polls the second must not have
+    /// to re-read the first.
+    pub network_status: SettingsNetworkStatus,
+    pub alpha_output_enabled: bool,
+    pub alpha_output_status: SettingsAlphaOutputStatus,
     pub shortcuts: SettingsShortcuts,
     /// What each of the active model's motions and expressions is called.
     ///

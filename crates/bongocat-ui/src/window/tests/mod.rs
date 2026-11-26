@@ -100,7 +100,7 @@ fn settings_view_with_endpoint(
     let capture = Rc::clone(&built);
     let (_, visual) = cx.add_window_view(move |window, cx| {
         let view = cx.new(|cx| {
-            SettingsView::new(
+            let view = SettingsView::new(
                 client,
                 SettingsWindowSeed {
                     language: SettingsLanguage::English,
@@ -110,7 +110,14 @@ fn settings_view_with_endpoint(
                 Rc::new(|_| {}),
                 window,
                 cx,
-            )
+            );
+            #[cfg(target_os = "linux")]
+            let view = {
+                let mut view = view;
+                view.alpha_status_checked = true;
+                view
+            };
+            view
         });
         capture.borrow_mut().replace(view.clone());
         Root::new(view, window, cx)

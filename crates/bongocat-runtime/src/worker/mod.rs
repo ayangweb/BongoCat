@@ -69,6 +69,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     let mut gamepad_axis_values = GamepadAxisValues::default();
     let mut gamepad_axis_settings = GamepadAxisSettings::default();
     let mut overlay_visible = initial_overlay_visible;
+    let mut video_output_active = false;
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut model_settings = ModelSettings::default();
     let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
@@ -99,7 +100,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
             &motion_audio,
             &mut next_motion_event_sequence,
             &mut random_behavior_scheduler,
-            overlay_visible,
+            overlay_visible || video_output_active,
             &snapshot,
             clock.now(),
         );
@@ -118,7 +119,8 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                 &shutdown,
             );
         }
-        let frame_interval = runtime_frame_interval(maximum_fps, overlay_visible);
+        let frame_interval =
+            runtime_frame_interval(maximum_fps, overlay_visible || video_output_active);
         let received = if let Some(sequence) = shutdown.sequence() {
             if pending_model.is_some() {
                 // A model commit may be waiting for an overlay acknowledgement. Do not
@@ -220,6 +222,15 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         overlay_visible = visible;
                         publish(&snapshot, |current| {
                             current.overlay_visible = visible;
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetVideoOutputStatus(status)) => {
+                        video_output_active = status.needs_frames();
+                        publish(&snapshot, |current| {
+                            current.video_output_active = video_output_active;
+                            current.video_output_status = status;
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
@@ -737,7 +748,10 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         return;
                     }
                 }
-                if evaluate_after_command && overlay_visible && pending_model.is_none() {
+                if evaluate_after_command
+                    && (overlay_visible || video_output_active)
+                    && pending_model.is_none()
+                {
                     evaluate_renderer(
                         renderer.as_mut(),
                         compose_model_input(
@@ -797,7 +811,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                     &motion_audio,
                     &mut next_motion_event_sequence,
                     &mut random_behavior_scheduler,
-                    overlay_visible,
+                    overlay_visible || video_output_active,
                     &snapshot,
                     clock.now(),
                 );
@@ -816,7 +830,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         &shutdown,
                     );
                 }
-                if overlay_visible && pending_model.is_none() {
+                if (overlay_visible || video_output_active) && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
                         compose_model_input(

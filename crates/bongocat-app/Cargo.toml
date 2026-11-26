@@ -50,3 +50,8 @@ embed-resource.workspace = true
 
 [lints]
 workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+bongocat-input-helper = { path = "../bongocat-input-helper" }
+bongocat-net = { path = "../bongocat-net" }
+tempfile.workspace = true

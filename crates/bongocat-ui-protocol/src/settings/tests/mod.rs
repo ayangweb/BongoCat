@@ -18,6 +18,7 @@ pub(crate) fn snapshot(
 ) -> SettingsSnapshot {
     SettingsSnapshot {
         revision,
+        overlay_always_on_top_available: false,
         config_revision: Some(revision),
         build_info: SettingsBuildInfo {
             product_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -40,6 +41,7 @@ pub(crate) fn snapshot(
         command_shortcuts_enabled: true,
         behavior_shortcuts_enabled: true,
         maximum_fps: 60,
+        pointer_sensitivity_percent: 100,
         random_behavior: SettingsRandomBehavior::default(),
         model_settings: SettingsModelSettings::default(),
         gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
@@ -49,6 +51,10 @@ pub(crate) fn snapshot(
         toggle_repeated_expression: false,
         allow_motion_overlap: false,
         logging: SettingsLogging::default(),
+        network: SettingsNetwork::default(),
+        network_status: SettingsNetworkStatus::default(),
+        alpha_output_enabled: false,
+        alpha_output_status: Default::default(),
         shortcuts: SettingsShortcuts::default(),
         model_behavior_names: Vec::new(),
         startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

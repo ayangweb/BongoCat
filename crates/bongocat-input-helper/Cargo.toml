@@ -1,0 +1,18 @@
+[package]
+name = "bongocat-input-helper"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+input = "=0.10.0"
+libc.workspace = true
+zbus = "=5.19.0"
+
+[lints.clippy]
+dbg_macro = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

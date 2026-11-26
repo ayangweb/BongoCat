@@ -16,6 +16,7 @@ mod logging;
 mod model_catalog;
 mod model_diagnostic;
 mod model_import;
+mod network;
 mod runtime;
 mod snapshot;
 mod startup;
@@ -59,12 +60,20 @@ pub use model_import::{
     SettingsModelImportStage, SettingsModelMode, SettingsModelSourceCandidate,
     SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, model_source_display_name,
 };
+pub use network::{
+    DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClient,
+    SettingsNetworkClientSource, SettingsNetworkClientState, SettingsNetworkClientStatus,
+    SettingsNetworkDevice, SettingsNetworkListenMode, SettingsNetworkPeer, SettingsNetworkServer,
+    SettingsNetworkServerStatus, SettingsNetworkStatus,
+};
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
 };
 pub use snapshot::{
-    AutomaticUpdateSettings, SettingsCursorSettings, SettingsGamepadAutoSwitch,
+    AutomaticUpdateSettings, SettingsAlphaInstallationStatus, SettingsAlphaManagementAction,
+    SettingsAlphaManagementError, SettingsAlphaManagementUnavailable, SettingsAlphaOutputStatus,
+    SettingsAlphaSystemStatus, SettingsCursorSettings, SettingsGamepadAutoSwitch,
     SettingsGamepadAxisSettings, SettingsModelBehaviorBinding, SettingsModelBehaviorName,
     SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
     SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsTheme,

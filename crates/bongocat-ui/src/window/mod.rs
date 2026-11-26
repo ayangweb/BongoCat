@@ -18,6 +18,13 @@ use crate::{
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
+// One line of its own rather than interleaved into the block above: every name
+// here arrives with the multiplayer page, and keeping them apart keeps the
+// next upstream import change from colliding with this fork.
+use crate::{
+    DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClientSource,
+    SettingsNetworkClientState, SettingsNetworkListenMode, SettingsNetworkPeer,
+};
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
     ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_cover, pick_model_folder,
@@ -39,13 +46,15 @@ use gpui_kit::component::{
     },
     switch::Switch,
 };
+#[cfg(any(not(target_os = "linux"), test))]
+use gpui_kit::point;
 
 use gpui_kit::{
     Anchor, App, AppContext, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId, Entity,
     ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers,
     MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext,
     WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
-    base::StyledExt, div, img, point, prelude::*, px, size,
+    base::StyledExt, div, img, prelude::*, px, size,
 };
 use std::{
     cell::RefCell,
@@ -63,10 +72,13 @@ mod behavior_name;
 use behavior_name::BehaviorNameDraft;
 #[cfg(test)]
 use behavior_name::{BEHAVIOR_NAME_MAXIMUM_CHARS, sanitize_behavior_name_input};
+#[cfg(target_os = "linux")]
+mod alpha_output;
 mod lifecycle;
 mod localization;
 mod model_actions;
 mod model_drag_overlay;
+mod platform;
 use model_drag_overlay::ModelDragOverlayState;
 mod drag;
 mod dropdown;
@@ -84,6 +96,7 @@ mod source;
 use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
 mod models;
+mod multiplayer_page;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
@@ -126,6 +139,8 @@ const MODEL_EDIT_SAVE_TAB_INDEX: isize = 72;
 const MODEL_EDIT_CANCEL_TAB_INDEX: isize = 73;
 
 struct SettingsServiceErrorNotification;
+#[cfg(target_os = "linux")]
+struct AlphaManagementErrorNotification;
 
 struct ShortcutConflictNotification;
 
@@ -207,6 +222,17 @@ pub(crate) type LoggingLevelSelectState = SelectState<SearchableVec<&'static str
 
 pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'static str>>;
 
+/// One of the multiplayer page's fixed option lists: which addresses a relay
+/// binds, where a client's address comes from, and the preset addresses it may
+/// be picked from. All three are short lists of translated names, so they share
+/// one state type with the theme and log-level dropdowns.
+pub(crate) type NetworkOptionSelectState = SelectState<SearchableVec<&'static str>>;
+
+/// The client address dropdown's state. Its options are real `ws://` urls built
+/// from the configured port, which no `&'static str` can carry, so it gets its
+/// own state over owned strings.
+pub(crate) type NetworkAddressSelectState = SelectState<SearchableVec<String>>;
+
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
 /// One dropdown of a plugin's own configuration panel.
@@ -235,6 +261,12 @@ pub struct SettingsWindowSeed {
     pub appearance_theme: SettingsTheme,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NetworkEditor {
+    Connection,
+    Relay,
+}
+
 pub struct SettingsView {
     pub(crate) plugin_host: PluginHost,
     /// The one plugin whose configuration panel is open, if any.
@@ -251,8 +283,17 @@ pub struct SettingsView {
     pub(crate) client: SettingsClient,
     pub(crate) seed: SettingsWindowSeed,
     pub(crate) snapshot: Option<SettingsSnapshot>,
+    platform_notifications: platform::InputNotifications,
     pub(crate) pending: Option<PendingOperation>,
     pub(crate) pending_notification: Option<SettingsError>,
+    #[cfg(target_os = "linux")]
+    alpha_system_status: Option<crate::SettingsAlphaSystemStatus>,
+    #[cfg(target_os = "linux")]
+    alpha_status_checked: bool,
+    #[cfg(target_os = "linux")]
+    alpha_operation_pending: bool,
+    #[cfg(target_os = "linux")]
+    alpha_management_error: Option<crate::SettingsAlphaManagementError>,
     pub(crate) model_import_success_pending: bool,
     /// Set when the run's cover capture reported that the model could not be
     /// prepared. The model is removed instead of published, and the user is
@@ -283,11 +324,15 @@ pub struct SettingsView {
         crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     pub(crate) gamepad_dead_zone_timer_generation: u64,
     pub(crate) maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
+    pub(crate) pointer_sensitivity_percent_debouncer: crate::SettingsPatchDebouncer<u16>,
     pub(crate) maximum_fps_timer_generation: u64,
+    pub(crate) pointer_sensitivity_percent_timer_generation: u64,
     pub(crate) random_behavior_debouncer: crate::SettingsPatchDebouncer<SettingsRandomBehavior>,
     pub(crate) random_behavior_timer_generation: u64,
     pub(crate) logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,
     pub(crate) logging_settings_timer_generation: u64,
+    network_draft: Option<(NetworkEditor, SettingsNetwork)>,
+    network_apply_pending: bool,
     pub(crate) flush_pending_requested: bool,
     pub(crate) quit_after_flush: bool,
     pub(crate) model_delete_confirmation: Option<SettingsModelKey>,
@@ -352,6 +397,16 @@ pub struct SettingsView {
     /// come from the model catalog, so they are rebuilt on every snapshot.
     pub(crate) gamepad_connected_model_select: Entity<GamepadModelSelectState>,
     pub(crate) gamepad_disconnected_model_select: Entity<GamepadModelSelectState>,
+    pub(crate) network_listen_mode_select: Entity<NetworkOptionSelectState>,
+    /// The one address choice: follow the local relay, pick a preset, or type.
+    ///
+    /// Its options are the addresses themselves, built from the configured port
+    /// on every snapshot, so "where the address comes from" and "what it is"
+    /// are a single decision instead of two rows.
+    pub(crate) network_client_address_select: Entity<NetworkAddressSelectState>,
+    network_selected_peer_names: std::collections::BTreeMap<String, String>,
+    network_client_token_input: Entity<InputState>,
+    network_relay_token_input: Entity<InputState>,
     pub(crate) request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
     pub(crate) request_update: SettingsWindowRequest,

@@ -67,6 +67,191 @@ pub(super) fn random_behavior_mode_options(
         .map(|mode| random_behavior_mode_display_name(mode, display_language))
 }
 
+pub(super) fn network_listen_mode_display_name(
+    mode: SettingsNetworkListenMode,
+    display_language: SettingsLanguage,
+) -> &'static str {
+    let key = match mode {
+        SettingsNetworkListenMode::LocalOnly => {
+            "settings.multiplayer.server.listen.options.local_only"
+        }
+        SettingsNetworkListenMode::Ipv4 => "settings.multiplayer.server.listen.options.ipv4",
+        SettingsNetworkListenMode::DualStack => {
+            "settings.multiplayer.server.listen.options.dual_stack"
+        }
+        SettingsNetworkListenMode::Custom => "settings.multiplayer.server.listen.options.custom",
+    };
+    bongocat_i18n::text(display_language.catalog_locale(), key)
+}
+
+pub(super) fn network_listen_mode_from_display_name(
+    name: &str,
+    display_language: SettingsLanguage,
+) -> Option<SettingsNetworkListenMode> {
+    SettingsNetworkListenMode::ALL
+        .into_iter()
+        .find(|mode| network_listen_mode_display_name(*mode, display_language) == name)
+}
+
+pub(super) fn network_listen_mode_options(
+    display_language: SettingsLanguage,
+) -> [&'static str; SettingsNetworkListenMode::ALL.len()] {
+    SettingsNetworkListenMode::ALL
+        .map(|mode| network_listen_mode_display_name(mode, display_language))
+}
+
+/// The label the address dropdown shows for "follow the relay on this
+/// machine" and "I will type an address myself".
+///
+/// These are the two non-address entries in a list that is otherwise real
+/// `ws://` urls, so they read as choices among addresses rather than as a
+/// separate "source" question.
+pub(super) fn network_client_address_sentinel(
+    source: SettingsNetworkClientSource,
+    display_language: SettingsLanguage,
+) -> &'static str {
+    let key = match source {
+        SettingsNetworkClientSource::FollowLocal => {
+            "settings.multiplayer.client.source.options.follow_local"
+        }
+        SettingsNetworkClientSource::Manual => "settings.multiplayer.client.source.options.manual",
+    };
+    bongocat_i18n::text(display_language.catalog_locale(), key)
+}
+
+/// The whole address list the client's one dropdown offers, in order: follow the
+/// local relay, the two preset loopback addresses, then type one.
+///
+/// The presets are real addresses rather than bare hosts so the dropdown shows
+/// exactly what will be dialed, and the port is read on every rebuild so a
+/// preset can never name a port the user has since changed.
+pub(super) fn network_client_address_options(
+    display_language: SettingsLanguage,
+    port: u16,
+) -> Vec<String> {
+    let mut options = vec![
+        network_client_address_sentinel(SettingsNetworkClientSource::FollowLocal, display_language)
+            .to_owned(),
+    ];
+    for host in NETWORK_CLIENT_URL_PRESET_HOSTS {
+        options.push(network_relay_url(host, port));
+    }
+    options.push(
+        network_client_address_sentinel(SettingsNetworkClientSource::Manual, display_language)
+            .to_owned(),
+    );
+    options
+}
+
+/// What the room connection this process opened is doing, as one row reads it.
+pub(super) fn network_client_state_text(
+    state: SettingsNetworkClientState,
+    display_language: SettingsLanguage,
+) -> &'static str {
+    let key = match state {
+        SettingsNetworkClientState::Off => "settings.multiplayer.status.client.state.off",
+        SettingsNetworkClientState::Connecting => {
+            "settings.multiplayer.status.client.state.connecting"
+        }
+        SettingsNetworkClientState::Connected { .. } => {
+            "settings.multiplayer.status.client.state.connected"
+        }
+        SettingsNetworkClientState::Reconnecting => {
+            "settings.multiplayer.status.client.state.reconnecting"
+        }
+        SettingsNetworkClientState::Failed => "settings.multiplayer.status.client.state.failed",
+    };
+    bongocat_i18n::text(display_language.catalog_locale(), key)
+}
+
+/// How many machines the room holds, as the peers row reads it.
+///
+/// A count is a number rather than a sentence, so it takes no translation and
+/// the row can print the value it is given. Every state other than `Connected`
+/// answers with "not in a room" instead of a zero, because no room and an empty
+/// room are different facts to the person waiting for the other machine to
+/// appear: the first says this pet never joined, the second says it is alone in
+/// a room it did join.
+pub(super) fn network_client_peers_text(
+    state: SettingsNetworkClientState,
+    display_language: SettingsLanguage,
+) -> String {
+    match state {
+        SettingsNetworkClientState::Connected { peers } => peers.to_string(),
+        SettingsNetworkClientState::Off
+        | SettingsNetworkClientState::Connecting
+        | SettingsNetworkClientState::Reconnecting
+        | SettingsNetworkClientState::Failed => bongocat_i18n::text(
+            display_language.catalog_locale(),
+            "settings.multiplayer.status.peers.none",
+        )
+        .to_owned(),
+    }
+}
+
+/// The relay a client joins when it follows the one this machine serves.
+///
+/// Built from the configured port rather than stored, so the row cannot
+/// disagree with the port below it on the same page.
+pub(super) fn network_local_relay_url(port: u16) -> String {
+    format!("ws://{NETWORK_LOCAL_RELAY_HOST}:{port}")
+}
+
+/// The host the relay this machine serves binds on the loopback interface.
+///
+/// The address a peer on another machine dials is chosen by the listen mode
+/// below, so this literal is only the one a client on the same machine uses.
+const NETWORK_LOCAL_RELAY_HOST: &str = "127.0.0.1";
+
+/// The hosts the client's preset dropdown offers, this machine first.
+///
+/// Both name the machine the page is running on; the second is the host name a
+/// user is more likely to have seen, so a preset list of one would leave them
+/// typing what the dropdown already knows. They are hosts rather than whole
+/// addresses so the port is read when one is chosen, which is what keeps a
+/// preset from naming a port the user has since changed.
+pub(super) const NETWORK_CLIENT_URL_PRESET_HOSTS: [&str; 2] = ["127.0.0.1", "localhost"];
+
+/// The address a client dials to reach the relay on `host`.
+pub(super) fn network_relay_url(host: &str, port: u16) -> String {
+    format!("ws://{host}:{port}")
+}
+
+pub(super) fn network_port_number_field_options() -> NumberFieldOptions {
+    NumberFieldOptions {
+        min: 1.0,
+        max: 65535.0,
+        step: 1.0,
+    }
+}
+
+/// Clamp a port typed or stepped in the multiplayer page.
+///
+/// The field is whole-number valued and a relay cannot bind port zero, so a
+/// fractional or out-of-range entry falls back to the port a fresh
+/// configuration uses rather than to an unrelated number.
+pub(super) fn normalize_network_port(raw: f64) -> u16 {
+    let value = if raw.is_nan() {
+        f64::from(DEFAULT_NETWORK_PORT)
+    } else {
+        raw.round()
+    };
+    if !(1.0..=65535.0).contains(&value) {
+        return DEFAULT_NETWORK_PORT;
+    }
+    value as u16
+}
+
+/// Trim a typed address or room key, reading an empty field as "unset".
+///
+/// These settings are `Option<String>` because "no room key" and "an empty room
+/// key" are the same thing to the relay, and a value that is only whitespace is
+/// the field the user cleared rather than a key they chose.
+pub(super) fn normalize_network_optional_text(raw: String) -> Option<String> {
+    let trimmed = raw.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
 /// Which gamepad connection state one of the two model targets answers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GamepadConnectionState {

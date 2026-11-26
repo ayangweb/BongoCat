@@ -44,7 +44,7 @@ mod validate;
 
 // The public surface. A `pub(crate)` glob narrows everything it carries, so
 // the items the crate root re-exports are named here rather than left to it.
-pub use channel::{RenderConsumer, RenderProducer, latest_render_channel};
+pub use channel::{RenderConsumer, RenderProducer, RenderSubscription, latest_render_channel};
 pub use commit::{
     ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderFrame,
 };

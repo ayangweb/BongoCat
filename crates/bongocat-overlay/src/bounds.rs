@@ -134,6 +134,7 @@ impl OverlaySessionOptions {
     /// either: like the hover hide it is consulted inside the frame tick, because
     /// the window has to start and stop passing pointer events through while it
     /// keeps running.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         #[cfg(target_os = "windows")]
         {
@@ -143,6 +144,11 @@ impl OverlaySessionOptions {
         {
             self.corner_radius_percent != next.corner_radius_percent
                 || self.keep_inside_screen != next.keep_inside_screen
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = next;
+            false
         }
     }
 }
@@ -192,6 +198,7 @@ impl OverlayWindowBounds {
         }
     }
 
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn validate(self) -> Result<Self, OverlayError> {
         const MAX_COORDINATE: i32 = 1_000_000;
         const MIN_DIMENSION: u32 = 64;
@@ -223,6 +230,7 @@ impl OverlayWindowBounds {
     /// larger than the display on an axis, so an oversized window stays pinned
     /// to the display's top-left corner instead of being resized or pushed off
     /// the opposite edge.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
         let maximum_x = if self.width <= screen.width {
             screen.x.saturating_add_unsigned(screen.width - self.width)
@@ -268,6 +276,7 @@ pub(crate) fn bounds_match_scale(
 /// without pushing it clear of the desktop chrome. Coordinates may be negative
 /// for a display placed left of or above the primary one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) struct OverlayScreenBounds {
     pub x: i32,
     pub y: i32,

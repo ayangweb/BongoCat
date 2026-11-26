@@ -12,6 +12,7 @@ mod appearance;
 mod input;
 mod logging;
 mod model;
+mod network;
 mod overlay;
 mod system;
 mod updates;
@@ -37,12 +38,27 @@ pub use model::{
     ModelConfig, ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource,
     RandomBehaviorConfig, RandomBehaviorMode,
 };
+pub use network::{
+    DEFAULT_NETWORK_PORT, MAXIMUM_NETWORK_DEVICE_ID_BYTES, MAXIMUM_NETWORK_DEVICE_NAME_BYTES,
+    NETWORK_SELF_DEVICE, NetworkClientConfig, NetworkClientSource, NetworkConfig,
+    NetworkDeviceConfig, NetworkListenMode, NetworkServerConfig,
+};
 pub use overlay::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS,
     MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig,
 };
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
+
+/// Persistent preference for the optional transparent video output.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AlphaOutputConfig {
+    /// Missing in configurations written before Alpha output was introduced.
+    #[serde(default)]
+    pub enabled: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
@@ -58,6 +74,14 @@ pub struct NativeConfig {
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
+    /// How this machine takes part in a room. Absent from a document written
+    /// before multiplayer existed, which is why the field is defaulted rather
+    /// than required.
+    #[serde(default)]
+    pub network: NetworkConfig,
+    /// Disabled by default for configurations created before Alpha output.
+    #[serde(default)]
+    pub alpha_output: AlphaOutputConfig,
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
@@ -88,6 +112,7 @@ impl Default for NativeConfig {
                 keep_inside_screen: true,
             },
             input: InputConfig {
+                pointer_sensitivity_percent: 100,
                 gamepad: GamepadInputConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
@@ -115,6 +140,8 @@ impl Default for NativeConfig {
                 last_expressions: Vec::new(),
                 behavior_names: Vec::new(),
             },
+            network: NetworkConfig::default(),
+            alpha_output: AlphaOutputConfig::default(),
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
                 show_taskbar_icon: false,
@@ -161,6 +188,12 @@ impl NativeConfig {
         if self.overlay.hide_on_idle_delay_seconds > MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS {
             return Err(ConfigError::InvalidValue(
                 "overlay.hide_on_idle_delay_seconds",
+            ));
+        }
+        self.network.validate()?;
+        if !(1..=400).contains(&self.input.pointer_sensitivity_percent) {
+            return Err(ConfigError::InvalidValue(
+                "input.pointer_sensitivity_percent",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)

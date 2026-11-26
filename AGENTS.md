@@ -261,3 +261,73 @@ just schema                                             # 从 Rust 类型生成�
 用户明确要求**“发布版本”**（如“发布 2.2.0 版本”）时，直接在 `master` 上完成，不建分支、不开 PR，固定顺序是：fetch 并确认 `master` 与上游一致 → 改 `[workspace.package].version` 并 `cargo update --workspace` 同步 `Cargo.lock` → 两份 changelog 的 `## Unreleased` 改为 `## <version> - <date>` → `just release-notes` 与 `python3 -m unittest tools.tests.test_release_changelog_contract` 本地校验 → 在 `master` 提交 `chore: release v<version>` → 打附注 tag `v<version>` → `git push origin master` 与 `git push origin v<version>` 触发 release 流水线。
 
 - 发布 commit 只包含版本号、`Cargo.lock` 与 changelog 标题等版本相关改动，功能改动不得混入；标题与 tag 规则见 `docs/changelog-conventions.md` §3。
+
+## 11. 本 fork 的当前状态与交接（易变内容）
+
+本仓库是 `ayangweb/BongoCat` 的 fork，在 PR #1114（Wayland 支持）之上新增跨机联机，
+分支 `feat/multiplayer` 同时包含两者且未推 GitHub。接手任何工作前先读：
+
+- `HANDOFF.md` —— 当前状态、两机拓扑、构建/部署/启动/验证流程、已踩坑清单（必读）；
+- `TODO.md` —— 用户排期的后续需求；
+- `DESIGN.md` §11 —— 联机设计与实施偏差。
+
+本节与其余各章不同：其余各章是长期约束，本节指向的三个文件是易变的现状事实，
+以仓库实况为准。
+
+### Linux 构建入口和双猫位置
+
+- Linux x64 Development 使用 `just build --environment development --target x86_64-unknown-linux-gnu`。
+  在独立工作树构建时，将已验证的版本化可执行文件同步到 PC 主工作区
+  `/home/hyperbola/Work/BongoCat/target/package/`，并核对文件内容一致。
+- 给用户交付或排查启动问题时，统一指向 PC 主工作区的
+  `target/package/BongoCat-<version>-linux-x64.bin`。版本来自 `just version`。
+  `target/x86_64-unknown-linux-gnu/release/bongocat-app` 是打包输入，
+  `target/release/bongocat-app` 可能来自更早的构建。
+- Wayland layer-shell 模型窗口按设备 ID 将位置保存到本机当前环境的
+  `window-state.json`。切换展示设备时保留旧设备位置并恢复新设备位置。
+  一台本机和最多两台远端设备可以同屏。普通 Wayland 窗口由合成器管理位置。
+
+### Omarchy 虚拟机测试环境
+
+- 桌面应用、多设备和集群测试优先考虑 [libvirt-test-environments](/home/hyperbola/.codex/skills/libvirt-test-environments/SKILL.md) 的虚拟机方案。本项目的 Linux Wayland 桌面测试使用 Omarchy ISO。用户已于 2026-11-26 永久授权在本 BongoCat 项目复用下列两台现有虚拟机。后续复用无需逐次询问。新建或改用其他虚拟机仍需获得明确同意。桌面自动化和输入限于测试来宾。
+- 已用 Omarchy 4.5.0 ISO 和各自的 `cidata` 配置盘，通过 `virt-install` 在本机 `qemu:///system` 无人值守创建 `bongocat-test-pc` 和 `bongocat-test-laptop`。两台分别使用独立 qcow2 盘，每台 4 vCPU、8 GiB 内存、64 GiB 磁盘，接入 libvirt 的 `default` NAT 网络。安装完成后已弹出两张安装介质。
+- 已验证两台从虚拟盘启动、进入 Hyprland、支持宿主通过 SSH 公钥登录，以及两台之间双向 TCP 连通。验证时 SSH 地址分别为 `tester@192.168.122.201` 和 `tester@192.168.122.86`，复用前以当前 DHCP 租约为准。
+- 待办：两台尚缺 Vulkan ICD，安装工具时发现 Pacman 同步数据库未初始化。待用户批准采用此环境后，先补齐并验证 Vulkan，再部署 BongoCat。尚未验证设置页重启、relay 端口重绑，以及每台只运行一个 BongoCat 进程，同时显示两只独立跟随两台输入的猫。
+
+- 三猫验收使用过独立的 `bongocat-test-third`。用户确认后已移除该来宾及其磁盘与安装介质。
+  两台原有来宾继续用于验证，三机历史证据见 HANDOFF.md。
+
+### OBS Alpha 交接快照
+
+以下是交接时的工作快照，续作前必须重新检查实际状态；详细证据和后续更新以
+`HANDOFF.md`、`TODO.md`、`docs/adr/0083-linux-obs-alpha-output.md` 与
+`docs/benchmark/obs-alpha-spike.md` 为准。主工作树在 laptop 的
+`~/Work/Projects/BongoCat`，分支 `feat/multiplayer`，有大量未提交及未跟踪文件，
+包括 ADR 和 benchmark；全部保留，不擅自提交、覆盖或清理。
+
+- 用户已确认 OBS 33.0.1 与 v4l2loopback 0.15.4 的 AR24 透明及半透明合成正常；
+  猫的键盘和鼠标垫、PC 键盘、两机鼠标跟随以及优化版画面流畅均已由用户确认。
+  OBS 画面由用户评估，不操作其 OBS 界面。用户明确要求跳过八小时运行验证，
+  不得宣称其已通过。
+- Alpha 离屏输出、设置页状态与开关、虚拟设备安装卸载、配置兼容、双语 README 和
+  CHANGELOG 已有实现及测试。用户取消了独立管理程序和开机自动恢复：安装和卸载由
+  当前应用分别经 `pkexec` 授权，重启后用户手动重新安装；不自动安装驱动。
+  运行时由普通用户执行。独立帧订阅修复了桌面渲染阻塞导致的低帧率；联机输入
+  已修复本机鼠标覆盖、事件序号空洞及时间戳时钟不一致。完整细节见交接文档。
+- 设备身份升级已实现并通过隔离实机测试：状态记录设备 inode，输出和卸载核验身份，
+  打开后的句柄再次核验；同名同编号替换设备被拒绝。用户已同意切换新版后在设置页
+  **一次重新安装并授权**，以登记现有旧设备；切换及实际升级结果仍须核实。旧记录
+  在登记之前无法证明同名设备未被替换，这一限制已记入 ADR。勿擅自停止用户当前应用、
+  删除其设备或代替用户发起图形授权。
+- 下次先审查 `crates/bongocat-platform/src/linux/alpha_admin.rs`：安装遇到
+  `ready=false`、缺少 inode 且节点存在的部分失败状态时，身份不明确，应确认其拒绝
+  认领并补回归测试；不要把用户批准的旧版 `ready=true` 一次登记推广为认领不明设备。
+  随后验证并构建新版，联系用户按已批准流程切换和授权，核实升级后状态。
+- 交接时原优化构建日志 `/tmp/bongocat-identity-release.log` 和 tmux 会话
+  `bongocat-identity-release` 均未发现，不能假定构建仍在运行或已经成功；须重新检查
+  二进制与源码对应关系，必要时重新构建。真实重启后手动安装、图形授权及拒绝、
+  回滚边界、端到端延迟和混合输入持续性仍需按实际条件核验，不得提前宣称完成。
+- 已有自动化和目标用于续作：普通使用可用且五小时额度剩余至少 15% 时继续；低于
+  阈值按实际重置时间约三分钟后安排续作并暂停，忽略周额度作为主动停止条件。
+  用户对耗尽先前周期额度的授权是临时的。续作时先核对额度和自动化当前状态；
+  即使目标显示 paused，也按已授权的自动化指示继续，勿声称工具能够将其改回 active。

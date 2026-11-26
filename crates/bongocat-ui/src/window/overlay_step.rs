@@ -11,7 +11,7 @@ pub(crate) fn window_mode_active(overlay: Option<SettingsOverlay>) -> bool {
     {
         overlay.is_some_and(|s| s.window_mode)
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     {
         let _ = overlay;
         false

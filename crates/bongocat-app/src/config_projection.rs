@@ -5,14 +5,21 @@
 //! added on one side and forgotten on the other is a compile error here rather
 //! than a setting that quietly stops doing anything.
 
-use bongocat_config::{ConfigError, LoggingConfig, LoggingLevel, NativeConfig, RandomBehaviorMode};
+use bongocat_config::{
+    ConfigError, LoggingConfig, LoggingLevel, NativeConfig, NetworkClientConfig,
+    NetworkClientSource, NetworkConfig, NetworkDeviceConfig, NetworkListenMode,
+    NetworkServerConfig, RandomBehaviorMode,
+};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_log::{LogLevel as RuntimeLogLevel, LogSettings as RuntimeLogSettings};
 use bongocat_runtime::{
     CursorSettings, ModelSettings, OverlaySettings,
     RandomBehaviorMode as RuntimeRandomBehaviorMode, RandomBehaviorSettings,
 };
-use bongocat_ui_protocol::SettingsRandomBehaviorMode;
+use bongocat_ui_protocol::{
+    SettingsNetwork, SettingsNetworkClient, SettingsNetworkClientSource, SettingsNetworkDevice,
+    SettingsNetworkListenMode, SettingsNetworkServer, SettingsRandomBehaviorMode,
+};
 
 pub(crate) const fn runtime_log_level(level: LoggingLevel) -> RuntimeLogLevel {
     match level {
@@ -189,6 +196,101 @@ pub(crate) fn runtime_dead_zone(value: f64, field: &'static str) -> Result<f32, 
         Ok(value)
     } else {
         Err(ConfigError::InvalidValue(field))
+    }
+}
+
+// The multiplayer section lives in three vocabularies for the same reason the
+// log level does: the document persists it, the relay obeys it, and the window
+// has to render a dropdown without importing either. The conversions below are
+// the only places the three meet, so a variant added on one side and forgotten
+// on another is a compile error here rather than a mode the user can pick and
+// the product ignores.
+
+pub(crate) const fn network_listen_mode_to_config(
+    mode: SettingsNetworkListenMode,
+) -> NetworkListenMode {
+    match mode {
+        SettingsNetworkListenMode::LocalOnly => NetworkListenMode::LocalOnly,
+        SettingsNetworkListenMode::Ipv4 => NetworkListenMode::Ipv4,
+        SettingsNetworkListenMode::DualStack => NetworkListenMode::DualStack,
+        SettingsNetworkListenMode::Custom => NetworkListenMode::Custom,
+    }
+}
+
+pub(crate) const fn network_listen_mode_to_settings(
+    mode: NetworkListenMode,
+) -> SettingsNetworkListenMode {
+    match mode {
+        NetworkListenMode::LocalOnly => SettingsNetworkListenMode::LocalOnly,
+        NetworkListenMode::Ipv4 => SettingsNetworkListenMode::Ipv4,
+        NetworkListenMode::DualStack => SettingsNetworkListenMode::DualStack,
+        NetworkListenMode::Custom => SettingsNetworkListenMode::Custom,
+    }
+}
+
+pub(crate) const fn network_client_source_to_config(
+    source: SettingsNetworkClientSource,
+) -> NetworkClientSource {
+    match source {
+        SettingsNetworkClientSource::FollowLocal => NetworkClientSource::FollowLocal,
+        SettingsNetworkClientSource::Manual => NetworkClientSource::Manual,
+    }
+}
+
+pub(crate) const fn network_client_source_to_settings(
+    source: NetworkClientSource,
+) -> SettingsNetworkClientSource {
+    match source {
+        NetworkClientSource::FollowLocal => SettingsNetworkClientSource::FollowLocal,
+        NetworkClientSource::Manual => SettingsNetworkClientSource::Manual,
+    }
+}
+
+pub(crate) fn network_config_from_settings(settings: SettingsNetwork) -> NetworkConfig {
+    NetworkConfig {
+        device: NetworkDeviceConfig {
+            id: settings.device.id,
+            name: settings.device.name,
+        },
+        client: NetworkClientConfig {
+            enabled: settings.client.enabled,
+            source: network_client_source_to_config(settings.client.source),
+            url: settings.client.url,
+            token: settings.client.token,
+            publish: settings.client.publish,
+            display: settings.client.display,
+        },
+        server: NetworkServerConfig {
+            enabled: settings.server.enabled,
+            listen: network_listen_mode_to_config(settings.server.listen),
+            address: settings.server.address,
+            port: settings.server.port,
+            token: settings.server.token,
+        },
+    }
+}
+
+pub(crate) fn settings_network_from_config(config: &NetworkConfig) -> SettingsNetwork {
+    SettingsNetwork {
+        device: SettingsNetworkDevice {
+            id: config.device.id.clone(),
+            name: config.device.name.clone(),
+        },
+        client: SettingsNetworkClient {
+            enabled: config.client.enabled,
+            source: network_client_source_to_settings(config.client.source),
+            url: config.client.url.clone(),
+            token: config.client.token.clone(),
+            publish: config.client.publish,
+            display: config.client.display.clone(),
+        },
+        server: SettingsNetworkServer {
+            enabled: config.server.enabled,
+            listen: network_listen_mode_to_settings(config.server.listen),
+            address: config.server.address.clone(),
+            port: config.server.port,
+            token: config.server.token.clone(),
+        },
     }
 }
 

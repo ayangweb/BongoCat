@@ -1196,3 +1196,37 @@ fn motion_overlap_defaults_off_for_existing_v1_documents_and_round_trips() {
     let bytes = serde_json::to_vec(&enabled).expect("serialize configuration");
     assert_eq!(parse_config(&bytes).expect("read configuration").0, enabled);
 }
+
+#[test]
+fn alpha_output_defaults_off_for_existing_config_and_round_trips() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    document
+        .as_object_mut()
+        .expect("config object")
+        .remove("alpha_output");
+    let old_bytes = serde_json::to_vec(&document).expect("old configuration bytes");
+    let (loaded, _) = parse_config(&old_bytes).expect("existing config still loads");
+    assert!(!loaded.alpha_output.enabled);
+    document["alpha_output"] = serde_json::json!({});
+    let empty_section = serde_json::to_vec(&document).expect("configuration bytes");
+    assert!(
+        !parse_config(&empty_section)
+            .expect("missing switch defaults off")
+            .0
+            .alpha_output
+            .enabled
+    );
+    document["alpha_output"]["enabled"] = serde_json::json!("yes");
+    let invalid = serde_json::to_vec(&document).expect("invalid configuration bytes");
+    assert!(parse_config(&invalid).is_err());
+    let mut enabled = loaded;
+    enabled.alpha_output.enabled = true;
+    let bytes = serde_json::to_vec(&enabled).expect("serialize enabled config");
+    assert!(
+        parse_config(&bytes)
+            .expect("read enabled config")
+            .0
+            .alpha_output
+            .enabled
+    );
+}

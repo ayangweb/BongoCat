@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=BongoCat
+Exec=/usr/bin/bongocat-app
+Terminal=false
+Categories=Game;
+StartupNotify=true

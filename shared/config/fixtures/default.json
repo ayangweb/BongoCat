@@ -1,5 +1,8 @@
 {
   "schema_version": 1,
+  "alpha_output": {
+    "enabled": false
+  },
   "logging": {
     "level": "info",
     "retention_days": 7
@@ -25,6 +28,7 @@
     "maximum_fps": 60
   },
   "input": {
+    "pointer_sensitivity_percent": 100,
     "gamepad": {
       "stick_dead_zone": 0.15,
       "trigger_dead_zone": 0.0
@@ -59,6 +63,29 @@
     "allow_motion_overlap": false,
     "last_expressions": [],
     "behavior_names": []
+  },
+  "network": {
+    "device": {
+      "id": "pc-01",
+      "name": "PC"
+    },
+    "client": {
+      "enabled": false,
+      "source": "follow_local",
+      "url": null,
+      "token": null,
+      "publish": true,
+      "display": [
+        "self"
+      ]
+    },
+    "server": {
+      "enabled": false,
+      "listen": "dual_stack",
+      "address": null,
+      "port": 8787,
+      "token": null
+    }
   },
   "shortcuts": {
     "commands_enabled": true,

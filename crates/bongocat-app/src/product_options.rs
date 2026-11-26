@@ -35,6 +35,62 @@ pub(crate) struct RunOptions {
     #[arg(long, value_name = "SECONDS", default_value_t = 0)]
     pub(crate) run_seconds: u64,
 
+    /// Run as the relay instead of the desktop pet.
+    ///
+    /// Headless by construction: no window is created and no GPU surface is opened, so
+    /// this can run on a machine that never draws anything. It is a subcommand rather
+    /// than a separate binary so a build can never pair a new client with an old relay.
+    #[arg(long)]
+    pub(crate) relay: bool,
+
+    /// Where the relay listens: `local`, `ipv4`, or `dual` (both families, the default).
+    #[arg(long = "listen", value_name = "MODE", default_value = "dual")]
+    pub(crate) relay_listen: String,
+
+    /// The port the relay listens on.
+    #[arg(long = "port", value_name = "PORT", default_value_t = 8787)]
+    pub(crate) relay_port: u16,
+
+    /// The room key. Every client presenting this token shares one room.
+    ///
+    /// Omitted means "generate one and print it", which is the safer default: a relay
+    /// started without a token is not accidentally open to whatever knows the default.
+    #[arg(long = "token", value_name = "TOKEN")]
+    pub(crate) relay_token: Option<String>,
+
+    /// Publish this machine's input to the relay at this address.
+    ///
+    /// Absent means the pet stays local: no connection is attempted and no socket
+    /// is opened, so a machine that is only watching pays nothing for it.
+    #[arg(long, value_name = "URL")]
+    pub(crate) publish_url: Option<String>,
+
+    /// The room key for `--publish-url`.
+    #[arg(long, value_name = "TOKEN", requires = "publish_url")]
+    pub(crate) publish_token: Option<String>,
+
+    /// The name this machine appears under in the room. Defaults to the host name.
+    #[arg(long, value_name = "ID")]
+    pub(crate) device_id: Option<String>,
+
+    /// Draw another machine's input instead of this machine's.
+    ///
+    /// A viewer captures nothing locally, so it must not ask for the input
+    /// permission it would never use — that prompt is what makes the local
+    /// capture visible in the first place.
+    #[arg(long)]
+    pub(crate) watch: bool,
+
+    /// Keep the pet off the screen for the whole run.
+    ///
+    /// A machine that only feeds a room does not need to draw anything, but it
+    /// still captures input, publishes it and keeps the status icon running. This
+    /// is a run mode rather than a saved preference: visibility stays runtime
+    /// state, so the status icon can still bring the pet back for the session,
+    /// and a later start without the flag presents it again.
+    #[arg(long)]
+    pub(crate) hide: bool,
+
     /// Paint the settings window and exit once the run guard fires.
     #[arg(long)]
     pub(crate) settings_window_smoke: bool,
@@ -226,6 +282,7 @@ impl RunOptions {
         false
     }
 
+    #[cfg(not(target_os = "linux"))]
     pub(crate) fn opens_settings_window_on_start(&self) -> bool {
         let mut opens_settings_window =
             self.settings_window_smoke || self.settings_window_open_smoke;
@@ -281,7 +338,7 @@ impl From<clap::Error> for RunOptionsError {
 ///
 /// The flags come from the one declaration above, so this is also what a test reads to
 /// confirm that a harness this build does not contain is absent from the help text too.
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "linux")))]
 pub(crate) fn usage() -> String {
     <RunOptions as clap::CommandFactory>::command()
         .render_help()

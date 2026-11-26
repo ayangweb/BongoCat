@@ -8,73 +8,10 @@
 
 use super::*;
 
-#[derive(Debug, thiserror::Error)]
-#[error("product run failed: {}", .failures.join("; "))]
-pub(crate) struct ProductRunError {
-    pub(crate) failures: Vec<String>,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct FrameSourceShutdown {
-    pub(crate) stop_requested: Arc<AtomicBool>,
-    pub(crate) stopped: Arc<AtomicBool>,
-}
-
-impl FrameSourceShutdown {
-    pub(crate) fn request_stop(&self) {
-        self.stop_requested.store(true, Ordering::Release);
-    }
-
-    pub(crate) fn stop_requested(&self) -> bool {
-        self.stop_requested.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn is_stopped(&self) -> bool {
-        self.stopped.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn run_guard(&self) -> FrameSourceRunGuard {
-        FrameSourceRunGuard {
-            stopped: Arc::clone(&self.stopped),
-        }
-    }
-
-    pub(crate) async fn wait_for_stop(&self) -> bool {
-        const MAX_ATTEMPTS: u32 = 200;
-        for _ in 0..MAX_ATTEMPTS {
-            if self.is_stopped() {
-                return true;
-            }
-            Timer::after(Duration::from_millis(10)).await;
-        }
-        self.is_stopped()
-    }
-}
-
-pub(crate) struct FrameSourceRunGuard {
-    pub(crate) stopped: Arc<AtomicBool>,
-}
-
-impl Drop for FrameSourceRunGuard {
-    fn drop(&mut self) {
-        self.stopped.store(true, Ordering::Release);
-    }
-}
-
-/// Turn the final shared failure list into a process exit code, printing any
-/// failures once.
-pub(crate) fn product_failures_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
-    let failures = failures
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if failures.is_empty() {
-        return 0;
-    }
-    let mut stderr = io::stderr().lock();
-    let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
-    let _ = stderr.flush();
-    1
-}
+use crate::product_lifecycle::finish_product_services;
+pub(crate) use crate::product_lifecycle::{
+    FrameSourceShutdown, ProductRunError, product_failures_exit_code, record_failure,
+};
 
 /// Leave the GPUI loop after a startup failure that happens before a
 /// `ProductCoordinator` exists, so `finish_product_quit` cannot take over shutdown.
@@ -88,13 +25,6 @@ pub(crate) fn quit_after_startup_failure(cx: &mut App, failures: &Arc<Mutex<Vec<
         std::process::exit(exit_code);
     }
     cx.quit();
-}
-
-pub(crate) fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>) {
-    failures
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(failure.into());
 }
 
 pub(crate) const fn native_theme_for_startup(
@@ -149,7 +79,7 @@ pub(crate) fn finish_product_quit(cx: &mut App) {
 pub(crate) fn request_product_quit(cx: &mut App) {
     let window = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone());
+        .and_then(|coordinator| coordinator.settings.window.clone());
     if let Some(window) = window
         && window.request_quit_after_flush(cx).is_ok()
     {

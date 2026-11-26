@@ -18,6 +18,7 @@ impl<T> SettingsReply<T> {
 pub enum SettingsCommand {
     SettingsWindowPlacementChanged,
     OverlayWindowPlacementChanged {
+        device: Option<String>,
         x: i32,
         y: i32,
         width: u32,
@@ -38,6 +39,16 @@ pub enum SettingsCommand {
     /// model-catalog snapshot.
     ReadAutomaticUpdateSettings {
         reply: SettingsReply<Result<AutomaticUpdateSettings, SettingsError>>,
+    },
+    /// Recheck driver, module, and camera state without changing the system.
+    ReadAlphaSystemStatus {
+        reply: SettingsReply<Result<SettingsAlphaSystemStatus, SettingsError>>,
+    },
+    /// The service stops output before uninstall and performs management off the UI thread.
+    ManageAlphaCamera {
+        expected_config_revision: u64,
+        action: SettingsAlphaManagementAction,
+        reply: SettingsReply<Result<SettingsAlphaSystemStatus, SettingsAlphaManagementError>>,
     },
     /// Which keyboard modifiers are held right now, with the two sides apart.
     ///
@@ -114,6 +125,11 @@ pub enum SettingsCommand {
     SetCommandShortcutsEnabled {
         expected_config_revision: u64,
         enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetPointerSensitivity {
+        expected_config_revision: u64,
+        pointer_sensitivity_percent: u16,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetMaximumFps {
@@ -199,6 +215,21 @@ pub enum SettingsCommand {
     SetLoggingSettings {
         expected_config_revision: u64,
         settings: SettingsLogging,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Persist the whole multiplayer section as one atomic change.
+    ///
+    /// The three parts are one decision: a client address that points at a
+    /// server described in the same document only makes sense if both land
+    /// together.
+    SetNetworkSettings {
+        expected_config_revision: u64,
+        settings: SettingsNetwork,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetAlphaOutputEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetShortcuts {

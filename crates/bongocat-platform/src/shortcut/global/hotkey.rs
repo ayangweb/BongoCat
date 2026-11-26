@@ -5,8 +5,10 @@
 //! the wrong key would be a shortcut that fires when the user presses something
 //! else, which is worse than one that does not work.
 
+#[cfg(any(not(target_os = "linux"), test))]
 use super::*;
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn desired_registrations(
     compiled: &CompiledShortcuts,
 ) -> (Vec<Registration>, Vec<String>) {
@@ -28,6 +30,7 @@ pub(crate) fn desired_registrations(
 /// Modifier aliases and key tokens were already normalized by
 /// `ShortcutChord::parse`; the canonical token set is a closed vocabulary
 /// (single letters, digits and the named keys of `NAMED_SHORTCUT_KEYS`).
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn shortcut_hotkey(chord: &ShortcutChord) -> Result<HotKey, ShortcutHotkeyError> {
     let bits = chord.modifiers().bits();
     let mut modifiers = Modifiers::empty();
@@ -51,6 +54,7 @@ pub(crate) fn shortcut_hotkey(chord: &ShortcutChord) -> Result<HotKey, ShortcutH
 #[error("the key has no global hotkey mapping")]
 pub struct ShortcutHotkeyError;
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn shortcut_code(key: &str) -> Result<Code, ShortcutHotkeyError> {
     let bytes = key.as_bytes();
     if bytes.len() == 1 {
@@ -70,6 +74,7 @@ pub(crate) fn shortcut_code(key: &str) -> Result<Code, ShortcutHotkeyError> {
     code_from_name(named)
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn code_from_name(name: &str) -> Result<Code, ShortcutHotkeyError> {
     name.parse::<Code>().map_err(|_| ShortcutHotkeyError)
 }

@@ -43,6 +43,20 @@ impl Application {
         }
     }
 
+    pub fn set_pointer_sensitivity(&mut self, percent: u16) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.input.pointer_sensitivity_percent = percent;
+        next_config.validate()?;
+        let revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(revision);
+        #[cfg(target_os = "linux")]
+        bongocat_platform::set_linux_pointer_sensitivity(percent);
+        Ok(())
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;
@@ -532,6 +546,128 @@ impl Application {
         Ok(())
     }
 
+    /// Persist the whole multiplayer section as one atomic change.
+    ///
+    /// The three parts are one decision, so they land together: a document
+    /// that moved the client address but not the server port would describe a
+    /// client pointing at a room that no longer exists.
+    ///
+    /// The change reaches the network on the next start. The relay is a
+    /// socket bound for the lifetime of the process and a room is joined once
+    /// at startup, so re-reading the section here would leave a relay still
+    /// listening on the port the user just changed away from.
+    pub fn set_network_settings(
+        &mut self,
+        settings: bongocat_ui_protocol::SettingsNetwork,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.network = crate::config_projection::network_config_from_settings(settings);
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    pub fn set_alpha_output_enabled(&mut self, enabled: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.alpha_output.enabled = enabled;
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Give the served relay a room key if it has none.
+    ///
+    /// Generated rather than left open, and stored rather than printed: the key
+    /// has to be the same after a restart, or every peer would have to be
+    /// reconfigured each time this machine comes back.
+    pub fn ensure_network_server_token(&mut self) -> Result<Option<String>, ApplicationError> {
+        if let Some(token) = self.config.network.server.token.as_deref() {
+            let token = token.trim();
+            return Ok((!token.is_empty()).then(|| token.to_owned()));
+        }
+        let generated = bongocat_net::generate_token();
+        let mut next_config = self.config.clone();
+        next_config.network.server.token = Some(generated.clone());
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(Some(generated))
+    }
+
+    /// Gives this machine a device id and a display name it did not have to be
+    /// told.
+    ///
+    /// Two machines that both start from the template would otherwise answer to
+    /// the same id, and nothing downstream can tell the room's announcements
+    /// apart from one another. The fingerprint is the machine id's own prefix —
+    /// it is already a unique random value, so hashing it again would only
+    /// shorten the entropy — and the name falls back to the host name. Both are
+    /// written back once, exactly like the generated room key, and a user who
+    /// renames the machine afterwards wins over either default.
+    pub fn ensure_network_device_identity(&mut self) -> Result<(), ApplicationError> {
+        let host = std::env::var("HOSTNAME")
+            .ok()
+            .or_else(|| {
+                std::fs::read_to_string("/etc/hostname")
+                    .ok()
+                    .map(|text| text.trim().to_owned())
+            })
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "bongocat".to_owned());
+        let fingerprint = std::fs::read_to_string("/etc/machine-id")
+            .map(|text| text.trim().to_owned())
+            .ok()
+            .filter(|text| text.len() >= 8)
+            .map(|text| text[..8].to_owned())
+            .unwrap_or_else(|| host.chars().take(12).collect());
+
+        // The template "pc-01" predates the identity, and the "pc-<8 hex>"
+        // values predate the prefix being dropped; all of them would leave two
+        // machines answering to something they did not choose. The fingerprint
+        // itself is the id — it is already unique, and a prefix is noise the
+        // room's announcements would carry verbatim.
+        let template = ("pc-01", "PC");
+        let mut next_config = self.config.clone();
+        let mut changed = false;
+        let id = next_config.network.device.id.clone();
+        let id_is_template = id.is_empty()
+            || id == "pc-01"
+            || (id.len() == 11
+                && id.starts_with("pc-")
+                && id[3..].chars().all(|c| c.is_ascii_hexdigit()));
+        if id_is_template {
+            next_config.network.device.id = fingerprint.clone();
+            changed = true;
+        }
+        if next_config.network.device.name.is_empty()
+            || next_config.network.device.name == template.1
+        {
+            next_config.network.device.name = host;
+            changed = true;
+        }
+        if !changed {
+            return Ok(());
+        }
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_shortcuts(
         &mut self,
         shortcuts: bongocat_ui_protocol::SettingsShortcuts,
@@ -572,7 +708,7 @@ impl Application {
         temporary.shortcuts = temporary.shortcuts.canonicalized()?;
         temporary.validate()?;
         let compiled = active_shortcuts(&temporary, self.live_model_identity().as_ref())?;
-        self.shortcut_table.replace(compiled);
+        self.shortcut_table.replace_suspended(compiled);
         self.shortcut_capture_suspended = true;
         Ok(())
     }

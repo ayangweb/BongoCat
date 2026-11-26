@@ -90,6 +90,7 @@ impl RuntimeClient {
         FrameScheduling {
             maximum_fps: snapshot.maximum_fps,
             overlay_visible: snapshot.overlay_visible,
+            video_output_active: snapshot.video_output_active,
         }
     }
 

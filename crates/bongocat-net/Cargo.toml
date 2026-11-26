@@ -1,0 +1,22 @@
+[package]
+name = "bongocat-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-input = { path = "../bongocat-input" }
+serde.workspace = true
+serde_json = "1"
+thiserror.workspace = true
+tungstenite = "0.30.0"
+url = "2.5.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+socket2 = "=0.6.5"
+
+[lints]
+workspace = true

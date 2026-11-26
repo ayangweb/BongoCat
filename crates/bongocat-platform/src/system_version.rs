@@ -266,3 +266,19 @@ mod tests {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+mod platform {
+    pub fn version() -> Option<super::OperatingSystemVersion> {
+        let release = std::fs::read_to_string("/etc/os-release").ok()?;
+        let version = release
+            .lines()
+            .find_map(|line| line.strip_prefix("PRETTY_NAME="))
+            .map(|s| s.trim_matches('"').to_owned())?;
+        let build = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .ok()?
+            .trim()
+            .to_owned();
+        Some(super::OperatingSystemVersion { version, build })
+    }
+}

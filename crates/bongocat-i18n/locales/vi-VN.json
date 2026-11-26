@@ -31,6 +31,9 @@
     "plugins": {
       "title": "Trung tâm tiện ích",
       "empty": "Không có plugin khả dụng."
+    },
+    "multiplayer": {
+      "title": "Nhiều máy"
     }
   },
   "system_menu": {
@@ -67,6 +70,11 @@
       "title": "Khuyến nghị chạy với quyền quản trị",
       "description": "BongoCat cần quyền quản trị để tiếp tục nhận thông tin từ bàn phím và chuột khi một ứng dụng khác đang chạy với đặc quyền quản trị.\n\nĐể thiết lập: nhấp phải vào BongoCat → Thuộc tính → Tương thích → bật \"Chạy chương trình này với tư cách quản trị viên\".",
       "open_program_folder": "Thoát và mở Cài đặt"
+    },
+    "linux": {
+      "title": "Cho phép theo dõi bàn phím và chuột?",
+      "description": "BongoCat cần truy cập thiết bị đầu vào để phản hồi thao tác bàn phím và chuột trong các ứng dụng khác. Sau khi xác nhận, hệ thống sẽ yêu cầu quyền quản trị viên. Chỉ tiến trình hỗ trợ đầu vào nhận quyền này; cửa sổ cài đặt và mô hình vẫn chạy với quyền người dùng thông thường. Chọn thiết lập sau để tiếp tục mà không có phản hồi bàn phím và chuột.",
+      "confirm": "OK"
     }
   },
   "about": {
@@ -331,7 +339,10 @@
       "dock_icon_update_failed": "Không thể cập nhật biểu tượng Dock.",
       "window_hide_failed": "Không thể ẩn cửa sổ cài đặt",
       "window_layout_save_failed": "Không thể lưu bố cục cửa sổ",
-      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn"
+      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn",
+      "network_relay_failed": "Không thể khởi động bộ Máy chủ phòng. Hãy kiểm tra địa chỉ và cổng lắng nghe.",
+      "network_room_failed": "Không thể vào phòng. Hãy kiểm tra địa chỉ và khóa.",
+      "network_restore_failed": "Không thể khôi phục phiên kết nối trước. Hãy kiểm tra kết nối và thử lại."
     }
   },
   "settings": {
@@ -467,6 +478,10 @@
         "force_move": {
           "label": "Buộc di chuyển chuột",
           "description": "Vẫn theo dõi chuột trong các ứng dụng chiếm giữ con trỏ, chẳng hạn như trò chơi toàn màn hình."
+        },
+        "sensitivity": {
+          "label": "Độ nhạy theo dõi chuột (%)",
+          "description": "100% là tốc độ mặc định. Giá trị thấp hơn làm chuyển động chậm hơn; phần di chuyển vượt quá giới hạn sẽ bị bỏ qua."
         }
       },
       "keyboard": {
@@ -534,7 +549,8 @@
       "status_icon": {
         "label": {
           "macos": "Hiện biểu tượng trên thanh menu",
-          "windows": "Hiện biểu tượng trên thanh hệ thống"
+          "windows": "Hiện biểu tượng trên thanh hệ thống",
+          "linux": "Hiển thị biểu tượng khay hệ thống"
         }
       },
       "taskbar_icon": {
@@ -561,6 +577,168 @@
         "unsupported_platform": "Tính năng tự động khởi động không khả dụng trên hệ thống này",
         "unsupported_os": "Tính năng tự động khởi động không khả dụng trên hệ điều hành này",
         "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
+      }
+    },
+    "alpha": {
+      "camera": "Camera ảo",
+      "driver": "Trình điều khiển",
+      "enable": "Bật đầu ra Alpha",
+      "error": {
+        "authorization": "Ủy quyền thất bại hoặc bị hủy; hãy kiểm tra trình xác thực",
+        "busy": "Camera đang được xử lý",
+        "config": "Không thể lưu cài đặt đầu ra",
+        "conflict": "Không thể xác minh quyền sở hữu camera",
+        "driver": "Hãy cài trình điều khiển v4l2loopback trước",
+        "operation": "Thao tác camera thất bại",
+        "permission": "Không thể đặt quyền camera",
+        "rollback": "Cài đặt thất bại và cần xử lý hoàn tác",
+        "service": "Dịch vụ cài đặt không khả dụng",
+        "stale": "Cài đặt đã thay đổi; hãy kiểm tra lại",
+        "stop": "Không thể dừng đầu ra; hãy thử lại",
+        "unsupported": "Thiếu công cụ hoặc dịch vụ cần thiết"
+      },
+      "install": "Cài camera ảo",
+      "management": "Quản lý thiết bị",
+      "module": "Mô-đun nhân",
+      "output": "Đầu ra",
+      "refresh": "Kiểm tra lại",
+      "retry": "Thử lại đầu ra",
+      "title": "Đầu ra Alpha",
+      "uninstall": "Gỡ camera ảo",
+      "value": {
+        "available": "Khả dụng",
+        "checking": "Đang kiểm tra…",
+        "conflict": "Xung đột quyền sở hữu",
+        "control_missing": "Chưa cài v4l2loopback-ctl",
+        "driver_missing": "Chưa cài trình điều khiển",
+        "failed": "Thất bại",
+        "format": "Định dạng không hỗ trợ",
+        "installed": "Đã cài",
+        "loaded": "Đã nạp",
+        "module_tools_missing": "Công cụ mô-đun không khả dụng",
+        "not_installed": "Chưa cài",
+        "not_loaded": "Chưa nạp",
+        "off": "Đã tắt",
+        "permission": "Không có quyền",
+        "pkexec_missing": "Chưa cài pkexec",
+        "recovery": "Cài đặt lại camera ảo",
+        "running": "Đang chạy",
+        "starting": "Đang khởi động",
+        "stopping": "Đang dừng",
+        "udev_missing": "Chưa cài udevadm",
+        "unavailable": "Thiết bị không khả dụng",
+        "unknown": "Không rõ",
+        "unsupported": "Không khả dụng"
+      }
+    },
+    "multiplayer": {
+      "editor": {
+        "connect": "Kết nối",
+        "change_connection": "Đổi kết nối…",
+        "edit_connection": "Thiết lập kết nối…",
+        "apply_relay": "Áp dụng cài đặt máy chủ",
+        "edit_relay": "Cấu hình máy chủ…",
+        "cancel": "Hủy",
+        "disconnect": "Ngắt kết nối"
+      },
+      "device": {
+        "title": "Máy này",
+        "id": {
+          "label": "Mã thiết bị"
+        },
+        "name": {
+          "label": "Tên hiển thị"
+        }
+      },
+      "display": {
+        "title": "Thiết bị được hiển thị",
+        "self": {
+          "label": "Máy này (theo chính input của máy)"
+        },
+        "peer": {
+          "sharing": "đang chia sẻ",
+          "not_sharing": "không chia sẻ",
+          "offline": "ngoại tuyến",
+          "saved": "Thiết bị đã chọn",
+          "unnamed": "Thiết bị chưa đặt tên"
+        },
+        "empty": "Chọn thiết bị trong phòng để hiển thị."
+      },
+      "client": {
+        "title": "Vào phòng",
+        "source": {
+          "label": "Cách kết nối",
+          "options": {
+            "follow_local": "Theo dịch vụ trên máy này",
+            "manual": "Tự nhập địa chỉ"
+          }
+        },
+        "url": {
+          "label": "Địa chỉ"
+        },
+        "token": {
+          "label": "Khóa phòng"
+        },
+        "publish": {
+          "label": "Gửi input của tôi vào phòng"
+        }
+      },
+      "server": {
+        "title": "Máy chủ phòng",
+        "enabled": {
+          "label": "Chạy dịch vụ trên máy này"
+        },
+        "listen": {
+          "label": "Lắng nghe trên",
+          "options": {
+            "local_only": "Chỉ máy này",
+            "ipv4": "Chỉ mạng nội bộ",
+            "dual_stack": "Mạng nội bộ và máy này",
+            "custom": "Một địa chỉ do tôi chỉ định"
+          }
+        },
+        "address": {
+          "label": "Địa chỉ"
+        },
+        "port": {
+          "label": "Cổng"
+        },
+        "token": {
+          "label": "Khóa phòng"
+        }
+      },
+      "status": {
+        "title": "Trạng thái",
+        "server": {
+          "label": "Máy chủ phòng",
+          "stopped": "Chưa chạy"
+        },
+        "client": {
+          "label": "Phòng",
+          "state": {
+            "off": "Chưa kết nối",
+            "connecting": "Đang kết nối…",
+            "connected": "Đã kết nối",
+            "reconnecting": "Đang kết nối lại…",
+            "failed": "Kết nối thất bại"
+          }
+        },
+        "peers": {
+          "label": "Thiết bị khác trong phòng",
+          "none": "Chưa ở trong phòng"
+        },
+        "device_id": {
+          "label": "ID thiết bị này",
+          "copy": "Sao chép",
+          "copy_failed": "Không thể sao chép ID của thiết bị này."
+        },
+        "latency": {
+          "label": "Độ trễ",
+          "none": "chưa kết nối"
+        }
+      },
+      "status_and_devices": {
+        "title": "Trạng thái và thiết bị"
       }
     }
   },
@@ -601,5 +779,13 @@
       "reported": "Lỗi plugin: %{name} — %{reason}",
       "preview_failed": "Xem trước plugin thất bại: %{name}"
     }
+  },
+  "linux_input": {
+    "unavailable": "Không thể sử dụng dịch vụ đầu vào. Hãy kiểm tra pkexec, libinput và trình xác thực của môi trường máy tính, rồi mở lại ứng dụng.",
+    "denied": "Chưa hoàn tất cấp quyền đầu vào. Hãy mở lại ứng dụng và hoàn tất xác thực để điều khiển mô hình bằng bàn phím và chuột.",
+    "stopped": "Dịch vụ đầu vào đã dừng. Hãy mở lại ứng dụng và kiểm tra quyền cùng phiên làm việc hiện tại."
+  },
+  "linux_tray": {
+    "unavailable": "Không thể hiển thị biểu tượng khay. Hãy kiểm tra môi trường máy tính có hỗ trợ khay hệ thống; GNOME cần phần mở rộng AppIndicator."
   }
 }
