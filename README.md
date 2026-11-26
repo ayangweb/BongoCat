@@ -81,6 +81,31 @@ it starts from belongs to upstream; the changes below are what this fork adds on
 This fork is licensed under the same [Apache License 2.0](./LICENSE) as upstream, and the
 upstream authors hold the copyright to everything this fork starts from.
 
+## Features added in this fork
+
+The Linux work builds on [Wayland support in PR #1114](https://github.com/ayangweb/BongoCat/pull/1114).
+This fork adds multiplayer, per-device window placement, and a transparent OBS source.
+
+### Three cats on one desktop
+
+Show the local cat and up to two remote cats in separate windows. Each follows its own device input and restores its position by device ID.
+
+![Three multiplayer cats on a Wayland desktop](./screenshots/multiplayer-three-cats.png)
+
+### Multiplayer status and device controls
+
+The status panel shows the local device ID with a Copy button. Use the switches below to choose which room devices to display.
+
+![Multiplayer status with the local device ID and Copy button](./screenshots/multiplayer-local-device-id.png)
+
+![Local and remote device display switches](./screenshots/multiplayer-device-switches.png)
+
+### One transparent source for OBS
+
+The Linux V4L2 camera composites the selected cats into one transparent frame and preserves their relative positions. This image is a captured camera frame.
+
+![Three cats in one transparent V4L2 frame](./screenshots/obs-alpha-composite.png)
+
 ## Run the Linux build
 
 From the repository root, build the Development version with:

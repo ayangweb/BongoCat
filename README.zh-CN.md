@@ -73,6 +73,31 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 本 fork 与上游一样采用 [Apache License 2.0](./LICENSE) 授权，本 fork 所基于代码的版权归上游
 作者所有。
 
+## 本 fork 新增功能
+
+Linux 版本基于 [PR #1114 的 Wayland 支持](https://github.com/ayangweb/BongoCat/pull/1114)。
+本 fork 新增跨设备联机、按设备保存窗口位置和 OBS 透明输出。
+
+### 三猫同屏
+
+本机猫和最多两只远端猫可以在独立窗口中同时显示，各自跟随对应设备输入，并按设备 ID 恢复位置。
+
+![Wayland 桌面上的三只联机猫](./screenshots/multiplayer-three-cats.png)
+
+### 联机状态和展示设备
+
+状态区显示本机设备 ID，支持一键复制。下方可用开关选择要显示的房间设备。
+
+![联机状态中的本机设备 ID 和复制按钮](./screenshots/multiplayer-local-device-id.png)
+
+![本机与远端设备的展示开关](./screenshots/multiplayer-device-switches.png)
+
+### OBS 单路透明输出
+
+Linux V4L2 虚拟摄像头把选中的猫合成到同一个透明画面，保留各只猫的相对位置。下图是摄像头实际采集的一帧。
+
+![一帧 V4L2 透明画面中的三只猫](./screenshots/obs-alpha-composite.png)
+
 ## 运行 Linux 构建
 
 在仓库根目录构建 Development 版本：
