@@ -6,6 +6,7 @@
 //! visible in one file rather than spread through the draw path.
 
 use super::*;
+use std::collections::BTreeSet;
 
 pub(crate) struct MaskTarget {
     pub(crate) _texture: ID3D11Texture2D,
@@ -21,6 +22,11 @@ pub(crate) struct TextureResource {
 pub(crate) struct GpuModel {
     pub(crate) textures: BTreeMap<TextureId, TextureResource>,
     pub(crate) key_textures: BTreeMap<KeyAssetId, TextureResource>,
+    /// One quad per key image, because a legacy key image is authored in
+    /// BongoCatMver's window frame rather than in the canvas frame the model is
+    /// drawn in (see [`legacy_key_overlay_bounds`]). Key images that are already
+    /// in the canvas frame — every model the product ships — get the canvas quad.
+    pub(crate) key_overlay_buffers: BTreeMap<KeyAssetId, ID3D11Buffer>,
     pub(crate) background: Option<TextureResource>,
     pub(crate) background_vertex_buffer: ID3D11Buffer,
     pub(crate) background_index_buffer: ID3D11Buffer,
@@ -31,11 +37,90 @@ pub(crate) struct GpuModel {
     pub(crate) mirror_horizontal: bool,
     pub(crate) active_keys: Vec<KeyOverlay>,
     pub(crate) masked_drawable_count: usize,
+    /// The plugin layer, uploaded as one texture and drawn as one quad above
+    /// every other layer. `None` while no plugin draws anything.
+    pub(crate) plugin_layer: Option<PluginLayer>,
+}
+
+/// The plugin layer's GPU resources.
+///
+/// The texture and the quad's vertex buffer are created together because the
+/// quad is sized from the same layer the texture is uploaded from, so a layer
+/// that changes size replaces both.
+pub(crate) struct PluginLayer {
+    pub(crate) _texture: ID3D11Texture2D,
+    pub(crate) shader_resource: ID3D11ShaderResourceView,
+    pub(crate) vertex_buffer: ID3D11Buffer,
+    pub(crate) transform: [f32; 4],
+}
+
+/// Draw one plugin layer into a window, against the window's live buffer size.
+///
+/// The layer and the window size are read together so a caller cannot upload a
+/// panel measured for the previous size: `set_plugin_layer` drops a layer whose
+/// recorded size disagrees with the size passed here.
+pub(crate) unsafe fn upload_plugin_layer(
+    renderer: &mut Renderer,
+    layer: Option<&bongocat_plugin_hud::HudLayer>,
+) -> WindowsResult<()> {
+    let width = renderer.width;
+    let height = renderer.height;
+    // SAFETY: the device and its immediate context belong to this renderer and
+    // are used on its owner thread; the layer's pixels are copied into a
+    // device-owned texture before the borrow ends.
+    unsafe {
+        renderer
+            .model
+            .set_plugin_layer(&renderer.device, layer, width, height)
+    }
 }
 
 impl GpuModel {
+    /// Upload a composed plugin layer, replacing the previous one.
+    ///
+    /// A layer is composed for one window size, so a layer whose size no longer
+    /// matches the window is dropped rather than stretched: the plugin service
+    /// composes the next one against the live size, and a stretched panel would
+    /// put a plugin's buttons where its own hit testing does not expect them.
+    pub(crate) unsafe fn set_plugin_layer(
+        &mut self,
+        device: &ID3D11Device,
+        layer: Option<&bongocat_plugin_hud::HudLayer>,
+        width: u32,
+        height: u32,
+    ) -> WindowsResult<()> {
+        let layer = layer.filter(|layer| {
+            !layer.is_empty() && layer.window_width == width && layer.window_height == height
+        });
+        let Some(layer) = layer else {
+            self.plugin_layer = None;
+            return Ok(());
+        };
+        let texture = unsafe {
+            create_texture_resource(
+                device,
+                layer.width,
+                layer.height,
+                MODEL_TEXTURE_FORMAT,
+                layer.pixels.as_ptr(),
+                layer.width.saturating_mul(4),
+            )
+        }?;
+        let vertices = layer.quad_vertices();
+        let vertex_buffer =
+            unsafe { create_buffer(device, &vertices, D3D11_BIND_VERTEX_BUFFER.0 as u32)? };
+        self.plugin_layer = Some(PluginLayer {
+            _texture: texture._texture,
+            shader_resource: texture.shader_resource,
+            vertex_buffer,
+            transform: layer.clip_transform(),
+        });
+        Ok(())
+    }
+
     pub(crate) unsafe fn prepare(
         device: &ID3D11Device,
+        context: &ID3D11DeviceContext,
         resources: &RenderResources,
         snapshot: &RenderSnapshot,
         width: u32,
@@ -46,7 +131,9 @@ impl GpuModel {
         let textures = resources
             .textures
             .iter()
-            .map(|asset| unsafe { load_texture(device, asset) }.map(|texture| (asset.id, texture)))
+            .map(|asset| {
+                unsafe { load_texture(device, context, asset) }.map(|texture| (asset.id, texture))
+            })
             .collect::<WindowsResult<BTreeMap<_, _>>>()?;
         let key_textures = resources
             .key_assets
@@ -58,7 +145,8 @@ impl GpuModel {
                     width: asset.width,
                     height: asset.height,
                 };
-                unsafe { load_texture(device, &texture) }.map(|texture| (asset.id, texture))
+                unsafe { load_texture(device, context, &texture) }
+                    .map(|texture| (asset.id, texture))
             })
             .collect::<WindowsResult<BTreeMap<_, _>>>()?;
         let background = resources
@@ -67,6 +155,7 @@ impl GpuModel {
             .map(|asset| unsafe {
                 load_texture(
                     device,
+                    context,
                     &TextureAsset {
                         id: TextureId::new(usize::MAX),
                         path: asset.path.clone(),
@@ -77,24 +166,18 @@ impl GpuModel {
             })
             .transpose()?;
         let canvas_bounds = ModelBounds::from_canvas(snapshot.canvas);
-        let background_vertices = [
-            bongocat_render::Vertex {
-                position: [canvas_bounds.min_x, canvas_bounds.min_y],
-                uv: [0.0, 0.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.max_x, canvas_bounds.min_y],
-                uv: [1.0, 0.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.max_x, canvas_bounds.max_y],
-                uv: [1.0, 1.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.min_x, canvas_bounds.max_y],
-                uv: [0.0, 1.0],
-            },
-        ];
+        let mut key_overlay_buffers = BTreeMap::new();
+        for asset in &resources.key_assets {
+            let vertices = quad_vertices(legacy_key_overlay_bounds(
+                canvas_bounds,
+                asset.width,
+                asset.height,
+            ));
+            let buffer =
+                unsafe { create_buffer(device, &vertices, D3D11_BIND_VERTEX_BUFFER.0 as u32)? };
+            key_overlay_buffers.insert(asset.id, buffer);
+        }
+        let background_vertices = quad_vertices(canvas_bounds);
         let background_indices = [0_u16, 1, 2, 0, 2, 3];
         let mut meshes = Vec::with_capacity(snapshot.drawables.len());
         for drawable in &snapshot.drawables {
@@ -153,6 +236,7 @@ impl GpuModel {
         Ok(Self {
             textures,
             key_textures,
+            key_overlay_buffers,
             background,
             background_vertex_buffer: unsafe {
                 create_buffer(
@@ -179,6 +263,7 @@ impl GpuModel {
                 .iter()
                 .filter(|drawable| !drawable.masks.is_empty())
                 .count(),
+            plugin_layer: None,
         })
     }
 
@@ -273,9 +358,10 @@ pub(crate) unsafe fn create_buffer<T>(
 
 pub(crate) unsafe fn load_texture(
     device: &ID3D11Device,
+    context: &ID3D11DeviceContext,
     asset: &TextureAsset,
 ) -> WindowsResult<TextureResource> {
-    let image = ImageReader::open(&asset.path)
+    let mut image = ImageReader::open(&asset.path)
         .map_err(|error| Error::new(HRESULT(0x80004005_u32 as i32), error.to_string()))?
         .decode()
         .map_err(|error| Error::new(HRESULT(0x80004005_u32 as i32), error.to_string()))?
@@ -285,9 +371,11 @@ pub(crate) unsafe fn load_texture(
             "texture dimensions changed after validation",
         ));
     }
+    premultiply_alpha(&mut image);
     unsafe {
-        create_texture_resource(
+        create_mipmapped_texture_resource(
             device,
+            context,
             asset.width,
             asset.height,
             MODEL_TEXTURE_FORMAT,
@@ -295,6 +383,63 @@ pub(crate) unsafe fn load_texture(
             asset.width.saturating_mul(4),
         )
     }
+}
+
+/// Convert straight-alpha PNG data before any GPU filtering occurs.
+///
+/// Cubism's normal blend path consumes premultiplied RGB. Premultiplying the
+/// source texels first prevents RGB stored in transparent texels from bleeding
+/// into visible edges during linear or mipmap filtering.
+pub(crate) fn premultiply_alpha(image: &mut image::RgbaImage) {
+    for pixel in image.pixels_mut() {
+        let alpha = u16::from(pixel[3]);
+        for channel in &mut pixel.0[..3] {
+            *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
+        }
+    }
+}
+
+/// Create a filterable texture and generate its mip chain from premultiplied
+/// level zero. The immediate context is used only during resource creation;
+/// all later sampling remains on the renderer's owner thread.
+pub(crate) unsafe fn create_mipmapped_texture_resource(
+    device: &ID3D11Device,
+    context: &ID3D11DeviceContext,
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    bytes: *const u8,
+    row_pitch: u32,
+) -> WindowsResult<TextureResource> {
+    let descriptor = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 0,
+        ArraySize: 1,
+        Format: format,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: (D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE).0 as u32,
+        MiscFlags: D3D11_RESOURCE_MISC_GENERATE_MIPS.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut texture))? };
+    let texture = required(texture, "mipmapped texture")?;
+    let mut shader_resource = None;
+    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource))? };
+    let shader_resource = required(shader_resource, "mipmapped texture shader resource")?;
+    unsafe {
+        context.UpdateSubresource(&texture, 0, None, bytes.cast(), row_pitch, 0);
+        context.GenerateMips(&shader_resource);
+    }
+    Ok(TextureResource {
+        _texture: texture,
+        shader_resource,
+    })
 }
 
 pub(crate) unsafe fn create_empty_mask(device: &ID3D11Device) -> WindowsResult<TextureResource> {
@@ -455,6 +600,7 @@ pub(crate) unsafe fn verify_frame_smoke(
     texture: &ID3D11Texture2D,
     width: u32,
     height: u32,
+    window_background_color: Option<[u8; 3]>,
 ) -> WindowsResult<()> {
     let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe { context.Map(texture, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
@@ -479,7 +625,29 @@ pub(crate) unsafe fn verify_frame_smoke(
                 pixels.push(pixel);
             }
         }
-        validate_frame_smoke(pixels).map_err(invariant_error)
+        if let Some(rgb) = window_background_color {
+            let background = [rgb[2], rgb[1], rgb[0], 255];
+            if pixels.iter().any(|pixel| pixel[3] != 255) {
+                Err(invariant_error("window capture surface is not opaque"))
+            } else if pixels
+                .iter()
+                .filter(|pixel| **pixel != background)
+                .map(|pixel| [pixel[0], pixel[1], pixel[2]])
+                .collect::<BTreeSet<_>>()
+                .len()
+                < 2
+            {
+                Err(invariant_error(
+                    "window capture surface contains no model picture",
+                ))
+            } else {
+                Ok(())
+            }
+        } else {
+            validate_frame_smoke(pixels)
+                .map(|_| ())
+                .map_err(invariant_error)
+        }
     };
     unsafe { context.Unmap(texture, 0) };
     result.map(|_| ())

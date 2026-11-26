@@ -1,6 +1,31 @@
 //! The schema, its defaults, its bounds and its version gate.
 
 use super::*;
+
+#[test]
+fn window_mode_preserves_older_v1_documents_and_rejects_invalid_rgb() {
+    let mut old = serde_json::to_value(NativeConfig::default()).expect("config value");
+    old["overlay"]
+        .as_object_mut()
+        .unwrap()
+        .remove("window_mode");
+    old["overlay"]
+        .as_object_mut()
+        .unwrap()
+        .remove("window_background_color");
+    let config = parse_config(&serde_json::to_vec(&old).unwrap()).expect("older config");
+    assert!(!config.0.overlay.window_mode);
+    assert_eq!(config.0.overlay.window_background_color, [0, 255, 0]);
+    for rgb in [
+        serde_json::json!([256, 0, 0]),
+        serde_json::json!([-1, 0, 0]),
+        serde_json::json!([0, 255]),
+        serde_json::json!([0, 255, 0, 255]),
+    ] {
+        old["overlay"]["window_background_color"] = rgb;
+        assert!(parse_config(&serde_json::to_vec(&old).unwrap()).is_err());
+    }
+}
 use crate::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
     MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory,
@@ -66,6 +91,26 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is a Korean locale"
         );
     }
+    // French takes the same shape: the copy was written for France, and a
+    // Canadian, Belgian or Swiss machine reaches it on the primary subtag rather
+    // than falling back to English.
+    for locale in ["fr", "fr-FR", "fr_FR", "fr-CA", "fr-BE", "fr-CH"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::French,
+            "{locale} is a French locale"
+        );
+    }
+    // Russian takes the same shape: the copy was written for Russia, and a
+    // machine reporting plain `ru` or another Russian region reaches it on the
+    // primary subtag rather than falling back to English.
+    for locale in ["ru", "ru-RU", "ru_RU", "ru-KZ", "ru-BY"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Russian,
+            "{locale} is a Russian locale"
+        );
+    }
     // Chinese shares the `zh` subtag across two scripts, so it is the one
     // language the primary subtag cannot classify. The script subtag decides
     // when the platform reports one, and the `TW`/`HK`/`MO` region subtags
@@ -103,6 +148,11 @@ fn system_locale_resolves_to_a_shipped_language() {
         Language::Portuguese
     );
     assert_eq!(Language::System.resolve(Language::Korean), Language::Korean);
+    assert_eq!(Language::System.resolve(Language::French), Language::French);
+    assert_eq!(
+        Language::System.resolve(Language::Russian),
+        Language::Russian
+    );
     assert_eq!(
         Language::System.resolve(Language::System),
         Language::English
@@ -146,6 +196,22 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(
         Language::English.resolve(Language::Korean),
+        Language::English
+    );
+    assert_eq!(
+        Language::French.resolve(Language::ChineseSimplified),
+        Language::French
+    );
+    assert_eq!(
+        Language::English.resolve(Language::French),
+        Language::English
+    );
+    assert_eq!(
+        Language::Russian.resolve(Language::ChineseSimplified),
+        Language::Russian
+    );
+    assert_eq!(
+        Language::English.resolve(Language::Russian),
         Language::English
     );
     assert_eq!(
@@ -197,13 +263,12 @@ fn a_configuration_written_before_arabic_existed_still_loads() {
 /// A document written before the key layer could stack must still load, as the
 /// compatibility mode.
 ///
-/// `show_all_pressed_keys` is the one field in `ModelConfig` that carries
-/// `#[serde(default)]`, and the reason is this test: the strict v1 entry point
-/// rejects anything it cannot read, so a field an older build never wrote would
-/// otherwise send every existing `config.json` down the backup-then-default
-/// recovery path and reset the user's settings. The document is edited by
-/// removing the key from the *serialized* current default, which is the shape
-/// the old bytes had.
+/// `show_all_pressed_keys` carries `#[serde(default)]` for this reason: the
+/// strict v1 entry point rejects anything it cannot read, so a field an older
+/// build never wrote would otherwise send every existing `config.json` down the
+/// backup-then-default recovery path and reset the user's settings. The document
+/// is edited by removing the key from the *serialized* current default, which is
+/// the shape the old bytes had.
 #[test]
 fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
     let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
@@ -223,6 +288,62 @@ fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
     );
     loaded.validate().expect("an old document still validates");
     assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// A document written before the expression toggle existed must still load, as
+/// the non-toggling behaviour.
+///
+/// The same reasoning as the key layer above, and the same shape of document: the
+/// field is removed from the *serialized* current default, which is exactly what
+/// the bytes of a build that predates the switch look like. Without the default
+/// this build would refuse to read every existing `config.json`, fall back to a
+/// default configuration, and reset the user's settings.
+#[test]
+fn a_configuration_written_before_the_expression_toggle_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let model = document["model"]
+        .as_object_mut()
+        .expect("model object")
+        .remove("toggle_repeated_expression");
+    assert!(
+        model.is_some(),
+        "the current default still writes the field"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        !loaded.model.toggle_repeated_expression,
+        "a document with no field loads as the repeat-is-a-no-op behaviour, not as a new opt-in"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// The toggle is its own switch rather than a second remembered-expression field.
+///
+/// Turning a repeated trigger into "turn this expression off" and restoring the
+/// last chosen expression are different decisions, and one implementation detail
+/// of the other: a repeat that closes an expression deliberately records nothing,
+/// so what is remembered is still the last face the user chose to wear.
+#[test]
+fn the_expression_toggle_defaults_to_off_and_is_independent_of_the_memory_switch() {
+    let default = NativeConfig::default();
+    assert!(!default.model.toggle_repeated_expression);
+
+    let mut config = default;
+    config.model.remember_last_expression = true;
+    assert!(
+        !config.model.toggle_repeated_expression,
+        "restoring the last expression says nothing about what a repeat trigger does"
+    );
+    config.model.toggle_repeated_expression = true;
+    assert!(
+        config.model.remember_last_expression,
+        "toggling a repeat says nothing about where a model starts"
+    );
+    config
+        .validate()
+        .expect("both switches on is a valid document");
 }
 
 /// The pointer capture switch round-trips and an older document without the
@@ -560,6 +681,112 @@ fn gamepad_auto_switch_defaults_to_off_without_targets_and_validates_target_ids(
             "gamepad auto switch target {rejected:?} must be rejected"
         );
     }
+}
+
+/// A document written before behaviors could be named must still load, with every row
+/// still showing its numbered label.
+///
+/// The field carries `#[serde(default)]` for the same reason the other optional model
+/// fields do: the v1 entry point rejects anything it cannot read, so a required new
+/// field would send every existing `config.json` down the backup-then-default recovery
+/// path and reset the user's settings. The document is edited by removing the key from
+/// the *serialized* current default, which is the shape the old bytes had.
+#[test]
+fn a_configuration_written_before_behaviors_could_be_named_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let removed = document["model"]
+        .as_object_mut()
+        .expect("model object")
+        .remove("behavior_names");
+    assert!(
+        removed.is_some(),
+        "the current default still writes the field"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        loaded.model.behavior_names.is_empty(),
+        "a document with no field loads as every row numbered"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// A name is display text on one row, so it is bounded, printable and unique per
+/// behavior — and the behavior it names has to be one the vocabulary can spell.
+///
+/// A row that carried an unprintable or unbounded name would be the page's problem, and
+/// two rows for one behavior would leave the label up to which the parser saw last.
+#[test]
+fn a_behavior_name_is_parsed_bounded_and_held_once_per_behavior() {
+    let mut config = NativeConfig::default();
+    config.model.behavior_names = vec![
+        ModelBehaviorName {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            behavior_id: "motion:CAT_motion:0".to_owned(),
+            name: "the sleepy one".to_owned(),
+        },
+        ModelBehaviorName {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            behavior_id: "expression:live2d_expression1.exp3.json".to_owned(),
+            name: "开心".to_owned(),
+        },
+    ];
+    config.validate().expect("well-formed names");
+
+    for rejected in ["", "   ", "a\nb"] {
+        let mut broken = config.clone();
+        broken.model.behavior_names[0].name = rejected.to_owned();
+        assert!(
+            broken.validate().is_err(),
+            "the name {rejected:?} must be rejected"
+        );
+    }
+    let mut long = config.clone();
+    long.model.behavior_names[0].name = "n".repeat(MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS + 1);
+    assert!(
+        long.validate().is_err(),
+        "a name longer than the field accepts must be rejected"
+    );
+
+    let mut wrong_behavior = config.clone();
+    wrong_behavior.model.behavior_names[0].behavior_id = "not-a-behavior".to_owned();
+    assert!(wrong_behavior.validate().is_err());
+
+    let mut duplicate = config.clone();
+    duplicate.model.behavior_names.push(ModelBehaviorName {
+        model: ModelIdentity {
+            id: "standard".to_owned(),
+            source: ModelSource::BuiltIn,
+        },
+        behavior_id: "motion:CAT_motion:0".to_owned(),
+        name: "another name".to_owned(),
+    });
+    assert!(
+        duplicate.validate().is_err(),
+        "two rows for one behavior leave the label up to parse order"
+    );
+
+    // The same behavior of a *different* model is a different row, which is the whole
+    // reason the model travels with the name.
+    let mut per_model = config.clone();
+    per_model.model.behavior_names.push(ModelBehaviorName {
+        model: ModelIdentity {
+            id: "keyboard".to_owned(),
+            source: ModelSource::BuiltIn,
+        },
+        behavior_id: "motion:CAT_motion:0".to_owned(),
+        name: "keyboard's own".to_owned(),
+    });
+    per_model
+        .validate()
+        .expect("the same behavior of two models is two rows");
 }
 
 #[test]
@@ -954,4 +1181,52 @@ fn parser_requires_nullable_v1_fields_to_be_present() {
         parse_config(&serde_json::to_vec(&value).expect("missing selected bytes")),
         Err(ConfigError::InvalidValue("model.selected_model"))
     ));
+}
+
+#[test]
+fn motion_overlap_defaults_off_for_existing_v1_documents_and_round_trips() {
+    let old =
+        include_bytes!("../../../../shared/config/fixtures/accept-before-motion-overlap.json");
+    let (config, _) = parse_config(old).expect("existing v1 configuration");
+    assert!(!config.model.allow_motion_overlap);
+    assert!(!NativeConfig::default().model.allow_motion_overlap);
+    let mut enabled = config;
+    enabled.model.allow_motion_overlap = true;
+    enabled.validate().expect("valid overlap setting");
+    let bytes = serde_json::to_vec(&enabled).expect("serialize configuration");
+    assert_eq!(parse_config(&bytes).expect("read configuration").0, enabled);
+}
+
+#[test]
+fn alpha_output_defaults_off_for_existing_config_and_round_trips() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    document
+        .as_object_mut()
+        .expect("config object")
+        .remove("alpha_output");
+    let old_bytes = serde_json::to_vec(&document).expect("old configuration bytes");
+    let (loaded, _) = parse_config(&old_bytes).expect("existing config still loads");
+    assert!(!loaded.alpha_output.enabled);
+    document["alpha_output"] = serde_json::json!({});
+    let empty_section = serde_json::to_vec(&document).expect("configuration bytes");
+    assert!(
+        !parse_config(&empty_section)
+            .expect("missing switch defaults off")
+            .0
+            .alpha_output
+            .enabled
+    );
+    document["alpha_output"]["enabled"] = serde_json::json!("yes");
+    let invalid = serde_json::to_vec(&document).expect("invalid configuration bytes");
+    assert!(parse_config(&invalid).is_err());
+    let mut enabled = loaded;
+    enabled.alpha_output.enabled = true;
+    let bytes = serde_json::to_vec(&enabled).expect("serialize enabled config");
+    assert!(
+        parse_config(&bytes)
+            .expect("read enabled config")
+            .0
+            .alpha_output
+            .enabled
+    );
 }

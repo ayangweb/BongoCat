@@ -1,5 +1,6 @@
 """Keep shipped BongoCat product metadata derived from one workspace value."""
 
+import json
 import plistlib
 import re
 import unittest
@@ -23,8 +24,6 @@ UPDATE_CAPABILITY_TESTS = (
     ROOT / "crates" / "bongocat-update" / "tests" / "release_manifest_capability.rs"
 )
 PRODUCT_RUNTIME_DOC = ROOT / "docs" / "product-runtime.md"
-
-
 def read(path):
     return path.read_text(encoding="utf-8")
 
@@ -76,14 +75,24 @@ class ProductVersionContractTests(unittest.TestCase):
 
     def test_workspace_members_inherit_the_product_version(self):
         members = workspace_members()
-        self.assertTrue(members, "the workspace must contain crates")
+        self.assertTrue(members, "the workspace must contain product crates")
 
         for member in members:
             with self.subTest(member=member):
                 manifest = ROOT / member / "Cargo.toml"
                 source = read(manifest)
-                self.assertRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
-                self.assertNotRegex(source, r"(?m)^version\s*=\s*\"")
+                if member == "crates/bongocat-plugin-sdk" or member.startswith(
+                    "plugins/"
+                ):
+                    self.assertRegex(
+                        source,
+                        r'(?m)^version\s*=\s*"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"$',
+                        "the plugin protocol and plugin releases are versioned independently",
+                    )
+                    self.assertNotRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
+                else:
+                    self.assertRegex(source, r"(?m)^version\.workspace\s*=\s*true\s*$")
+                    self.assertNotRegex(source, r"(?m)^version\s*=\s*\"")
 
     def test_lockfile_workspace_packages_match_the_product_version(self):
         expected_version = workspace_package_version()
@@ -95,16 +104,24 @@ class ProductVersionContractTests(unittest.TestCase):
             )
         )
         workspace_packages = {
+            re.search(
+                r'(?m)^name\s*=\s*"([^"]+)"\s*$',
+                read(ROOT / member / "Cargo.toml"),
+            ).group(1)
+            for member in workspace_members()
+            if member != "crates/bongocat-plugin-sdk" and not member.startswith("plugins/")
+        }
+        product_packages = {
             name: version
             for name, version in packages.items()
-            if name.startswith("bongocat-")
+            if name in workspace_packages
         }
 
-        self.assertTrue(workspace_packages, "Cargo.lock must contain product packages")
+        self.assertTrue(product_packages, "Cargo.lock must contain product packages")
         self.assertEqual(
-            set(workspace_packages.values()),
+            set(product_packages.values()),
             {expected_version},
-            "every bongocat workspace package must inherit the product version",
+            "every bongocat product package must inherit the product version",
         )
 
     def test_runtime_and_ui_use_the_compiled_product_version(self):
@@ -119,17 +136,23 @@ class ProductVersionContractTests(unittest.TestCase):
             'product_version: env!("CARGO_PKG_VERSION").to_owned()',
             read(UI_LIBRARY),
         )
+        copy_tests = read(UI_WINDOW_COPY_TESTS)
         self.assertIn(
-            'let product_version = env!("CARGO_PKG_VERSION");', read(UI_WINDOW_COPY_TESTS)
+            'let product_version = env!("CARGO_PKG_VERSION");', copy_tests
         )
         self.assertIn(
-            'format!("Version {product_version} · Development build")',
-            read(UI_WINDOW_COPY_TESTS),
+            'format!("Version {product_version}")',
+            copy_tests,
         )
         self.assertIn(
-            'format!("版本 {product_version} · 开发版")',
-            read(UI_WINDOW_COPY_TESTS),
+            'format!("版本 {product_version}")',
+            copy_tests,
         )
+        # The About row names the version and not the build environment, so the
+        # environment suffix has to stay out of the expectation rather than be
+        # pinned by it.
+        self.assertNotIn("· Development build", copy_tests)
+        self.assertNotIn("· 开发版", copy_tests)
 
         update_runtime = read(UPDATE_RUNTIME_TESTS)
         self.assertIn('env!("CARGO_PKG_VERSION")', update_runtime)

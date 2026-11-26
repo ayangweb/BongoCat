@@ -5,6 +5,7 @@ pub(super) const GLOBAL_WINDOW_CONTROL: bool = !cfg!(target_os = "linux");
 pub(super) const RELATIVE_POINTER_SENSITIVITY: bool = cfg!(target_os = "linux");
 pub(super) const FORCE_POINTER_MOVEMENT: bool = !cfg!(target_os = "linux");
 const INPUT_STATUS_NOTIFICATIONS: bool = cfg!(target_os = "linux");
+pub(super) const PLUGIN_CENTER: bool = !cfg!(target_os = "linux");
 pub(super) const AUTOMATIC_UPDATES: bool = !cfg!(target_os = "linux");
 pub(super) const SHOW_ON_CREATE: bool = cfg!(target_os = "linux");
 

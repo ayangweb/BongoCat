@@ -8,6 +8,7 @@ set of decisions only this repository can make:
 
 * which targets ship and which artifacts each target publishes,
 * that the Windows installer stays per-user,
+* that the Windows installer offers exactly the application languages,
 * that the Windows installer is published under the release name,
 * that the macOS bundle overlay and the runtime resource lookup agree,
 * that `just` stays a thin entry point and no self-built packaging script returns.
@@ -25,6 +26,13 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
 FINDER_STORE = ROOT / "crates" / "bongocat-packaging" / "src" / "finder_store.rs"
 PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
+I18N_LOCALES = ROOT / "crates" / "bongocat-i18n" / "locales"
+VIETNAMESE_INSTALLER_STRINGS = (
+    ROOT / "crates" / "bongocat-packaging" / "installer" / "Vietnamese.nsh"
+)
+RUSSIAN_INSTALLER_STRINGS = (
+    ROOT / "crates" / "bongocat-packaging" / "installer" / "Russian.nsh"
+)
 JUSTFILE = ROOT / "justfile"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
 APP_PRESET_ROOT = ROOT / "crates" / "bongocat-app" / "src" / "preset_root.rs"
@@ -32,7 +40,7 @@ WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.
 UPDATE_RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 DEPENDENCY_POLICY = ROOT / "deny.toml"
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
-RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "release.yml"
+RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "app-release.yml"
 
 
 def read(path):
@@ -85,6 +93,74 @@ class PackagingTargetTests(unittest.TestCase):
         self.assertIn("NSISInstallerMode::CurrentUser", source)
         self.assertNotIn("NSISInstallerMode::PerMachine", source)
         self.assertNotIn("NSISInstallerMode::Both", source)
+
+    def test_windows_installer_offers_exactly_the_application_languages(self):
+        # Each application catalog maps to the NSIS language of the same variety. A new
+        # catalog without an installer language (or the reverse) fails here.
+        nsis_languages = {
+            "en-US": "English",
+            "zh-CN": "SimpChinese",
+            "zh-TW": "TradChinese",
+            "ar-SA": "Arabic",
+            "vi-VN": "Vietnamese",
+            "pt-BR": "PortugueseBR",
+            "ko-KR": "Korean",
+            "fr-FR": "French",
+            "ru-RU": "Russian",
+        }
+        catalogs = {path.stem for path in I18N_LOCALES.glob("*.json")}
+        self.assertEqual(catalogs, set(nsis_languages))
+
+        source = read(PACKAGER)
+        declared = re.search(r"const INSTALLER_LANGUAGES: \[&str; \d+\] = \[(.*?)\];", source, re.DOTALL)
+        self.assertIsNotNone(declared, "the installer language list must be declared")
+        languages = re.findall(r"\"([A-Za-z]+)\"", declared.group(1))
+        self.assertEqual(sorted(languages), sorted(nsis_languages.values()))
+        self.assertEqual(languages[0], "English", "English is the fallback language")
+
+        # cargo-packager embeds no strings for Vietnamese and Russian, so the repository
+        # carries the messages its installer template looks up.
+        for path, macro in (
+            (VIETNAMESE_INSTALLER_STRINGS, "${LANG_VIETNAMESE}"),
+            (RUSSIAN_INSTALLER_STRINGS, "${LANG_RUSSIAN}"),
+        ):
+            with self.subTest(language=path.stem):
+                raw = path.read_bytes()
+                self.assertTrue(
+                    raw.startswith(b"\xef\xbb\xbf"), "NSIS needs the UTF-8 BOM"
+                )
+                names = re.findall(
+                    r"^LangString (\w+) " + re.escape(macro) + " ",
+                    raw.decode("utf-8-sig"),
+                    re.MULTILINE,
+                )
+                self.assertEqual(
+                    sorted(names),
+                    sorted(
+                        [
+                            "addOrReinstall",
+                            "alreadyInstalled",
+                            "alreadyInstalledLong",
+                            "appRunning",
+                            "appRunningOkKill",
+                            "chooseMaintenanceOption",
+                            "choowHowToInstall",
+                            "createDesktop",
+                            "deleteAppData",
+                            "dontUninstall",
+                            "dontUninstallDowngrade",
+                            "failedToKillApp",
+                            "newerVersionInstalled",
+                            "older",
+                            "olderOrUnknownVersionInstalled",
+                            "silentDowngrades",
+                            "unableToUninstall",
+                            "uninstallApp",
+                            "uninstallBeforeInstalling",
+                            "unknown",
+                        ]
+                    ),
+                )
 
     def test_windows_installer_is_published_under_the_product_release_name(self):
         # cargo-packager names the NSIS installer after the main binary and
@@ -177,8 +253,8 @@ class PackagingTargetTests(unittest.TestCase):
     def test_a_step_named_require_actually_fails_the_build(self):
         # A step called "Require X" that only warns is worse than no name at all:
         # a maintainer scanning a green log reads it as proof X was enforced. The
-        # update-signing gate really does exit 1; the Authenticode step cannot,
-        # because CI has no certificate configured, so it is named for what it does.
+        # The update-signing gate really does exit 1. OS code signing is not a
+        # release gate and therefore has no Require step in this workflow.
         workflow = read(RELEASE_WORKFLOW)
 
         enforcing = re.findall(r"- name: (Require [^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL)
@@ -190,13 +266,7 @@ class PackagingTargetTests(unittest.TestCase):
                     f"{name} does not fail the build, so it must not be named Require",
                 )
 
-        reporting = re.search(
-            r"- name: (Report Authenticode[^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL
-        )
-        self.assertIsNotNone(reporting, "the Authenticode step must say it reports")
-        self.assertIn("::warning::", reporting.group(2))
-        self.assertNotIn("exit 1", reporting.group(2))
-        self.assertNotIn("Authenticode signatures for a stable release\"", workflow)
+        self.assertNotIn("Authenticode", workflow)
 
     def test_both_build_jobs_name_the_build_step_the_same_way(self):
         # The two jobs run the same operation on different machines, and the

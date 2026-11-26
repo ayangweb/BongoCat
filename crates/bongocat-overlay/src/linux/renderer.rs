@@ -41,6 +41,20 @@ impl Renderer {
             backends: wgpu::Backends::VULKAN,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
+        Self::with_instance(instance, window, frame, width, height)
+    }
+
+    pub(super) fn instance(&self) -> wgpu::Instance {
+        self.instance.clone()
+    }
+
+    pub(super) fn with_instance(
+        instance: wgpu::Instance,
+        window: Option<Arc<WindowTarget>>,
+        frame: &RenderFrame,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, OverlayError> {
         let surface = window
             .map(|window| instance.create_surface(window))
             .transpose()
@@ -364,6 +378,21 @@ impl Renderer {
         pass.draw_indexed(0..indices.len() as u32, 0, 0..1);
     }
     pub fn draw(
+        &mut self,
+        frame: &RenderFrame,
+        options: OverlaySessionOptions,
+        visible: bool,
+        opacity_multiplier: f32,
+    ) -> Result<OverlayTickOutcome, OverlayError> {
+        self.draw_internal(frame, options, visible, opacity_multiplier)
+    }
+
+    /// Render the model against transparent pixels, independently of desktop presentation.
+    pub fn draw_alpha(&mut self, frame: &RenderFrame) -> Result<OverlayTickOutcome, OverlayError> {
+        self.draw_internal(frame, OverlaySessionOptions::default(), true, 1.0)
+    }
+
+    fn draw_internal(
         &mut self,
         frame: &RenderFrame,
         options: OverlaySessionOptions,
@@ -772,6 +801,13 @@ fn pipeline(
 
 impl Renderer {
     pub fn readback(&self) -> Result<crate::cover::CapturedFrame, OverlayError> {
+        self.readback_with_timeout(Duration::from_secs(5))
+    }
+
+    pub fn readback_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<crate::cover::CapturedFrame, OverlayError> {
         let row = (self.config.width * 4).div_ceil(256) * 256;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
@@ -802,11 +838,11 @@ impl Renderer {
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
-                timeout: Some(Duration::from_secs(5)),
+                timeout: Some(timeout),
             })
             .map_err(error)?;
         receiver
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(timeout)
             .map_err(error)?
             .map_err(error)?;
         let mapped = buffer.slice(..).get_mapped_range().map_err(error)?;

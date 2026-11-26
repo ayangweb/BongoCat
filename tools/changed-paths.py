@@ -24,10 +24,8 @@ import sys
 from pathlib import PurePosixPath
 
 # Paths that no job in `verify.yml` reads, and that no contract test asserts on.
-# Everything else is treated as code. `.github/workflows/` and
-# `.github/dependabot.yml` are deliberately absent: the first *is* the gate, and
-# the second is read by `tools/tests/test_dependabot_contract.py`, so a change to
-# either has to be verified by the pipeline it alters.
+# Everything else is treated as code. `.github/workflows/` is deliberately absent:
+# it *is* the gate, so a change to it has to be verified by the pipeline it alters.
 DOCUMENTATION_PREFIXES = (
     "docs/",
     ".github/ISSUE_TEMPLATE/",

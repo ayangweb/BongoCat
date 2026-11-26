@@ -6,6 +6,7 @@
 //! modules beside it.
 
 use super::*;
+use bongocat_plugin_hud::{HudConsumer, HudViewport, HudViewportReporter};
 
 pub(crate) const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -45,16 +46,30 @@ impl NativeOverlay {
             renderer,
             window,
             presentation: OverlayPresentationState::default(),
-            applied_alpha: f32::from(options.opacity_percent) / 100.0,
-            applied_click_through: options.click_through,
-            applied_taskbar_icon: options.taskbar_icon_visible,
+            applied_alpha: if options.window_mode {
+                1.0
+            } else {
+                f32::from(options.opacity_percent) / 100.0
+            },
+            applied_click_through: options.click_through && !options.window_mode,
+            applied_taskbar_icon: options.taskbar_icon_visible || options.window_mode,
         })
     }
 
     pub(crate) fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
         if visible {
             self.presentation.require_presented_frame()?;
+            let was_hidden = !self.window.is_visible();
             self.window.show()?;
+            if was_hidden && self.window._state.window_mode {
+                // A hidden HWND can reject Present after its back buffer is
+                // ready. Submit that frame immediately after showing/restoring.
+                if let Err(error) = self.renderer.draw(false)
+                    && !error.is_temporary_presentation_unavailable()
+                {
+                    return Err(error);
+                }
+            }
         } else if self.window.is_visible() {
             // SAFETY: the HWND is live and accessed only from its owner thread.
             let _ = unsafe { ShowWindow(self.window.hwnd, SW_HIDE) };
@@ -62,7 +77,7 @@ impl NativeOverlay {
         Ok(())
     }
 
-    pub(crate) fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
+    pub(crate) fn set_always_on_top(&mut self, always_on_top: bool) -> Result<(), OverlayError> {
         self.window.set_always_on_top(always_on_top)
     }
 
@@ -72,6 +87,7 @@ impl NativeOverlay {
 
     /// Give the model window a taskbar button, or take it away, in place.
     pub(crate) fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), OverlayError> {
+        let visible = visible || self.window._state.window_mode;
         if self.applied_taskbar_icon == visible {
             return Ok(());
         }
@@ -89,6 +105,7 @@ impl NativeOverlay {
     pub(crate) fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
         let visible = self.window.is_visible();
         self.window.resize(bounds)?;
+        let bounds = self.window.bounds()?;
         let resized = self.renderer.resize(bounds.width, bounds.height)?;
         if visible && resized {
             // ResizeBuffers leaves a new back buffer without content until the
@@ -136,10 +153,9 @@ impl NativeOverlay {
     /// product session explicitly. The swap chain follows the native resize
     /// immediately, before the next frame is drawn.
     pub(crate) fn resize_for_model(&mut self, canvas: CanvasInfo) -> Result<(), OverlayError> {
-        let bounds = model_switch_window_bounds(self.window.bounds()?, canvas);
-        self.window.resize(bounds)?;
-        self.renderer.resize(bounds.width, bounds.height)?;
-        Ok(())
+        self.window._state.sizing = WindowSizing::new(canvas)
+            .ok_or_else(|| OverlayError::new("model canvas has an invalid aspect ratio"))?;
+        self.resize(self.window.bounds()?)
     }
 
     /// Match the swap chain and the mask targets to the window's current size.
@@ -155,7 +171,13 @@ impl NativeOverlay {
     }
 
     pub(crate) fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
-        self.renderer.draw(verify)?;
+        if let Err(error) = self.renderer.draw(verify)
+            && !(self.window._state.window_mode
+                && !self.window.is_visible()
+                && error.is_temporary_presentation_unavailable())
+        {
+            return Err(error);
+        }
         self.presentation.record_presented_frame();
         Ok(())
     }
@@ -190,6 +212,21 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) retry_backoff: FrameRetryBackoff,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The newest plugin layer, consumed once per tick and drawn as the topmost
+    /// layer. `None` disables plugin UI, which is what a build or a test with no
+    /// plugin host looks like.
+    pub(crate) hud_consumer: Option<HudConsumer>,
+    /// Where a click on a plugin's control is reported.
+    pub(crate) hud_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    /// Where the window reports its own size and backing scale, so the plugin
+    /// service composes a layer that matches the window it will be drawn into.
+    pub(crate) hud_viewport_reporter: Option<HudViewportReporter>,
+    /// The plugin layer the model window draws and the hit-test data that
+    /// belongs to it. It lives on the session rather than on the native overlay
+    /// because the overlay is replaced on a model switch, and a panel that
+    /// vanished every time the model changed would be the same flash the user
+    /// sees when the layer is cleared.
+    pub(crate) hud_layer: OverlayPluginLayer,
     pub(crate) hover: PointerHoverHide,
     /// Inactivity hide shares the session's frame tick and the hover hide's
     /// fade window: both are temporary presentation states layered on the
@@ -227,6 +264,9 @@ impl ProductOverlaySession {
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
         } = interaction_sinks;
         validate_options(options)?;
         let initial_frame = render_consumer
@@ -249,6 +289,9 @@ impl ProductOverlaySession {
                 return Err(error);
             }
         };
+        // The plugin pointer route is attached after the window exists because
+        // its sender has no meaning to a window that cannot yet receive a click.
+        overlay.window._state.plugin_interaction_sender = hud_interaction_sender.clone();
         let mut frames_presented = 0;
         if runtime_client.snapshot().overlay_visible {
             if let Err(error) = overlay.draw(true).and_then(|()| overlay.set_visible(true)) {
@@ -291,6 +334,10 @@ impl ProductOverlaySession {
             retry_backoff: FrameRetryBackoff::default(),
             context_menu_sender,
             resize_sender,
+            hud_consumer,
+            hud_interaction_sender,
+            hud_viewport_reporter,
+            hud_layer: OverlayPluginLayer::default(),
             hover: PointerHoverHide::default(),
             idle: IdleHide::default(),
             placement: OverlayPlacementConstraint::default(),
@@ -324,6 +371,14 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
+        if self.overlay.window._state.close_requested {
+            self.runtime_client
+                .send(RuntimeCommand::SetOverlayVisible(false))
+                .map_err(|error| OverlayError::new(error.to_string()))?;
+            self.overlay.window._state.close_requested = false;
+            self.overlay.set_visible(false)?;
+            return Ok(OverlayTickOutcome::Hidden);
+        }
         // The pointer capture mode is read fresh every frame and pushed to the
         // input service, which is the only component that sees the device's
         // relative motion. A plain store is enough: the worker re-reads it on
@@ -338,10 +393,10 @@ impl ProductOverlaySession {
         if next_options != self.options {
             if self.options.requires_window_recreation(next_options) {
                 let bounds = self.overlay.window.bounds()?;
-                let bounds = if next_options.scale_percent != self.options.scale_percent
-                    && !self.bounds_match_scale(bounds, next_options.scale_percent)
-                {
-                    bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                    self.overlay
+                        .window
+                        .bounds_for_scale(next_options.scale_percent)?
                 } else {
                     bounds
                 };
@@ -352,6 +407,13 @@ impl ProductOverlaySession {
                     self.context_menu_sender.clone(),
                     self.resize_sender.clone(),
                 )?;
+                // A replacement window has an empty GPU model, so the panel the
+                // session is already drawing goes into it before the first frame
+                // is presented rather than one frame later.
+                // SAFETY: the renderer's device and context are used on its
+                // owner thread and the layer is uploaded before the borrow ends.
+                unsafe { upload_plugin_layer(&mut replacement.renderer, self.hud_layer.layer()) }
+                    .map_err(windows_error("upload the plugin layer"))?;
                 if runtime_snapshot.overlay_visible {
                     replacement.draw(self.frames_presented == 0)?;
                     replacement.set_visible(true)?;
@@ -359,13 +421,23 @@ impl ProductOverlaySession {
                 }
                 self.overlay = replacement;
             } else {
+                if next_options.window_mode {
+                    self.overlay.renderer.window_background_color =
+                        Some(next_options.window_background_color);
+                } else {
+                    self.overlay.renderer.corner_radius_percent =
+                        next_options.corner_radius_percent;
+                    self.overlay.renderer.corner_radius = corner_radius_uniform(
+                        next_options.corner_radius_percent,
+                        self.overlay.renderer.width as f32,
+                        self.overlay.renderer.height as f32,
+                    );
+                }
                 if next_options.scale_percent != self.options.scale_percent {
-                    let bounds = self.overlay.window.bounds()?;
-                    let bounds = if self.bounds_match_scale(bounds, next_options.scale_percent) {
-                        bounds
-                    } else {
-                        bounds.rescale(self.options.scale_percent, next_options.scale_percent)
-                    };
+                    let bounds = self
+                        .overlay
+                        .window
+                        .bounds_for_scale(next_options.scale_percent)?;
                     self.overlay.resize(bounds)?;
                 }
                 if next_options.always_on_top != self.options.always_on_top {
@@ -377,8 +449,20 @@ impl ProductOverlaySession {
         // A right-button resize drag changes the window size directly, so the
         // swap chain and the mask targets follow here, before anything draws
         // against them.
-        self.overlay.sync_window_size()?;
-        if self.options.keep_inside_screen {
+        let minimized = unsafe { IsIconic(self.overlay.window.hwnd) }.as_bool();
+        // Recover demotion and a foreground app moving ahead within the topmost
+        // band, without raising on every frame or taking keyboard focus.
+        if !minimized && self.overlay.window.is_always_on_top() {
+            self.overlay.window.ensure_topmost()?;
+        }
+        if !minimized {
+            self.overlay.sync_window_size()?;
+        }
+        // Plugin UI rides along with the model: the newest layer is taken before
+        // the frame is drawn, and the window's own size is reported at the same
+        // point so the next composed layer matches it.
+        self.take_plugin_layer()?;
+        if self.options.keep_inside_screen && !minimized {
             let bounds = self.overlay.window.bounds()?;
             // A box that is still outside the displays is only corrected once it
             // has been observed at rest for the settle delay, so a drag that is
@@ -413,11 +497,8 @@ impl ProductOverlaySession {
         };
         if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
-            if model_changed {
-                let bounds = model_switch_window_bounds(
-                    self.overlay.window.bounds()?,
-                    frame.snapshot.canvas,
-                );
+            if model_changed && !self.options.window_mode {
+                let bounds = self.overlay.window.bounds()?;
                 let mut replacement = match self.create_overlay(
                     &frame,
                     self.options,
@@ -445,6 +526,13 @@ impl ProductOverlaySession {
                     }
                     Err(error) => return Err(error),
                 };
+                // A replacement window has an empty GPU model, so the panel the
+                // session is already drawing goes into it before the first frame
+                // is presented rather than one frame later.
+                // SAFETY: the renderer's device and context are used on its
+                // owner thread and the layer is uploaded before the borrow ends.
+                unsafe { upload_plugin_layer(&mut replacement.renderer, self.hud_layer.layer()) }
+                    .map_err(windows_error("upload the plugin layer"))?;
                 let candidate = replacement.draw(true).and_then(|()| {
                     if overlay_visible {
                         replacement.set_visible(true)
@@ -491,6 +579,19 @@ impl ProductOverlaySession {
             }
             match self.overlay.renderer.sync_frame(&frame) {
                 Ok(switched) => {
+                    if switched {
+                        self.overlay.resize_for_model(frame.snapshot.canvas)?;
+                        // A model switch in window mode rebuilds the GPU model,
+                        // so the panel the session is drawing goes back into the
+                        // new one instead of waiting for the next publication.
+                        // SAFETY: the renderer's device and context are used on
+                        // its owner thread and the layer is uploaded before the
+                        // borrow ends.
+                        unsafe {
+                            upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer())
+                        }
+                        .map_err(windows_error("upload the plugin layer"))?;
+                    }
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
                             &self.runtime_client,
@@ -502,7 +603,7 @@ impl ProductOverlaySession {
                     if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
                         self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
                     }
-                    debug_assert!(!switched);
+                    debug_assert!(!switched || self.options.window_mode);
                     self.last_frame = frame.clone();
                     self.previous_snapshot = frame.snapshot;
                 }
@@ -520,6 +621,9 @@ impl ProductOverlaySession {
         }
         if !overlay_visible {
             return Ok(OverlayTickOutcome::Hidden);
+        }
+        if minimized && self.overlay.window.is_visible() {
+            return Ok(OverlayTickOutcome::Deferred(Duration::from_millis(100)));
         }
         match self.overlay.draw(self.frames_presented == 0) {
             Ok(()) => self.retry_backoff.record_success(),
@@ -558,12 +662,70 @@ impl ProductOverlaySession {
         self.overlay.taskbar_icon_is_visible()
     }
 
+    /// Take the newest plugin layer and upload it to the GPU model.
+    ///
+    /// A layer whose window size no longer matches the panel is dropped rather
+    /// than stretched: the next composed frame matches the live size, and a
+    /// stretched panel would put a plugin's buttons where its own hit testing
+    /// does not expect them.
+    ///
+    /// The plugin service publishes a layer only when a panel's content changes,
+    /// so an empty read means "keep the layer on screen" rather than "draw
+    /// nothing": taking the panel down between two publications is exactly the
+    /// flash the user sees as a panel that disappears.
+    fn take_plugin_layer(&mut self) -> Result<(), OverlayError> {
+        let width = self.overlay.renderer.width;
+        let height = self.overlay.renderer.height;
+        // The window reports its own numbers before the layer is drawn: the plugin
+        // service composes against the newest report, so a resize is visible to it
+        // on the same tick the window takes its new size. The window is
+        // per-monitor DPI aware and its buffers are physical pixels, so the DPI
+        // over 96 is the backing scale the panel is rasterized at.
+        if let Some(reporter) = &self.hud_viewport_reporter {
+            let dpi = unsafe { GetDpiForWindow(self.overlay.window.hwnd) };
+            let scale = if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 } as f32;
+            reporter.publish(HudViewport::new(width, height, scale));
+        }
+        let Some(consumer) = &self.hud_consumer else {
+            return Ok(());
+        };
+        let change = self
+            .hud_layer
+            .refresh(consumer.take_latest(), width, height);
+        if change.targets_replaced {
+            self.push_plugin_targets();
+        }
+        if change.layer_replaced {
+            // SAFETY: the device and its immediate context belong to this
+            // session's renderer and are used on its owner thread; the layer's
+            // pixels are uploaded before the borrow ends.
+            unsafe { upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer()) }
+                .map_err(windows_error("upload the plugin layer"))?;
+        }
+        Ok(())
+    }
+
+    /// Publish the plugin hit-test data to the window procedure.
+    ///
+    /// The window procedure reaches its state through `GWLP_USERDATA` on this
+    /// same thread, so the data is copied rather than borrowed from the session.
+    fn push_plugin_targets(&mut self) {
+        self.overlay.window._state.plugin_targets = self.hud_layer.targets().clone();
+    }
+
     /// Advance the hover hide and push the resulting window presentation.
     ///
     /// Hover hide needs a trustworthy pointer position. A missing sample (no
     /// pointer event has arrived yet) and a platform input service that is not
     /// running both count as "not inside", so a degraded pointer pipeline can
     /// never leave the overlay stuck invisible.
+    ///
+    /// The hit test uses the sample's pointer position rather than the position
+    /// the model follows. The two differ while `input.mouse.force_move`
+    /// accumulates the model's position from relative device motion, and that
+    /// accumulation is an estimate of where the pointer is — good enough to aim
+    /// a model with, not exact enough to decide whether the pointer has entered
+    /// the window box.
     ///
     /// `GetCursorPos` and `GetWindowRect` both report virtual-screen pixels, so
     /// unlike macOS this needs no coordinate conversion.
@@ -583,32 +745,59 @@ impl ProductOverlaySession {
         // read fresh every frame, so releasing the key restores both settings on
         // the next one without either of them being touched.
         let held = options.hold_modifier_pressed(pressed_modifiers);
+        let point = cursor
+            .filter(|_| input_running && (!options.click_through || held))
+            .map(|sample| {
+                (
+                    (sample.pointer.x - f64::from(bounds.x)) as f32,
+                    (sample.pointer.y - f64::from(bounds.y)) as f32,
+                )
+            });
+        if self.hud_layer.update_pointer(point) {
+            // SAFETY: the renderer and immediate context stay on their owner thread.
+            unsafe { upload_plugin_layer(&mut self.overlay.renderer, self.hud_layer.layer()) }
+                .map_err(windows_error("upload the hovered plugin layer"))?;
+        }
+
         // A right-button resize drag keeps the overlay visible: the hover hide
         // fades the window out and starts passing pointer events through, which
         // would end the drag the window itself is running.
+        // The pointer's own position, not the one the model follows: hover hide
+        // asks whether the pointer is over the window, and `force_move`
+        // accumulates the model's position from relative motion, which is only an
+        // estimate of where the pointer is. Hit-testing the accumulated position
+        // made the hide depend on how the mouse travelled to the window.
         let pointer_inside = !self.overlay.window.is_resize_dragging()
             && cursor.is_some_and(|sample| {
-                pointer_inside_window(bounds, sample.position.x, sample.position.y)
+                pointer_inside_window(bounds, sample.pointer.x, sample.pointer.y)
             });
         let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {
-            enabled: options.hide_on_pointer_hover && input_running && !held,
+            enabled: options.hide_on_pointer_hover
+                && input_running
+                && !held
+                && !options.window_mode,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
             now,
         });
         let idle_fade = self.idle.observe(IdleObservation {
-            enabled: options.hide_on_idle && input_running,
+            enabled: options.hide_on_idle && input_running && !options.window_mode,
             delay: Duration::from_millis(u64::from(options.hide_on_idle_delay_ms)),
             input_sequence: last_input_sequence,
             cursor_at: cursor.map(|sample| sample.at),
             gamepad_axis_published,
             now,
         });
-        let alpha = f32::from(options.opacity_percent) / 100.0 * (fade * idle_fade) as f32;
+        let alpha = if options.window_mode {
+            1.0
+        } else {
+            f32::from(options.opacity_percent) / 100.0 * (fade * idle_fade) as f32
+        };
         self.overlay.apply_presentation(
             alpha,
-            (options.click_through && !held) || self.hover.hidden() || self.idle.hidden(),
+            !options.window_mode
+                && ((options.click_through && !held) || self.hover.hidden() || self.idle.hidden()),
         )?;
         Ok(())
     }
@@ -629,35 +818,26 @@ impl ProductOverlaySession {
     ) -> Result<NativeOverlay, OverlayError> {
         let mut overlay =
             NativeOverlay::create(frame, options, bounds, context_menu_sender, resize_sender)?;
-        let alpha = f32::from(options.opacity_percent) / 100.0
-            * (self.hover.visible() * self.idle.visible()) as f32;
+        // A replacement window has no plugin pointer route of its own: the
+        // interaction sender and the current hit-test data travel with it, or its
+        // first click would find no control there.
+        overlay.window._state.plugin_interaction_sender = self.hud_interaction_sender.clone();
+        overlay.window._state.plugin_targets = self.hud_layer.targets().clone();
+        let alpha = if options.window_mode {
+            1.0
+        } else {
+            f32::from(options.opacity_percent) / 100.0
+                * (self.hover.visible() * self.idle.visible()) as f32
+        };
         overlay.apply_presentation(
             alpha,
-            options.click_through || self.hover.hidden() || self.idle.hidden(),
+            !options.window_mode
+                && (options.click_through || self.hover.hidden() || self.idle.hidden()),
         )?;
         Ok(overlay)
     }
 
-    /// Whether the live window box already matches a scale.
-    ///
-    /// A resize drag resizes the window before the scale reaches the
-    /// configuration, so the in-place resize that follows the write-back must
-    /// not scale the box a second time. The base is derived in physical pixels,
-    /// which is the unit the box itself is in. See
-    /// [`crate::bounds_match_scale`].
-    pub(crate) fn bounds_match_scale(
-        &self,
-        bounds: OverlayWindowBounds,
-        scale_percent: u16,
-    ) -> bool {
-        let (base_width, base_height) =
-            default_overlay_window_dimensions(self.last_frame.snapshot.canvas);
-        // SAFETY: the HWND is live and read on its owner thread.
-        let dpi = unsafe { GetDpiForWindow(self.overlay.window.hwnd) };
-        resize_base_for_dpi(base_width, base_height, dpi)
-            .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
-    }
-
+    /// Whether the model window is currently shown.
     pub(crate) fn is_visible(&self) -> bool {
         self.overlay.window.is_visible()
     }

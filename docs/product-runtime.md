@@ -96,8 +96,16 @@ Windows x64 packaging is a current-user NSIS install. `cargo-packager` obtains i
 toolchain, so no release workstation state is required, and the installer requests no administrator
 privileges and writes only HKCU uninstall metadata plus its own product directory. The installer is
 signed only when a signing identity or signing command is configured; without one the release
-workflow reports the unsigned installer as unsuitable for a stable release. Windows install,
-upgrade, uninstall, and rollback smoke remain release gates.
+workflow reports the unsigned installer as unsuitable for a stable release.
+The wizard opens with a language picker covering exactly the application languages (Simplified and
+Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean, French, Russian); it
+preselects the system language and falls back to English. The choice only changes the installer and
+uninstaller text, never the application language setting. NSIS stores it in HKCU, so a machine that
+already has BongoCat installed reuses the stored language without showing the picker, and silent
+updates never show it. `cargo-packager` embeds the installer messages for every language except
+Vietnamese and Russian, whose strings live in `crates/bongocat-packaging/installer/Vietnamese.nsh`
+and `crates/bongocat-packaging/installer/Russian.nsh`. Windows install, upgrade, uninstall, and
+rollback smoke remain release gates.
 
 Preset models are product resources, not user data. macOS loads them from
 `BongoCat.app/Contents/Resources/models`; Windows packages must place them under
@@ -210,6 +218,15 @@ immutable render snapshot and is multiplied only in the final D3D11/Metal color 
 generation unchanged.
 Product input is applied after motion curves so an actual pressed key or button remains authoritative
 for hand parameters.
+
+The Model behavior setting `model.allow_motion_overlap` enables independent motion
+layers ordered by accepted start, oldest first (ADR-0088). Replays move their
+matching layer to the newest position, so older held terminal poses cannot mask
+newer starts from another group. Existing documents
+and fresh installations use replacement playback until the setting is enabled.
+The runtime publishes `active_motions` and derives `active_motion` from the latest
+surviving start. Each stop and UserData occurrence belongs to one motion identity;
+model commit and shutdown clear all layers. Audio remains one ordered stream.
 
 Accepted motions now publish an ordered side effect to the independent `bongocat-audio` worker.
 The worker uses rodio with only playback and FLAC enabled, owns one voice, and resolves no model

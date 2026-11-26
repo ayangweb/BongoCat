@@ -98,5 +98,5 @@ cargo test --locked --target x86_64-apple-darwin -p bongocat-live2d --release \
 第一项对 standard、keyboard、gamepad 三个预置模型各执行 100 次
 load/update/drop；第二项验证三者稳定复制 drawable snapshot。Rosetta 证明 x86_64
 code generation、static link 和 Core/model ABI 的交叉执行路径，但不能证明 Intel 硬件、
-Intel GPU renderer、实际签名/notarization 或 Intel 环境的资源行为。因此第 5 节的 Intel
+Intel GPU renderer 或 Intel 环境的资源行为。因此第 5 节的 Intel
 原生门槛保持不变。

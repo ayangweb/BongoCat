@@ -105,6 +105,13 @@ impl Render for SettingsView {
         // and the startup switch below read it exactly like the gated rows do
         // (see `setting_gate` for the unified rule).
         let editing_blocked = self.editing_blocked(snapshot.as_ref());
+        let pet_controls_disabled =
+            editing_blocked || window_mode_active(snapshot.as_ref().map(|s| s.overlay));
+        #[cfg(target_os = "windows")]
+        let background_color_gate = SettingGate::new(
+            editing_blocked,
+            snapshot.as_ref().is_some_and(|s| s.overlay.window_mode),
+        );
         let hover_hide_delay_available = snapshot
             .as_ref()
             .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
@@ -174,14 +181,54 @@ impl Render for SettingsView {
         // reads the very entities the view syncs and subscribes to.
         let gamepad_connected_model_select = self.gamepad_connected_model_select.clone();
         let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
+        self.sync_model_selection_dialog(window, cx);
+        #[cfg(target_os = "linux")]
+        if !self.alpha_status_checked && !self.alpha_operation_pending {
+            self.refresh_alpha_status(cx);
+        }
         self.platform_notifications
             .observe(snapshot.as_ref(), language, window, cx);
         self.sync_mver_mode_dialog(window, cx);
+        self.sync_plugin_settings_dialog(window, cx);
+        let plugin_cards = self.plugin_host.snapshot().cards;
+        while let Some(report) = self.plugin_host.take_failure() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>(plugin_failure_notification_id(
+                        &report.failure,
+                    ))
+                    .message(plugin_failure_message(language, &report, &plugin_cards))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
+        if self.plugin_host.take_update_success() {
+            window.push_notification(
+                Notification::new()
+                    .id1::<PluginFailureNotification>("plugin-update-all")
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "plugins.update_all_success",
+                    ))
+                    .with_type(NotificationType::Success),
+                cx,
+            );
+        }
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()
                     .id::<SettingsServiceErrorNotification>()
                     .message(settings_error(language, error))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(error) = self.alpha_management_error.take() {
+            window.push_notification(
+                Notification::new()
+                    .id::<AlphaManagementErrorNotification>()
+                    .message(alpha_output::error_text(language, error))
                     .with_type(NotificationType::Error),
                 cx,
             );
@@ -228,7 +275,17 @@ impl Render for SettingsView {
                 cx,
             );
         }
-        self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
+        self.sync_shortcut_row_focus(
+            &shortcuts,
+            active_model,
+            model_entries,
+            &snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.model_behavior_names.clone())
+                .unwrap_or_default(),
+            editing_blocked,
+            cx,
+        );
         let view_entity = cx.entity();
         let navigation_memory = self.navigation_memory.clone();
         let startup_item = startup_item_presentation(
@@ -331,6 +388,8 @@ impl Render for SettingsView {
                     ))
                     .items(with_search_keywords(
                         vec![
+                    #[cfg(target_os = "windows")]
+                    (true, window_mode::window_mode_row(&view_entity, language)),
                     (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -413,7 +472,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )),
+                    ).disabled(pet_controls_disabled)),
                     (platform::GLOBAL_WINDOW_CONTROL || self.snapshot.as_ref().is_some_and(|snapshot| snapshot.overlay_always_on_top_available && snapshot.overlay.always_on_top), SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -471,7 +530,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )),
+                    ).disabled(pet_controls_disabled)),
                     (platform::GLOBAL_WINDOW_CONTROL, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -503,7 +562,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(hover_hide_delay_gate.disables_controls())),
+                    .disabled(hover_hide_delay_gate.disables_controls() || pet_controls_disabled)),
                     (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -532,7 +591,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )),
+                    ).disabled(pet_controls_disabled)),
                     (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -562,7 +621,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(idle_hide_delay_gate.disables_controls())),
+                    .disabled(idle_hide_delay_gate.disables_controls() || pet_controls_disabled)),
                     // Last row of the group, on purpose. This row suspends two
                     // switches rather than standing among them, and no linear
                     // position can put it next to both: click-through is third
@@ -572,7 +631,7 @@ impl Render for SettingsView {
                     // not before — and the description on the row names the two
                     // it affects, so the rows it merely sits next to cannot be
                     // mistaken for affected ones.
-                    (true, hold_modifier_row(&view_entity, language, editing_blocked)),
+                    (true, hold_modifier_row(&view_entity, language, pet_controls_disabled)),
                 ]
                         .into_iter()
                         .filter_map(|(available, item)| available.then_some(item)),
@@ -585,6 +644,12 @@ impl Render for SettingsView {
                     ))
                     .items(with_search_keywords(
                         vec![
+                            #[cfg(target_os = "windows")]
+                            window_mode::background_color_row(
+                                &self.window_background_color,
+                                language,
+                                background_color_gate,
+                            ),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -642,7 +707,8 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            ),
+                            )
+                            .disabled(pet_controls_disabled),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -671,7 +737,8 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            ),
+                            )
+                            .disabled(pet_controls_disabled),
                         ],
                         &model_window_appearance_keywords,
                     )),
@@ -714,6 +781,15 @@ impl Render for SettingsView {
                         &model_window_performance_keywords,
                     )),
             ]);
+
+        #[cfg(target_os = "linux")]
+        let overlay_page = overlay_page.group(alpha_output::group(
+            &view_entity,
+            snapshot.as_ref(),
+            language,
+            self.alpha_system_status,
+            self.alpha_operation_pending || editing_blocked,
+        ));
 
         // Model-wide display and automatic behavior belong with the model the
         // user is choosing. Behavior shortcut bindings remain on Shortcuts:
@@ -796,6 +872,56 @@ impl Render for SettingsView {
                             move |value, app| {
                                 view.update(app, |view, cx| {
                                     view.set_remember_last_expression(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.toggle_repeated_expression.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.toggle_repeated_expression)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_toggle_repeated_expression(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.allow_motion_overlap.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.allow_motion_overlap)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_allow_motion_overlap(value, cx)
                                 });
                             }
                         },
@@ -1349,7 +1475,7 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.taskbar_icon_visible)
+                                        .is_some_and(|s| s.taskbar_icon_visible || s.overlay.window_mode)
                                 }
                             },
                             {
@@ -1361,7 +1487,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ));
+                    ).disabled(window_mode_active(snapshot.as_ref().map(|s| s.overlay))));
                     // The macOS counterpart of the Windows taskbar button. It is its
                     // own row and its own field rather than a second meaning of
                     // `show_taskbar_icon`, which the contract explicitly refuses to
@@ -1592,9 +1718,27 @@ impl Render for SettingsView {
         // The multiplayer page reads the status the process reports as well as
         // the settings the user chose, so it is built from the snapshot rather
         // than from the view alone.
+        if let Some(snapshot) = &snapshot {
+            let selected = &snapshot.network.client.display;
+            self.network_selected_peer_names
+                .retain(|id, _| selected.contains(id));
+            for peer in snapshot
+                .network_status
+                .client
+                .iter()
+                .flat_map(|room| &room.peers)
+            {
+                if selected.contains(&peer.id) && !peer.name.trim().is_empty() {
+                    self.network_selected_peer_names
+                        .insert(peer.id.clone(), peer.name.clone());
+                }
+            }
+        }
         let multiplayer_page = multiplayer_page::multiplayer_page(
             &view_entity,
             snapshot.as_ref(),
+            self.network_draft.as_ref(),
+            &self.network_selected_peer_names,
             language,
             navigation_memory.clone(),
             editing_blocked,
@@ -1606,6 +1750,31 @@ impl Render for SettingsView {
         // and support actions.
         let about_keywords =
             SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
+
+        // Plugins page shows the plugin management interface.
+        let plugins_keywords =
+            SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
+        let plugins_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
+            SettingItem::render({
+                let view = view_entity.clone();
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                    let page_language = view.read(app).display_language();
+                    view.update(app, move |view, cx| {
+                        plugins_page::content(view, window, page_language, cx)
+                    })
+                    .into_any_element()
+                }
+            })
+            .keywords(plugins_keywords),
+        );
+        let plugins_page = SettingPage::new(SettingsNavigationPage::Plugins.title(language))
+            .icon(SettingsNavigationPage::Plugins.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Plugins,
+                navigation_memory.clone(),
+            ))
+            .group(plugins_group);
+
         let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
             .icon(SettingsNavigationPage::About.icon())
             .title_suffix(page_reporter(
@@ -1627,17 +1796,19 @@ impl Render for SettingsView {
                 group_ix: None,
             })
             .with_group_variant(GroupBoxVariant::Outline)
-            .pages(vec![
-                appearance_page,
-                model_library_page,
-                model_behavior_page,
-                overlay_page,
-                input_interaction_page,
-                shortcuts_page,
-                multiplayer_page,
-                app_system_page,
-                about_page,
-            ]);
+            .pages(
+                [
+                    appearance_page,
+                    model_library_page,
+                    model_behavior_page,
+                    overlay_page,
+                    input_interaction_page,
+                    shortcuts_page,
+                ]
+                .into_iter()
+                .chain(platform::PLUGIN_CENTER.then_some(plugins_page))
+                .chain([multiplayer_page, app_system_page, about_page]),
+            );
         let model_drag_overlay = self.model_drag.map(|state| {
             let view = cx.entity().downgrade();
             model_drag_overlay::render(state, language, Tokens::from_theme(cx))

@@ -12,8 +12,8 @@
 use crate::app_log::ApplicationLogContext;
 use crate::diagnostics_export::{export_diagnostics_file, input_service_status_code};
 use crate::model_identity::{
-    model_origin_from_settings, settings_key_from_config, settings_origin_from_config,
-    settings_origin_from_model,
+    config_identity_from_settings, model_origin_from_settings, settings_key_from_config,
+    settings_origin_from_config, settings_origin_from_model,
 };
 use crate::{
     Application, ApplicationError, ApplicationLogCode, ApplicationLogDiagnostics,
@@ -42,13 +42,17 @@ use bongocat_runtime::{
     CursorSettings, InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings,
     RuntimeRenderErrorCode, RuntimeSnapshot, RuntimeState,
 };
+#[cfg(target_os = "linux")]
+use bongocat_ui_protocol::SettingsAlphaManagementAction;
 use bongocat_ui_protocol::{
-    AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
-    SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsCursorSettings,
-    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
-    SettingsGamepadAxisSettings, SettingsInputCapability, SettingsInputDiagnostics,
-    SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
+    AutomaticUpdateSettings, RuntimeHealth, SettingsAlphaInstallationStatus,
+    SettingsAlphaManagementError, SettingsAlphaSystemStatus, SettingsApplicationShortcut,
+    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
+    SettingsCursorSettings, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsInputCapability,
+    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelBehaviorName, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
     SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,

@@ -11,12 +11,33 @@ default:
     @just --list
 
 # Run the Development product until explicitly quit.
+#
+# `tools/dev_plugins.py` builds the in-repository official plugins for the host
+# platform under target/plugin-dev and starts the application with the generated
+# Development catalog.
 dev:
-    cargo run --locked -p bongocat-app --release -- --run-seconds 0
+    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
 dev-smoke:
-    cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+    python3 tools/dev_plugins.py -- cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+
+# Build the official plugins and run tests that execute their real binaries.
+plugin-tests:
+    python3 tools/dev_plugins.py -- cargo test --locked --workspace
+
+# Build every official plugin package for one supported target.
+plugin-build target:
+    cargo run --locked -p bongocat-plugin-packaging -- build --root . --target {{target}} --output target/plugins/{{target}}
+
+# Generate a local plugin signing keypair for release-pipeline testing.
+plugin-keygen private public:
+    cargo run --locked -p bongocat-plugin-packaging -- keygen --private {{private}} --public {{public}}
+
+# Compose the bilingual notes for one plugin release batch (pass the plugin version,
+# not a v-prefixed Git tag).
+plugin-release-notes tag file:
+    python3 tools/release_notes.py --root . --tag {{tag}} --output {{file}}
 
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":

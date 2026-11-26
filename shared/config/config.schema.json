@@ -1,5 +1,15 @@
 {
   "$defs": {
+    "AlphaOutputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "AppearanceConfig": {
       "additionalProperties": false,
       "properties": {
@@ -152,7 +162,9 @@
         "ar-SA",
         "vi-VN",
         "pt-BR",
-        "ko-KR"
+        "ko-KR",
+        "fr-FR",
+        "ru-RU"
       ],
       "type": "string"
     },
@@ -209,9 +221,47 @@
       ],
       "type": "object"
     },
+    "ModelBehaviorName": {
+      "additionalProperties": false,
+      "properties": {
+        "behavior_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "(motion:[^:]+:[0-9]+|expression:.+)",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*[^\\s\\x00-\\x1f\\x7f-\\x9f][^\\x00-\\x1f\\x7f-\\x9f]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "behavior_id",
+        "name"
+      ],
+      "type": "object"
+    },
     "ModelConfig": {
       "additionalProperties": false,
       "properties": {
+        "allow_motion_overlap": {
+          "default": false,
+          "type": "boolean"
+        },
+        "behavior_names": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelBehaviorName"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
         "built_in_models": {
           "items": {
             "$ref": "#/$defs/BuiltInModelMetadata"
@@ -273,6 +323,10 @@
           ]
         },
         "show_all_pressed_keys": {
+          "default": false,
+          "type": "boolean"
+        },
+        "toggle_repeated_expression": {
           "default": false,
           "type": "boolean"
         }
@@ -598,6 +652,26 @@
           "maximum": 400,
           "minimum": 25,
           "type": "integer"
+        },
+        "window_background_color": {
+          "default": [
+            0,
+            255,
+            0
+          ],
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "window_mode": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "required": [
@@ -743,6 +817,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "alpha_output": {
+      "$ref": "#/$defs/AlphaOutputConfig",
+      "default": {
+        "enabled": false
+      }
+    },
     "appearance": {
       "$ref": "#/$defs/AppearanceConfig"
     },

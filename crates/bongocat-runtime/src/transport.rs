@@ -21,6 +21,7 @@ pub(crate) enum WorkerCommand {
 }
 
 pub(crate) struct SnapshotCell {
+    pub(crate) activity: crate::activity::ActivityPublisher,
     pub(crate) value: Mutex<RuntimeSnapshot>,
     pub(crate) changed: Condvar,
 }
@@ -217,6 +218,7 @@ pub(crate) fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut Run
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     update(&mut snapshot);
+    snapshot.active_motion = snapshot.active_motions.last().cloned();
     snapshot.revision = snapshot.revision.saturating_add(1);
     snapshot_cell.changed.notify_all();
 }

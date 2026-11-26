@@ -44,11 +44,14 @@ mod validate;
 
 // The public surface. A `pub(crate)` glob narrows everything it carries, so
 // the items the crate root re-exports are named here rather than left to it.
-pub use channel::{RenderConsumer, RenderProducer, latest_render_channel};
+pub use channel::{RenderConsumer, RenderProducer, RenderSubscription, latest_render_channel};
 pub use commit::{
     ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderFrame,
 };
-pub use geometry::{CanvasInfo, ModelBounds, Vertex};
+pub use geometry::{
+    CanvasInfo, ModelBounds, Vertex, legacy_key_frame_margin, legacy_key_overlay_bounds,
+    quad_vertices,
+};
 pub use identity::TextureId;
 pub use key::{
     FUNCTION_KEY_NAMES, FUNCTION_KEY_USAGES, KeyIdentity, KeyPress, KeyPressSet, KeySide,

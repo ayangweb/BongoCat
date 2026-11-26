@@ -136,6 +136,8 @@ pub struct WindowState {
     pub schema_version: u32,
     pub settings_window: Option<WindowPlacement>,
     pub overlay_window: Option<OverlayWindowPlacement>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub device_overlay_windows: std::collections::BTreeMap<String, OverlayWindowPlacement>,
 }
 
 impl Default for WindowState {
@@ -144,6 +146,7 @@ impl Default for WindowState {
             schema_version: WINDOW_STATE_SCHEMA_VERSION,
             settings_window: None,
             overlay_window: None,
+            device_overlay_windows: Default::default(),
         }
     }
 }
@@ -153,17 +156,6 @@ impl WindowState {
         Self {
             settings_window,
             ..Self::default()
-        }
-    }
-
-    pub fn with_windows(
-        settings_window: Option<WindowPlacement>,
-        overlay_window: Option<OverlayWindowPlacement>,
-    ) -> Self {
-        Self {
-            schema_version: WINDOW_STATE_SCHEMA_VERSION,
-            settings_window,
-            overlay_window,
         }
     }
 
@@ -177,6 +169,14 @@ impl WindowState {
             placement.validate()?;
         }
         if let Some(placement) = self.overlay_window {
+            placement.validate()?;
+        }
+        for (device, placement) in &self.device_overlay_windows {
+            if device.is_empty()
+                || device.len() > crate::config_schema::MAXIMUM_NETWORK_DEVICE_ID_BYTES
+            {
+                return Err(WindowStateError::InvalidValue("device_overlay_windows"));
+            }
             placement.validate()?;
         }
         Ok(())

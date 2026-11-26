@@ -20,13 +20,6 @@
 use super::*;
 use gpui_kit::component::Sizable as _;
 
-/// Keyboard tab position of this page's controls.
-///
-/// The window's tab bands are the overlay's at 10, the import card's at 20, the
-/// modifier recorder's at 30, the model rows' from 40 and the shortcut rows'
-/// from 100, so this page takes the gap above the shortcut band.
-const MULTIPLAYER_TAB_INDEX: isize = 90;
-
 /// One row's text, read from the active catalog.
 fn row_text(language: SettingsLanguage, key: &'static str) -> SharedString {
     bongocat_i18n::text(language.catalog_locale(), key).into()
@@ -40,8 +33,7 @@ fn row_text(language: SettingsLanguage, key: &'static str) -> SharedString {
 /// a snapshot that has not received the write yet would otherwise restore the
 /// old text while the user is still typing.
 ///
-/// Typing is debounced rather than written per keystroke: a field that wrote on
-/// every character would send one command per letter.
+/// Typing only updates the editor; the Apply action sends the complete draft.
 fn network_text_row(
     view: &Entity<SettingsView>,
     language: SettingsLanguage,
@@ -67,6 +59,35 @@ fn network_text_row(
     )
 }
 
+fn network_token_row(
+    view: &Entity<SettingsView>,
+    language: SettingsLanguage,
+    label_key: &'static str,
+    editor: NetworkEditor,
+    disabled: bool,
+) -> SettingItem {
+    let view = view.clone();
+    SettingItem::new(
+        row_text(language, label_key),
+        SettingField::element(
+            move |options: &RenderOptions, _: &mut Window, app: &mut App| {
+                let view = view.read(app);
+                let input = match editor {
+                    NetworkEditor::Connection => &view.network_client_token_input,
+                    NetworkEditor::Relay => &view.network_relay_token_input,
+                };
+                Input::new(input)
+                    .mask_toggle()
+                    .with_size(options.size())
+                    .w_64()
+                    .disabled(disabled || options.is_disabled())
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(disabled)
+}
+
 /// A row that stores one switch of the multiplayer settings.
 ///
 /// A switch is one gesture, so it is written straight through rather than held
@@ -78,9 +99,18 @@ fn network_switch_row(
     read: impl Fn(&SettingsNetwork) -> bool + 'static,
     write: impl Fn(&mut SettingsView, bool, &mut Context<SettingsView>) + 'static,
 ) -> SettingItem {
+    network_named_switch_row(view, row_text(language, label_key), read, write)
+}
+
+fn network_named_switch_row(
+    view: &Entity<SettingsView>,
+    label: SharedString,
+    read: impl Fn(&SettingsNetwork) -> bool + 'static,
+    write: impl Fn(&mut SettingsView, bool, &mut Context<SettingsView>) + 'static,
+) -> SettingItem {
     let reader = view.clone();
     SettingItem::new(
-        row_text(language, label_key),
+        label,
         SettingField::switch(
             move |app| read(&reader.read(app).network_settings_value()),
             {
@@ -204,104 +234,105 @@ fn network_status_row_toned(
     )
 }
 
+fn network_device_id_row(language: SettingsLanguage, id: String) -> SettingItem {
+    let label = row_text(language, "settings.multiplayer.status.device_id.label");
+    SettingItem::new(
+        label,
+        SettingField::element(
+            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+                let id = id.clone();
+                let value = if id.is_empty() {
+                    "—".to_owned()
+                } else {
+                    id.clone()
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().text_sm().max_w_64().truncate().child(value))
+                    .child(
+                        Button::new("network-copy-local-device-id")
+                            .label(row_text(
+                                language,
+                                "settings.multiplayer.status.device_id.copy",
+                            ))
+                            .with_size(options.size())
+                            .disabled(id.is_empty() || options.is_disabled())
+                            .on_click(move |_, window, cx| {
+                                if !platform::copy_text(id.clone(), cx) {
+                                    window.push_notification(
+                                        Notification::new()
+                                            .message(row_text(
+                                                language,
+                                                "settings.multiplayer.status.device_id.copy_failed",
+                                            ))
+                                            .with_type(NotificationType::Error),
+                                        cx,
+                                    );
+                                }
+                            }),
+                    )
+                    .into_any_element()
+            },
+        ),
+    )
+}
+
 /// One device this machine draws, with the control that stops drawing it.
 ///
 /// The id is the row's title because it is the name the peer chose for itself:
 /// there is no friendlier label the page could put there, and inventing one
 /// would be a second name for the same machine.
+fn network_peer_label(language: SettingsLanguage, peer: &SettingsNetworkPeer) -> SharedString {
+    if peer.name.trim().is_empty() {
+        row_text(language, "settings.multiplayer.display.peer.unnamed")
+    } else {
+        peer.name.clone().into()
+    }
+}
+
 fn network_display_device_row(
     view: &Entity<SettingsView>,
     language: SettingsLanguage,
     device: String,
+    peer: Option<&SettingsNetworkPeer>,
+    remembered_name: Option<&str>,
     editing_blocked: bool,
 ) -> SettingItem {
-    let view = view.clone();
-    SettingItem::new(
-        device.clone(),
-        SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
-                let disabled = editing_blocked || options.is_disabled();
-                let removal = device.clone();
-                let remove_view = view.clone();
-                div()
-                    .child(
-                        Button::new(ElementId::Name(SharedString::from(format!(
-                            "network-remove-display-device-{removal}"
-                        ))))
-                        .label(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.multiplayer.display.remove",
-                        ))
-                        .with_size(options.size())
-                        .ghost()
-                        .xsmall()
-                        .disabled(disabled)
-                        .on_click(move |_, _, app| {
-                            remove_view.update(app, |view, cx| {
-                                view.remove_network_display_device(removal.clone(), cx)
-                            });
-                        }),
-                    )
-                    .into_any_element()
-            },
-        ),
+    let detail = device.clone();
+    let state = match peer {
+        Some(peer) if peer.publish => "settings.multiplayer.display.peer.sharing",
+        Some(_) => "settings.multiplayer.display.peer.not_sharing",
+        None => "settings.multiplayer.display.peer.offline",
+    };
+    let label = peer.map_or_else(
+        || {
+            remembered_name.map_or_else(
+                || row_text(language, "settings.multiplayer.display.peer.saved"),
+                |name| name.to_owned().into(),
+            )
+        },
+        |peer| network_peer_label(language, peer),
+    );
+    let show_id = label.as_ref() != detail;
+    let read_id = device.clone();
+    let item = network_named_switch_row(
+        view,
+        format!(
+            "{label} — {}",
+            bongocat_i18n::text(language.catalog_locale(), state)
+        )
+        .into(),
+        move |settings| settings.client.display.contains(&read_id),
+        move |view, shown, cx| view.set_network_display_device(device.clone(), shown, cx),
     )
-    .disabled(editing_blocked)
-}
-
-/// The row that adds one device id to the list this machine draws.
-///
-/// The field is view state rather than configuration: an id becomes part of the
-/// settings only when the user commits it, and until then there is nothing to
-/// send and nothing a refused write could lose.
-fn network_display_add_row(
-    view: &Entity<SettingsView>,
-    language: SettingsLanguage,
-    editing_blocked: bool,
-) -> SettingItem {
-    let view = view.clone();
-    SettingItem::new(
-        row_text(language, "settings.multiplayer.display.add.label"),
-        SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, app: &mut App| {
-                let disabled = editing_blocked || options.is_disabled();
-                let state = view.read(app);
-                let input = state.network_display_device_input.clone();
-                let focus = state.network_display_device_add_focus.clone();
-                let addable = !disabled && !input.read(app).value().trim().is_empty();
-                let add_view = view.clone();
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_end()
-                    .gap_2()
-                    .child(Input::new(&input).disabled(disabled).w_40())
-                    .child(
-                        div()
-                            .key_context("SettingsControl")
-                            .track_focus(&focus)
-                            .tab_index(MULTIPLAYER_TAB_INDEX)
-                            .tab_stop(addable)
-                            .child(
-                                Button::new("network-add-display-device")
-                                    .label(bongocat_i18n::text(
-                                        language.catalog_locale(),
-                                        "settings.multiplayer.display.add.action",
-                                    ))
-                                    .with_size(options.size())
-                                    .disabled(!addable)
-                                    .on_click(move |_, window, app| {
-                                        add_view.update(app, |view, cx| {
-                                            view.add_network_display_device(window, cx)
-                                        });
-                                    }),
-                            ),
-                    )
-                    .into_any_element()
-            },
-        ),
-    )
-    .disabled(editing_blocked)
+    .disabled(editing_blocked);
+    if show_id {
+        item.description(detail)
+    } else {
+        item
+    }
 }
 
 /// Whether a peers-count string carries a number at its head.
@@ -313,106 +344,90 @@ fn peers_status_starts_with_digit(value: &str) -> bool {
     value.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
-/// One device the room says is online but this machine is not drawing yet.
-///
-/// The room already announces every peer's id and name, so retyping the id
-/// into the field below would only transcribe what this row can show: one
-/// click adds it to the list this machine draws. Devices that are offline stay
-/// hand-added — the typed field is how a machine is named before its first
-/// join, and a device already in the list keeps its own row above, the one
-/// with the removal control.
-fn network_display_peer_row(
+fn network_editor_row(
     view: &Entity<SettingsView>,
     language: SettingsLanguage,
-    peer: SettingsNetworkPeer,
+    editor: NetworkEditor,
+    open: bool,
+    connected: bool,
     editing_blocked: bool,
 ) -> SettingItem {
     let view = view.clone();
-    // The label carries the sharing state so one board can tell at a glance
-    // which devices are feeding the room and which are only watching.
-    let label = if peer.name.is_empty() || peer.name == peer.id {
-        peer.id.clone()
-    } else {
-        format!("{} ({})", peer.name, peer.id)
-    };
-    let sharing_key = if peer.publish {
-        "settings.multiplayer.display.peer.sharing"
-    } else {
-        "settings.multiplayer.display.peer.not_sharing"
-    };
-    let title = format!(
-        "{} — {}",
-        label,
-        bongocat_i18n::text(language.catalog_locale(), sharing_key)
-    );
-    SettingItem::new(
-        SharedString::from(title),
-        SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
-                let disabled = editing_blocked || options.is_disabled();
-                let device = peer.id.clone();
-                let peer_view = view.clone();
-                div()
-                    .child(
-                        Button::new(ElementId::Name(SharedString::from(format!(
-                            "network-show-peer-{device}"
-                        ))))
-                        .label(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.multiplayer.display.peer.show",
-                        ))
-                        .with_size(options.size())
-                        .ghost()
-                        .xsmall()
-                        .disabled(disabled)
-                        .on_click(move |_, _, app| {
-                            peer_view.update(app, |view, cx| {
-                                view.show_network_display_device(device.clone(), cx)
-                            });
-                        }),
-                    )
-                    .into_any_element()
-            },
+    let (id, label) = match (editor, open, connected) {
+        (NetworkEditor::Connection, true, _) => {
+            ("network-connect", "settings.multiplayer.editor.connect")
+        }
+        (NetworkEditor::Connection, false, true) => (
+            "network-edit-connection",
+            "settings.multiplayer.editor.change_connection",
         ),
-    )
-    .disabled(editing_blocked)
-}
-
-/// The row that replaces this process so the page's changes take effect.
-///
-/// The relay and the room are both built at startup, which is why no in-process
-/// reload can apply them. Spawning the same executable and quitting is the whole
-/// trick, and the child is started through a short `sleep` so the parent — and
-/// with it the relay's port — is gone by the time the fresh process binds.
-fn network_restart_row(
-    view: &Entity<SettingsView>,
-    language: SettingsLanguage,
-    editing_blocked: bool,
-) -> SettingItem {
-    let view = view.clone();
+        (NetworkEditor::Connection, false, false) => (
+            "network-edit-connection",
+            "settings.multiplayer.editor.edit_connection",
+        ),
+        (NetworkEditor::Relay, true, _) => (
+            "network-apply-relay",
+            "settings.multiplayer.editor.apply_relay",
+        ),
+        (NetworkEditor::Relay, false, _) => (
+            "network-edit-relay",
+            "settings.multiplayer.editor.edit_relay",
+        ),
+    };
     SettingItem::new(
-        // The group title above the row is the restart notice itself; the
-        // row needs no second heading between it and the button.
         SharedString::from(""),
         SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+            move |options: &RenderOptions, _: &mut Window, app: &mut App| {
                 let disabled = editing_blocked || options.is_disabled();
-                let restart_view = view.clone();
+                let action = view.clone();
+                let secondary = view.clone();
+                let applying = open && view.read(app).network_apply_pending;
                 div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .when(
+                        open || editor == NetworkEditor::Connection && connected,
+                        |row| {
+                            row.child(
+                                Button::new(format!("{id}-secondary"))
+                                    .label(row_text(
+                                        language,
+                                        if open {
+                                            "settings.multiplayer.editor.cancel"
+                                        } else {
+                                            "settings.multiplayer.editor.disconnect"
+                                        },
+                                    ))
+                                    .with_size(options.size())
+                                    .ghost()
+                                    .disabled(disabled)
+                                    .on_click(move |_, _, app| {
+                                        secondary.update(app, |view, cx| {
+                                            if open {
+                                                view.cancel_network_edit(cx);
+                                            } else {
+                                                view.set_network_client_enabled(false, cx);
+                                            }
+                                        })
+                                    }),
+                            )
+                        },
+                    )
                     .child(
-                        Button::new("network-restart")
-                            .label(bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.multiplayer.restart.action",
-                            ))
+                        Button::new(id)
+                            .label(row_text(language, label))
                             .with_size(options.size())
-                            .danger()
-                            .xsmall()
+                            .loading(applying)
                             .disabled(disabled)
                             .on_click(move |_, _, app| {
-                                restart_view.update(app, |view, cx| {
-                                    view.restart_to_apply_network_settings(cx)
-                                });
+                                action.update(app, |view, cx| {
+                                    if open {
+                                        view.apply_network_edit(cx);
+                                    } else {
+                                        view.edit_network(editor, cx);
+                                    }
+                                })
                             }),
                     )
                     .into_any_element()
@@ -422,16 +437,13 @@ fn network_restart_row(
     .disabled(editing_blocked)
 }
 
-/// The multiplayer page's five groups.
-///
-/// The notice rides on the first group because it is a sentence about the page
-/// as a whole rather than about one control: the relay and the room are both
-/// opened while the application starts, so a switch turned on here takes effect
-/// the next time BongoCat launches. Promising anything else would be a claim
-/// the process does not keep.
+/// Room status and display controls remain visible while the connection and
+/// relay editors hold their changes until the user applies them.
 pub(super) fn multiplayer_page(
     view: &Entity<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
+    draft: Option<&(NetworkEditor, SettingsNetwork)>,
+    remembered_names: &std::collections::BTreeMap<String, String>,
     language: SettingsLanguage,
     navigation_memory: SettingsNavigationMemory,
     editing_blocked: bool,
@@ -444,6 +456,16 @@ pub(super) fn multiplayer_page(
         .map(|snapshot| snapshot.network_status.clone())
         .unwrap_or_default();
 
+    let editing_connection = draft.is_some_and(|(editor, _)| *editor == NetworkEditor::Connection);
+    let editing_relay = draft.is_some_and(|(editor, _)| *editor == NetworkEditor::Relay);
+    let manual = draft
+        .filter(|_| editing_connection)
+        .map_or(network.client.source, |(_, draft)| draft.client.source)
+        .needs_url();
+    let needs_address = draft
+        .filter(|_| editing_relay)
+        .map_or(network.server.listen, |(_, draft)| draft.server.listen)
+        .needs_address();
     let device_keywords = page.search_keywords(language, ["settings.multiplayer.device.title"]);
     let device_group = SettingGroup::new()
         .title(row_text(language, "settings.multiplayer.device.title"))
@@ -487,45 +509,50 @@ pub(super) fn multiplayer_page(
         )
         .keywords(display_keywords.iter().cloned()),
     ];
-    for device in network
+    let display = &network.client.display;
+    let peers = status
         .client
-        .display
+        .as_ref()
+        .map_or(&[][..], |room| room.peers.as_slice());
+    let at_capacity = display
         .iter()
-        .filter(|device| device.as_str() != NETWORK_SELF_DEVICE)
-        .cloned()
-        .collect::<Vec<_>>()
-    {
+        .filter(|id| id.as_str() != NETWORK_SELF_DEVICE)
+        .count()
+        >= 2;
+    for peer in peers {
         display_items.push(
-            network_display_device_row(view, language, device, editing_blocked)
-                .keywords(display_keywords.iter().cloned()),
-        );
-    }
-    // The room announces who is online; each peer this machine is not drawing
-    // yet appears here with a one-click way to draw it. The rows refresh with
-    // the status the page already polls, so a peer that joins shows up without
-    // anything being retyped and a peer that leaves stops being offered.
-    for peer in status
-        .client
-        .iter()
-        .flat_map(|client| client.peers.iter())
-        .filter(|peer| !network.client.display.contains(&peer.id))
-        .cloned()
-        .collect::<Vec<_>>()
-    {
-        display_items.push(
-            network_display_peer_row(view, language, peer, editing_blocked)
-                .keywords(display_keywords.iter().cloned()),
-        );
-    }
-    display_items.push(
-        network_display_add_row(view, language, editing_blocked)
+            network_display_device_row(
+                view,
+                language,
+                peer.id.clone(),
+                Some(peer),
+                None,
+                editing_blocked || (at_capacity && !display.contains(&peer.id)),
+            )
             .keywords(display_keywords.iter().cloned()),
-    );
+        );
+    }
+    for device in display.iter().filter(|id| {
+        id.as_str() != NETWORK_SELF_DEVICE && !peers.iter().any(|peer| &peer.id == *id)
+    }) {
+        display_items.push(
+            network_display_device_row(
+                view,
+                language,
+                device.clone(),
+                None,
+                remembered_names.get(device).map(String::as_str),
+                editing_blocked,
+            )
+            .keywords(display_keywords.iter().cloned()),
+        );
+    }
+
     // The address row is the one place the source dropdown's answer changes a
     // row's shape: a client that follows the local relay has no address to type,
     // so the row shows the address it will use and refuses the caret.
     let client_keywords = page.search_keywords(language, ["settings.multiplayer.client.title"]);
-    let url_row = if network.client.source.needs_url() {
+    let url_row = if manual {
         network_text_row(
             view,
             language,
@@ -543,51 +570,76 @@ pub(super) fn multiplayer_page(
         )
         .disabled(true)
     };
-    let client_group = SettingGroup::new()
-        .title(row_text(language, "settings.multiplayer.client.title"))
-        .items([
-            network_switch_row(
-                view,
-                language,
-                "settings.multiplayer.client.enabled.label",
-                |settings| settings.client.enabled,
-                |view, enabled, cx| view.set_network_client_enabled(enabled, cx),
-            )
-            .keywords(client_keywords.iter().cloned()),
+    let mut client_items = vec![network_editor_row(
+        view,
+        language,
+        NetworkEditor::Connection,
+        editing_connection,
+        network.client.enabled,
+        editing_blocked,
+    )];
+    if !editing_connection && network.client.enabled {
+        let address = if network.client.source.needs_url() {
+            network.client.url.clone().unwrap_or_default()
+        } else {
+            network_local_relay_url(network.server.port)
+        };
+        client_items.push(network_status_row_toned(
+            language,
+            "settings.multiplayer.client.url.label",
+            address,
+            StatusTone::Idle,
+        ));
+    }
+    if editing_connection {
+        client_items.extend([
             network_address_row(
                 view,
                 language,
-                "settings.multiplayer.client.url.label",
+                "settings.multiplayer.client.source.label",
                 editing_blocked,
             )
             .keywords(client_keywords.iter().cloned()),
             url_row.keywords(client_keywords.iter().cloned()),
-            network_text_row(
+            network_token_row(
                 view,
                 language,
                 "settings.multiplayer.client.token.label",
-                |settings| settings.client.token.clone().unwrap_or_default(),
-                |view, value, cx| view.set_network_client_token(value, cx),
-            )
-            .keywords(client_keywords.iter().cloned()),
-            network_switch_row(
-                view,
-                language,
-                "settings.multiplayer.client.publish.label",
-                |settings| settings.client.publish,
-                |view, publish, cx| view.set_network_client_publish(publish, cx),
+                NetworkEditor::Connection,
+                !manual || editing_blocked,
             )
             .keywords(client_keywords.iter().cloned()),
         ]);
+    }
+    client_items.push(
+        network_switch_row(
+            view,
+            language,
+            "settings.multiplayer.client.publish.label",
+            |settings| settings.client.publish,
+            |view, value, cx| view.set_network_client_publish(value, cx),
+        )
+        .keywords(client_keywords.iter().cloned()),
+    );
+    let client_group = SettingGroup::new()
+        .title(row_text(language, "settings.multiplayer.client.title"))
+        .items(client_items);
 
     // Only `Custom` reads the address, so the row is disabled for every other
     // mode rather than hidden: the rule that decides is written once in the
     // protocol, and a row that vanished and reappeared would move the port
     // below it.
     let server_keywords = page.search_keywords(language, ["settings.multiplayer.server.title"]);
-    let server_group = SettingGroup::new()
-        .title(row_text(language, "settings.multiplayer.server.title"))
-        .items([
+    let mut server_items = vec![network_editor_row(
+        view,
+        language,
+        NetworkEditor::Relay,
+        editing_relay,
+        false,
+        editing_blocked,
+    )];
+    if editing_relay {
+        server_items.extend([
             network_switch_row(
                 view,
                 language,
@@ -612,7 +664,7 @@ pub(super) fn multiplayer_page(
                 |settings| settings.server.address.clone().unwrap_or_default(),
                 |view, value, cx| view.set_network_server_address(value, cx),
             )
-            .disabled(editing_blocked || !network.server.listen.needs_address())
+            .disabled(editing_blocked || !needs_address)
             .keywords(server_keywords.iter().cloned()),
             SettingItem::new(
                 row_text(language, "settings.multiplayer.server.port.label"),
@@ -634,15 +686,19 @@ pub(super) fn multiplayer_page(
             )
             .disabled(editing_blocked)
             .keywords(server_keywords.iter().cloned()),
-            network_text_row(
+            network_token_row(
                 view,
                 language,
                 "settings.multiplayer.server.token.label",
-                |settings| settings.server.token.clone().unwrap_or_default(),
-                |view, value, cx| view.set_network_server_token(value, cx),
+                NetworkEditor::Relay,
+                editing_blocked,
             )
             .keywords(server_keywords.iter().cloned()),
         ]);
+    }
+    let server_group = SettingGroup::new()
+        .title(row_text(language, "settings.multiplayer.server.title"))
+        .items(server_items);
 
     let status_keywords = page.search_keywords(language, ["settings.multiplayer.status.title"]);
     let server_tone = if status.server.is_some() {
@@ -688,17 +744,6 @@ pub(super) fn multiplayer_page(
             .map_or(SettingsNetworkClientState::Off, |client| client.state),
         language,
     );
-    let bound_status = status
-        .client
-        .as_ref()
-        .and_then(|client| client.bound.clone())
-        .unwrap_or_else(|| {
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "settings.multiplayer.status.bound.none",
-            )
-            .to_owned()
-        });
     // The latency row reads a live sample that only exists once the room is up,
     // so a machine that never joined shows "not connected" rather than a zero it
     // never measured.
@@ -716,19 +761,19 @@ pub(super) fn multiplayer_page(
         });
     // The tone questions are answered before the rows move their values in.
     let peers_live = peers_status_starts_with_digit(&peers_status);
-    let bound_live = bound_status
-        != bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.multiplayer.status.bound.none",
-        )
-        .to_owned();
     let status_group = SettingGroup::new()
         .title(row_text(
             language,
             "settings.multiplayer.status_and_devices.title",
         ))
-        .description(row_text(language, "settings.multiplayer.display.empty"))
         .items([
+            network_device_id_row(
+                language,
+                snapshot
+                    .map(|snapshot| snapshot.network.device.id.clone())
+                    .unwrap_or_default(),
+            )
+            .keywords(status_keywords.iter().cloned()),
             network_status_row_toned(
                 language,
                 "settings.multiplayer.status.server.label",
@@ -773,38 +818,31 @@ pub(super) fn multiplayer_page(
                 },
             )
             .keywords(status_keywords.iter().cloned()),
-            network_status_row_toned(
-                language,
-                "settings.multiplayer.status.bound.label",
-                bound_status,
-                if bound_live {
-                    StatusTone::Live
-                } else {
-                    StatusTone::Idle
-                },
-            )
-            .keywords(status_keywords.iter().cloned()),
-        ])
-        // The device rows this machine draws follow the facts about the room:
-        // one board, because choosing what to draw is how a user acts on what
-        // the status just told them.
+        ]);
+    let display_group = SettingGroup::new()
+        .title(row_text(language, "settings.multiplayer.display.title"))
+        .description(row_text(language, "settings.multiplayer.display.empty"))
         .items(display_items);
-
-    // The restart row is its own board so it can be the first thing on the
-    // page: every change here needs it, and a red button that must not be
-    // missed belongs above the controls rather than buried in their board.
-    let restart_group = SettingGroup::new()
-        .title(row_text(language, "settings.multiplayer.restart_notice"))
-        .items([network_restart_row(view, language, editing_blocked)]);
-
+    let mut groups = vec![status_group, client_group, display_group, server_group];
+    if editing_connection {
+        groups.insert(2, device_group);
+    }
     SettingPage::new(page.title(language))
         .icon(page.icon())
         .title_suffix(render::page_reporter(page, navigation_memory))
-        .groups(vec![
-            restart_group,
-            device_group,
-            status_group,
-            client_group,
-            server_group,
-        ])
+        .groups(groups)
+}
+
+#[cfg(test)]
+#[test]
+fn device_name_is_visible_when_it_matches_the_id() {
+    let peer = SettingsNetworkPeer {
+        id: "laptop".into(),
+        name: "laptop".into(),
+        publish: true,
+    };
+    assert_eq!(
+        network_peer_label(SettingsLanguage::English, &peer).as_ref(),
+        "laptop"
+    );
 }

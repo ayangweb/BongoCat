@@ -57,8 +57,8 @@ pub use model_diagnostic::{SettingsModelCatalogError, SettingsModelDiagnostic};
 pub use model_import::{
     SettingsModelImportControl, SettingsModelImportFinalResult, SettingsModelImportMonitor,
     SettingsModelImportOperation, SettingsModelImportProgress, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelMode, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, model_source_display_name,
+    SettingsModelImportStage, SettingsModelMode, SettingsModelSourceCandidate,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, model_source_display_name,
 };
 pub use network::{
     DEFAULT_NETWORK_PORT, NETWORK_SELF_DEVICE, SettingsNetwork, SettingsNetworkClient,
@@ -71,10 +71,12 @@ pub use runtime::{
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
 };
 pub use snapshot::{
-    AutomaticUpdateSettings, SettingsCursorSettings, SettingsGamepadAutoSwitch,
-    SettingsGamepadAxisSettings, SettingsModelBehaviorBinding, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsShortcutBinding,
-    SettingsShortcuts, SettingsSnapshot, SettingsTheme,
+    AutomaticUpdateSettings, SettingsAlphaInstallationStatus, SettingsAlphaManagementAction,
+    SettingsAlphaManagementError, SettingsAlphaManagementUnavailable, SettingsAlphaOutputStatus,
+    SettingsAlphaSystemStatus, SettingsCursorSettings, SettingsGamepadAutoSwitch,
+    SettingsGamepadAxisSettings, SettingsModelBehaviorBinding, SettingsModelBehaviorName,
+    SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsTheme,
 };
 pub use startup::{
     SettingsStartupItemError, SettingsStartupItemState, SettingsStartupItemStatus,

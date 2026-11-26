@@ -4,18 +4,87 @@
 
 ### ✨ Features
 
-- Added a "Model window → Window behavior → Hide when idle" setting.
-- Added a "Model window → Window behavior → Idle hide delay" setting.
-- Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
-- Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
+- Added Linux Wayland multiplayer with up to three cats, immediate room and display settings, per-device window placement, and one transparent virtual camera for OBS. Reinstall the camera after reboot and authorize it when prompted.
+
+## 2.4.1 - 2026-10-28
+
+### 🎨 Interface
+
+- Changed the model library delete button to red to make it easier to recognize.
+
+### 🌍 Localization
+
+- Added Russian localization.
+
+## 2.4.0 - 2026-10-26
+
+### ✨ Features
+
+- Added "Settings → Plugin Center" to manage and use plugins.
+- Added three plugins: Pomodoro Timer, Key Sounds, and Input Method Status.
 
 ### 🐛 Bug Fixes
 
-- Fixed the analog sticks never appearing in gamepad mode, and made moving a stick or pressing its button lower that side's paw.
-- Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
-- Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
-- Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
-- Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
+- Fixed startup not working correctly on Windows when the app runs as administrator.
+- Fixed the model window occasionally being covered by other topmost windows on Windows when always-on-top was enabled.
+
+### 🎨 Interface
+
+- Added a standard macOS application menu with keyboard shortcuts for closing windows, quitting the app, opening settings, minimizing windows, and hiding the app.
+
+## 2.3.1 - 2026-10-13
+
+### 🐛 Bug Fixes
+
+- Fixed "Hide on mouse hover" only working in some cases while "Force mouse movement" was on.
+- Fixed the settings window being unexpectedly hidden on macOS after turning off the Dock icon.
+- Fixed the model window not being able to move above the menu bar on macOS.
+
+### 🎨 Interface
+
+- Renamed "Show Dock icon" to "Always show Dock icon".
+- Improved the descriptions on the About page.
+
+## 2.3.0 - 2026-10-12
+
+### ✨ Features
+
+- Model folders containing multiple levels of nested directories can now be imported.
+- The Windows installer now asks which language to use.
+- Added a "Model behavior → Allow overlapping motions" setting.
+- Added a "Model window → Window behavior → Window mode" setting on Windows.
+- Added a "Model window → Window appearance → Window background color" setting on Windows.
+- Window mode and window background color can be used together, so OBS can capture the model window properly on Windows.
+
+### 🐛 Bug Fixes
+
+- Fixed the cat window missing from OBS's default window list on macOS.
+- Fixed model windows losing their aspect ratio in some cases.
+- Fixed "The selected model could not be activated" appearing when switching to some models.
+
+### 🌍 Localization
+
+Added French.
+
+## 2.2.0 - 2026-10-07
+
+### ✨ Features
+
+- Added a "Model window → Window behavior → Hide when idle" setting.
+- Added a "Model window → Window behavior → Idle hide delay" setting.
+- Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
+- Added an "Input & interaction → Mouse → Force mouse movement" setting.
+- Added a "Model behavior → Turn off an expression when triggered again" setting.
+- Added renaming support to "Shortcuts → Model behavior shortcuts".
+
+### 🐛 Bug Fixes
+
+- Fixed noticeable soft fringes around model texture edges.
+- Fixed misplaced key images in some converted Bongo-Cat-Mver models.
+
+### 🎨 Interface
+
+- Renamed "App & system → Startup & desktop → Open at login" to "Run at startup".
 
 ## 2.1.1 - 2026-10-03
 

@@ -16,6 +16,66 @@ use bongocat_runtime::{ExpressionId, MotionId, MotionPriority, RuntimeCommand, R
 use std::sync::Arc;
 
 impl Application {
+    /// Prepare a second animation instance from the same startup selection.
+    #[cfg(target_os = "linux")]
+    pub fn start_peer_runtime(
+        &self,
+    ) -> Result<
+        (
+            bongocat_runtime::RuntimeOwner,
+            bongocat_render::RenderConsumer,
+        ),
+        ApplicationError,
+    > {
+        use crate::config_projection::{
+            cursor_settings_from_config, model_settings_from_config, overlay_settings_from_config,
+            random_behavior_settings_from_config,
+        };
+        let (origin, id) = self
+            .active_model_origin
+            .zip(self.active_model_id.as_ref())
+            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+        let model = self.load_model(origin, id)?;
+        let input_bindings = Arc::new(input_bindings_for_committed_model(&model));
+        let (runtime, consumer) = bongocat_runtime::RuntimeOwner::start_with_rendering(
+            self.runtime.client().snapshot().overlay_visible,
+            crate::COMMAND_CAPACITY,
+        );
+        let client = runtime.client();
+        for command in [
+            RuntimeCommand::SetCursorSettings(cursor_settings_from_config(&self.config)),
+            RuntimeCommand::SetMaximumFps(self.config.overlay.maximum_fps),
+            RuntimeCommand::SetOverlaySettings(overlay_settings_from_config(&self.config)),
+            RuntimeCommand::SetModelSettings(model_settings_from_config(&self.config)),
+            RuntimeCommand::SetRandomBehaviorSettings(random_behavior_settings_from_config(
+                &self.config,
+            )),
+        ] {
+            let sequence = client
+                .send(command)
+                .map_err(ApplicationError::RuntimeCommand)?;
+            client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        }
+        let sequence = client
+            .send(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(model),
+                input_bindings,
+            })
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+        if let Some(failure) = snapshot
+            .last_command_failure
+            .filter(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(failure));
+        }
+        Ok((runtime, consumer))
+    }
+
     pub fn start_motion(
         &self,
         group: impl Into<String>,

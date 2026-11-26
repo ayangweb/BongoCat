@@ -40,8 +40,9 @@
 use std::{
     collections::VecDeque,
     io::ErrorKind as IoErrorKind,
-    net::{SocketAddr, TcpStream, ToSocketAddrs},
+    net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs},
     sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
+    sync::{Arc, Mutex, PoisonError},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -163,10 +164,133 @@ type Socket = WebSocket<MaybeTlsStream<TcpStream>>;
 pub fn spawn(
     config: ClientConfig,
 ) -> Result<(Receiver<ClientEvent>, Sender<ClientCommand>), ClientError> {
+    let (events, commands, _) = spawn_worker(config, None)?;
+    Ok((events, commands))
+}
+
+pub struct ClientWorker {
+    cancellation: Arc<Mutex<Cancellation>>,
+    commands: Sender<ClientCommand>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+/// A session that has received the relay's admission response. The first
+/// roster is carried separately because preparation consumed that event.
+pub struct AdmittedClient {
+    pub events: Receiver<ClientEvent>,
+    pub commands: Sender<ClientCommand>,
+    pub worker: ClientWorker,
+    pub initial_roster: ClientEvent,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AdmissionError {
+    #[error(transparent)]
+    Start(#[from] ClientError),
+    #[error("room refused admission")]
+    Refused,
+    #[error("room could not be reached")]
+    Unreachable,
+    #[error("room admission timed out")]
+    Timeout,
+}
+
+/// Prepares an authenticated replacement without publishing local input.
+/// Callers keep the current route until this returns a session. A successful
+/// join on the same relay with the same device ID replaces the old connection.
+/// Run the wait on the network or settings worker.
+pub fn prepare_room(
+    config: ClientConfig,
+    timeout: Duration,
+) -> Result<AdmittedClient, AdmissionError> {
+    let (events, commands, worker) = spawn_managed(config)?;
+    let result = match events.recv_timeout(timeout) {
+        Ok(initial_roster @ ClientEvent::Joined { .. }) => {
+            return Ok(AdmittedClient {
+                events,
+                commands,
+                worker,
+                initial_roster,
+            });
+        }
+        Ok(ClientEvent::Failed(_)) => AdmissionError::Refused,
+        Err(mpsc::RecvTimeoutError::Timeout) => AdmissionError::Timeout,
+        _ => AdmissionError::Unreachable,
+    };
+    // Cancellation cuts an in-flight socket. A resolver that is still running
+    // cannot open a new session once it returns.
+    drop(worker);
+    Err(result)
+}
+
+#[derive(Default)]
+struct Cancellation {
+    stopped: bool,
+    socket: Option<TcpStream>,
+}
+
+impl ClientWorker {
+    pub fn stop(mut self, timeout: Duration) -> bool {
+        self.cancel();
+        let deadline = Instant::now() + timeout;
+        let Some(thread) = self.thread.take() else {
+            return true;
+        };
+        while !thread.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        thread.is_finished() && thread.join().is_ok()
+    }
+
+    fn cancel(&self) {
+        let mut state = self
+            .cancellation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state.stopped = true;
+        if let Some(socket) = state.socket.take() {
+            let _ = socket.shutdown(Shutdown::Both);
+        }
+        let _ = self.commands.send(ClientCommand::Shutdown);
+    }
+}
+
+impl Drop for ClientWorker {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+/// Starts a client with a handle that can interrupt an active socket and wait
+/// for its worker. Name resolution and TCP dialing remain bounded by the
+/// caller's stop timeout, after which cancellation still forbids a new session.
+pub fn spawn_managed(
+    config: ClientConfig,
+) -> Result<(Receiver<ClientEvent>, Sender<ClientCommand>, ClientWorker), ClientError> {
+    let cancellation = Arc::new(Mutex::new(Cancellation::default()));
+    let (events, commands, thread) = spawn_worker(config, Some(Arc::clone(&cancellation)))?;
+    let owner = ClientWorker {
+        cancellation,
+        commands: commands.clone(),
+        thread: Some(thread),
+    };
+    Ok((events, commands, owner))
+}
+
+type WorkerParts = (
+    Receiver<ClientEvent>,
+    Sender<ClientCommand>,
+    thread::JoinHandle<()>,
+);
+
+fn spawn_worker(
+    config: ClientConfig,
+    cancellation: Option<Arc<Mutex<Cancellation>>>,
+) -> Result<WorkerParts, ClientError> {
     let url = validate_server_url(&config.url)?;
     let (event_tx, event_rx) = mpsc::sync_channel(EVENT_CAPACITY);
     let (command_tx, command_rx) = mpsc::channel();
-    thread::Builder::new()
+    let thread = thread::Builder::new()
         .name("bongocat-net-client".to_owned())
         .spawn(move || {
             run(
@@ -174,10 +298,11 @@ pub fn spawn(
                 url,
                 Events::new(event_tx),
                 CommandInbox::new(command_rx),
+                cancellation.as_deref(),
             );
         })
         .map_err(|error| ClientError::Thread(error.to_string()))?;
-    Ok((event_rx, command_tx))
+    Ok((event_rx, command_tx, thread))
 }
 
 /// The longest wait before retry number `attempt` (1-based).
@@ -229,11 +354,22 @@ enum Outcome {
 }
 
 /// Runs connections until one ends the thread.
-fn run(config: ClientConfig, url: Url, mut events: Events, mut inbox: CommandInbox) {
+fn run(
+    config: ClientConfig,
+    url: Url,
+    mut events: Events,
+    mut inbox: CommandInbox,
+    cancellation: Option<&Mutex<Cancellation>>,
+) {
     let mut retries: u32 = 0;
     loop {
         let started = Instant::now();
-        let (outcome, joined) = match Session::open(&url) {
+        if cancellation
+            .is_some_and(|state| state.lock().unwrap_or_else(PoisonError::into_inner).stopped)
+        {
+            return;
+        }
+        let (outcome, joined) = match Session::open(&url, cancellation) {
             Ok(mut session) => match session.handshake(&config, &mut inbox, &mut events) {
                 Ok(()) => (session.serve(&mut inbox, &mut events), true),
                 Err(outcome) => (outcome, false),
@@ -245,6 +381,13 @@ fn run(config: ClientConfig, url: Url, mut events: Events, mut inbox: CommandInb
                 false,
             ),
         };
+        if let Some(state) = cancellation {
+            let mut state = state.lock().unwrap_or_else(PoisonError::into_inner);
+            state.socket = None;
+            if state.stopped {
+                return;
+            }
+        }
 
         let reason = match outcome {
             Outcome::Shutdown => return,
@@ -290,8 +433,8 @@ struct Session {
 impl Session {
     /// Connects and performs the websocket handshake, without the protocol
     /// handshake that needs the owner's token.
-    fn open(url: &Url) -> Result<Self, ClientError> {
-        let socket = open_socket(url)?;
+    fn open(url: &Url, cancellation: Option<&Mutex<Cancellation>>) -> Result<Self, ClientError> {
+        let socket = open_socket(url, cancellation)?;
         let now = Instant::now();
         Ok(Self {
             socket,
@@ -633,14 +776,29 @@ fn apply(reaction: Reaction) -> Result<(), Outcome> {
 }
 
 /// Opens the websocket, with timeouts on the socket it ends up reading.
-fn open_socket(url: &Url) -> Result<Socket, ClientError> {
+fn open_socket(
+    url: &Url,
+    cancellation: Option<&Mutex<Cancellation>>,
+) -> Result<Socket, ClientError> {
     match url.scheme() {
         "ws" => {
             let stream = connect_stream(url)?;
-            apply_stream_options(&stream)?;
+            if let Some(state) = cancellation {
+                let mut state = state.lock().unwrap_or_else(PoisonError::into_inner);
+                if state.stopped {
+                    return Err(ClientError::Connect("connection cancelled".into()));
+                }
+                state.socket = Some(stream.try_clone()?);
+            }
+            stream.set_nodelay(true)?;
+            stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
+            stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
             let (socket, _response) =
                 tungstenite::client(url.as_str(), MaybeTlsStream::Plain(stream))
                     .map_err(|error| ClientError::Connect(error.to_string()))?;
+            if let MaybeTlsStream::Plain(stream) = socket.get_ref() {
+                stream.set_read_timeout(Some(SOCKET_POLL_INTERVAL))?;
+            }
             Ok(socket)
         }
         scheme => Err(ClientError::Scheme {
@@ -671,13 +829,6 @@ fn connect_stream(url: &Url) -> Result<TcpStream, ClientError> {
     Err(ClientError::Connect(failure.unwrap_or_else(|| {
         format!("{host}:{port} resolved to no address")
     })))
-}
-
-fn apply_stream_options(stream: &TcpStream) -> Result<(), ClientError> {
-    stream.set_nodelay(true)?;
-    stream.set_read_timeout(Some(SOCKET_POLL_INTERVAL))?;
-    stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
-    Ok(())
 }
 
 fn is_timeout(error: &WsError) -> bool {
@@ -1194,5 +1345,36 @@ mod tests {
 
         let _ = commands.send(ClientCommand::Shutdown);
         relay.join().expect("relay thread");
+    }
+
+    #[test]
+    fn managed_client_can_stop_while_waiting_for_room_admission() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (hello_seen, hello) = mpsc::channel();
+        let relay = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut socket = tungstenite::accept(stream).unwrap();
+            assert!(matches!(socket.read(), Ok(Message::Text(_))));
+            hello_seen.send(()).unwrap();
+            assert!(matches!(socket.read(), Err(error) if !is_timeout(&error)));
+        });
+        let (events, _, worker) = spawn_managed(ClientConfig {
+            url: format!("ws://{address}"),
+            token: "room-token".into(),
+            device: DeviceInfo {
+                id: "pc".into(),
+                name: "PC".into(),
+                publish: false,
+            },
+        })
+        .unwrap();
+        hello.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(worker.stop(Duration::from_millis(500)));
+        assert!(matches!(events.try_recv(), Err(TryRecvError::Disconnected)));
+        relay.join().unwrap();
     }
 }

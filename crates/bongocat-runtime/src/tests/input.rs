@@ -541,6 +541,8 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
             ignore_keyboard: true,
             ignore_gamepad: false,
             show_all_pressed_keys: false,
+            toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: false,
         }))
         .expect("keyboard filter accepted");
@@ -571,6 +573,8 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
             ignore_keyboard: false,
             ignore_gamepad: true,
             show_all_pressed_keys: false,
+            toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: false,
         }))
         .expect("gamepad filter accepted");
@@ -886,4 +890,47 @@ fn shutdown_flushes_a_pending_cursor_before_stopped_state() {
     assert_eq!(stopped.cursor.sample, Some(cursor_sample(75.0, 60.0, 1)));
     assert_eq!(stopped.cursor.transport.consumed, 1);
     assert_eq!(stopped.cursor.transport.pending, 0);
+}
+
+#[test]
+fn event_subscriber_receives_physical_edges_without_repeats_or_corrections() {
+    let owner = RuntimeOwner::start(true, 16);
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).unwrap();
+    let activity = client.subscribe_activity();
+    activity.set_waker(std::thread::current());
+    for (sequence, (edge, source)) in [
+        (InputEdge::Down, InputSource::Capture),
+        (InputEdge::Down, InputSource::Capture),
+        (InputEdge::Up, InputSource::Capture),
+        (InputEdge::Down, InputSource::Reconciliation),
+        (InputEdge::Up, InputSource::Reconciliation),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let command = client
+            .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+                sequence: sequence as u64,
+                event: InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge,
+                    source,
+                    at: MonotonicMillis::new(sequence as u64),
+                },
+            })))
+            .unwrap();
+        client.wait_for_command(command, TIMEOUT).unwrap();
+    }
+    let (events, overflow) = activity.drain();
+    assert_eq!(overflow, 0);
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].edge, InputEdge::Down);
+    assert_eq!(events[1].edge, InputEdge::Up);
+    assert!(
+        events
+            .iter()
+            .all(|event| event.control == ActivityControl::Keyboard)
+    );
+    owner.shutdown(TIMEOUT).unwrap();
 }

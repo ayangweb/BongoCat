@@ -36,7 +36,7 @@ pub(crate) fn begin_model_activation(
     gamepad_axis_settings: GamepadAxisSettings,
     model_settings: ModelSettings,
     active_model: &mut Option<Arc<CommittedModel>>,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     pending_model: &mut Option<PendingModelActivation>,
     motion_audio: &MotionAudioClient,
@@ -59,14 +59,14 @@ pub(crate) fn begin_model_activation(
         let model_snapshot = committed.snapshot();
         let model_origin = committed.origin();
         *active_model = Some(committed);
-        *active_motion = None;
+        active_motions.clear();
         *active_expression = None;
         stop_motion_audio(motion_audio, MotionAudioStopReason::ModelSwitched);
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
             current.active_model_origin = Some(model_origin);
-            current.active_motion = None;
+            current.active_motions.clear();
             current.active_expression = None;
             current.motion_events.last_event = None;
             current.model_input = model_input;
@@ -115,7 +115,7 @@ pub(crate) fn process_model_commit_feedback(
     gamepad_axis_settings: GamepadAxisSettings,
     model_settings: ModelSettings,
     active_model: &mut Option<Arc<CommittedModel>>,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     motion_audio: &MotionAudioClient,
     next_motion_event_sequence: &mut u64,
@@ -171,7 +171,7 @@ pub(crate) fn process_model_commit_feedback(
                         model_input,
                         snapshot,
                         now,
-                        active_motion,
+                        active_motions,
                         next_motion_event_sequence,
                     );
                 }
@@ -210,7 +210,7 @@ pub(crate) fn process_model_commit_feedback(
         let model_origin = pending.model.origin();
         activate_model_audio(motion_audio, audio_paths);
         *active_model = Some(pending.model);
-        *active_motion = None;
+        active_motions.clear();
         *active_expression = None;
         random_behavior_scheduler.reset(now);
         stop_motion_audio(motion_audio, MotionAudioStopReason::ModelSwitched);
@@ -219,7 +219,7 @@ pub(crate) fn process_model_commit_feedback(
             current.active_model = Some(model_snapshot);
             current.active_model_origin = Some(model_origin);
             current.pending_model = None;
-            current.active_motion = None;
+            current.active_motions.clear();
             current.active_expression = None;
             current.motion_events.last_event = None;
             current.model_input = model_input;
@@ -233,7 +233,7 @@ pub(crate) fn process_model_commit_feedback(
                 model_input,
                 snapshot,
                 now,
-                active_motion,
+                active_motions,
                 next_motion_event_sequence,
             );
         }

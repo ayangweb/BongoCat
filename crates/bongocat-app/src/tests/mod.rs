@@ -42,6 +42,7 @@ pub(crate) use bongocat_runtime::{
 pub(crate) use std::{fs, path::Path, time::Instant};
 pub(crate) use tempfile::tempdir;
 
+mod behavior_names;
 mod diagnostics;
 mod expression_memory;
 mod gamepad;

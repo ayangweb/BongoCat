@@ -5,17 +5,18 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
-    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
-    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
-    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    ModifierKey, SettingsBuildInfo, SettingsClient, SettingsCursorSettings, SettingsError,
+    SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage,
+    SettingsLogLevel, SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelBehaviorName, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelKey, SettingsModelMode, SettingsModelOrigin,
+    SettingsModelSettings, SettingsModelSourceCandidate, SettingsModelSourceContent,
+    SettingsMverMode, SettingsOperationId, SettingsOverlay, SettingsRandomBehavior,
+    SettingsRandomBehaviorMode, SettingsRuntimeErrorCode, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 // One line of its own rather than interleaved into the block above: every name
 // here arrives with the multiplayer page, and keeping them apart keeps the
@@ -37,12 +38,13 @@ use gpui_kit::component::{
     group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
-    searchable_list::SearchableListItem,
+    searchable_list::{SearchableGroup, SearchableListDelegate, SearchableListItem},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
         SettingPage, Settings,
     },
+    switch::Switch,
 };
 #[cfg(any(not(target_os = "linux"), test))]
 use gpui_kit::point;
@@ -66,6 +68,12 @@ use std::{
 mod presentation;
 use presentation::*;
 mod about;
+mod behavior_name;
+use behavior_name::BehaviorNameDraft;
+#[cfg(test)]
+use behavior_name::{BEHAVIOR_NAME_MAXIMUM_CHARS, sanitize_behavior_name_input};
+#[cfg(target_os = "linux")]
+mod alpha_output;
 mod lifecycle;
 mod localization;
 mod model_actions;
@@ -81,6 +89,7 @@ use hold_modifier::hold_modifier_row;
 mod import;
 mod model_import_card;
 mod model_mver_dialog;
+mod model_selection;
 mod mver;
 mod row;
 mod source;
@@ -91,6 +100,11 @@ mod multiplayer_page;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod plugins_host;
+use plugins_host::PluginHost;
+mod plugin_settings;
+use plugin_settings::PluginSettingsDraft;
+mod plugins_page;
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;
@@ -99,11 +113,14 @@ mod shortcuts;
 mod shortcuts_page;
 mod smoke;
 mod view_state;
+#[cfg(target_os = "windows")]
+mod window_mode;
 use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
 use localization::{
-    build_info_detail, model_invalid_summary, settings_error, shortcut_behavior_name,
-    shortcut_command_name, shortcut_conflict_message,
+    build_info_detail, model_invalid_summary, plugin_failure_message,
+    plugin_failure_notification_id, settings_error, shortcut_behavior_name, shortcut_command_name,
+    shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;
@@ -122,8 +139,16 @@ const MODEL_EDIT_SAVE_TAB_INDEX: isize = 72;
 const MODEL_EDIT_CANCEL_TAB_INDEX: isize = 73;
 
 struct SettingsServiceErrorNotification;
+#[cfg(target_os = "linux")]
+struct AlphaManagementErrorNotification;
 
 struct ShortcutConflictNotification;
+
+/// One plugin failure, keyed by the command and target that produced it.
+///
+/// The key is stable so polling the same failed state cannot stack duplicates,
+/// while a retry of the same command still replaces the earlier message.
+struct PluginFailureNotification;
 
 /// Marks the notification pushed when the model catalog cannot be read.
 ///
@@ -210,6 +235,14 @@ pub(crate) type NetworkAddressSelectState = SelectState<SearchableVec<String>>;
 
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
+/// One dropdown of a plugin's own configuration panel.
+///
+/// Its options are the plugin's, so unlike the window's own dropdowns the list
+/// is not a fixed catalog: it is rebuilt from whatever the open plugin published
+/// last.
+pub(crate) type PluginSettingsSelectState =
+    SelectState<plugin_settings::PluginSettingsSelectGroups>;
+
 /// The appearance a settings window paints its first frame with.
 ///
 /// The window is created and shown before the settings service answers its first
@@ -228,13 +261,39 @@ pub struct SettingsWindowSeed {
     pub appearance_theme: SettingsTheme,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NetworkEditor {
+    Connection,
+    Relay,
+}
+
 pub struct SettingsView {
+    pub(crate) plugin_host: PluginHost,
+    /// The one plugin whose configuration panel is open, if any.
+    ///
+    /// A value rather than a flag because the view has to know which plugin the
+    /// panel belongs to before it opens the layer at all (see `plugin_settings`).
+    pub(crate) plugin_settings: Option<PluginSettingsDraft>,
+    #[cfg(target_os = "windows")]
+    pub(crate) window_background_color: Entity<gpui_kit::component::color_picker::ColorPickerState>,
+    #[cfg(target_os = "windows")]
+    pub(crate) window_background_debouncer: crate::SettingsPatchDebouncer<[u8; 3]>,
+    #[cfg(target_os = "windows")]
+    pub(crate) window_background_timer_generation: u64,
     pub(crate) client: SettingsClient,
     pub(crate) seed: SettingsWindowSeed,
     pub(crate) snapshot: Option<SettingsSnapshot>,
     platform_notifications: platform::InputNotifications,
     pub(crate) pending: Option<PendingOperation>,
     pub(crate) pending_notification: Option<SettingsError>,
+    #[cfg(target_os = "linux")]
+    alpha_system_status: Option<crate::SettingsAlphaSystemStatus>,
+    #[cfg(target_os = "linux")]
+    alpha_status_checked: bool,
+    #[cfg(target_os = "linux")]
+    alpha_operation_pending: bool,
+    #[cfg(target_os = "linux")]
+    alpha_management_error: Option<crate::SettingsAlphaManagementError>,
     pub(crate) model_import_success_pending: bool,
     /// Set when the run's cover capture reported that the model could not be
     /// prepared. The model is removed instead of published, and the user is
@@ -272,13 +331,26 @@ pub struct SettingsView {
     pub(crate) random_behavior_timer_generation: u64,
     pub(crate) logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,
     pub(crate) logging_settings_timer_generation: u64,
-    pub(crate) network_settings_debouncer: crate::SettingsPatchDebouncer<SettingsNetwork>,
-    pub(crate) network_settings_timer_generation: u64,
+    network_draft: Option<(NetworkEditor, SettingsNetwork)>,
+    network_apply_pending: bool,
     pub(crate) flush_pending_requested: bool,
     pub(crate) quit_after_flush: bool,
     pub(crate) model_delete_confirmation: Option<SettingsModelKey>,
     pub(crate) model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     pub(crate) model_edit: Option<ModelEditDraft>,
+    /// The one behavior row open for renaming, if any.
+    ///
+    /// A value rather than a flag, because the page has to know *which* row is being
+    /// renamed before it opens the dialog layer at all — the same reason the model
+    /// rename and the Mver conversion dialog keep their drafts here.
+    pub(crate) behavior_name: Option<BehaviorNameDraft>,
+    /// The rows the shortcuts page is currently showing, keyed by target.
+    ///
+    /// The page renders them from a fresh projection every frame; this copy exists so
+    /// a control inside a row can ask about the row it belongs to rather than
+    /// re-deriving one, and it is replaced wholesale on each sync so it can never
+    /// describe a model that is no longer on screen.
+    pub(crate) shortcut_rows: BTreeMap<ShortcutCaptureTarget, ShortcutRow>,
     /// Whether the unreadable-catalog notification has already been pushed for
     /// the current failure, so it is not repeated on every snapshot.
     pub(crate) model_catalog_error_reported: bool,
@@ -332,12 +404,9 @@ pub struct SettingsView {
     /// on every snapshot, so "where the address comes from" and "what it is"
     /// are a single decision instead of two rows.
     pub(crate) network_client_address_select: Entity<NetworkAddressSelectState>,
-    /// The device id the "add" row below the displayed devices is typing.
-    ///
-    /// It is view state rather than configuration: the id becomes part of the
-    /// settings only when the user commits it, and until then nothing is sent.
-    pub(crate) network_display_device_input: Entity<InputState>,
-    pub(crate) network_display_device_add_focus: FocusHandle,
+    network_selected_peer_names: std::collections::BTreeMap<String, String>,
+    network_client_token_input: Entity<InputState>,
+    network_relay_token_input: Entity<InputState>,
     pub(crate) request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
     pub(crate) request_update: SettingsWindowRequest,

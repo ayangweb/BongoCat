@@ -20,24 +20,33 @@ fn report_of(snapshot: &SettingsSnapshot) -> serde_json::Value {
     serde_json::from_str(&json).expect("the report is valid JSON")
 }
 
+/// The row names the version and nothing else.
+///
+/// Both environments are asserted rather than just the one the tests compile
+/// as, because the suffix this row used to carry was environment-dependent: a
+/// guard written against Development alone would go green again the moment
+/// Production started appending "Release build".
 #[test]
 fn build_information_is_localized_and_contains_only_compiled_identity() {
     let product_version = env!("CARGO_PKG_VERSION");
-    let build_info = crate::SettingsBuildInfo {
-        product_version: product_version.to_owned(),
-        environment: crate::SettingsBuildEnvironment::Development,
-        cubism_core_version: "6.0.1".to_owned(),
-    };
-    let detail = build_info_detail(SettingsLanguage::English, &build_info);
-    assert_eq!(
-        detail,
-        format!("Version {product_version} · Development build")
-    );
-    assert!(!detail.contains('/'));
-    assert!(!detail.contains("path"));
 
-    let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
-    assert_eq!(chinese, format!("版本 {product_version} · 开发版"));
+    for environment in [
+        crate::SettingsBuildEnvironment::Development,
+        crate::SettingsBuildEnvironment::Production,
+    ] {
+        let build_info = crate::SettingsBuildInfo {
+            product_version: product_version.to_owned(),
+            environment,
+            cubism_core_version: "6.0.1".to_owned(),
+        };
+        let detail = build_info_detail(SettingsLanguage::English, &build_info);
+        assert_eq!(detail, format!("Version {product_version}"));
+        assert!(!detail.contains('/'));
+        assert!(!detail.contains("path"));
+
+        let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
+        assert_eq!(chinese, format!("版本 {product_version}"));
+    }
 }
 
 /// The report has to survive being pasted into an issue as a code block, which
@@ -279,6 +288,7 @@ fn shortcut_presentations_follow_the_resolved_language() {
             behavior: None,
             playable: None,
             shortcut: None,
+            custom_name: None,
         }
         .name(SettingsLanguage::English),
         "Show or hide the model window"
@@ -332,9 +342,9 @@ fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
     )];
     let shortcuts = SettingsShortcuts::default();
 
-    let window_rows = ShortcutScope::Window.rows(&shortcuts, Some(&active), &entries);
-    let model_rows = ShortcutScope::Model.rows(&shortcuts, Some(&active), &entries);
-    let combined = shortcut_rows(&shortcuts, Some(&active), &entries);
+    let window_rows = ShortcutScope::Window.rows(&shortcuts, Some(&active), &entries, &[]);
+    let model_rows = ShortcutScope::Model.rows(&shortcuts, Some(&active), &entries, &[]);
+    let combined = shortcut_rows(&shortcuts, Some(&active), &entries, &[]);
 
     assert_eq!(ShortcutScope::Window.row_index_offset(&shortcuts), 0);
     assert_eq!(
@@ -408,6 +418,50 @@ fn model_behavior_shortcut_copy_stays_aligned_between_scope_and_gate() {
     ] {
         assert_eq!(ShortcutScope::Model.title(language), scope_title);
         assert_eq!(ShortcutScope::Model.gate_label(language), gate_title);
+    }
+}
+
+/// The login item row names one concept, so the switch and every state that
+/// explains why it cannot act have to spell it the same way.
+///
+/// The switch used to be called "登录时启动" while the three unavailable states
+/// said the same words again, and a reader who has only ever seen the Windows
+/// task manager has to work out that this is what "start with Windows" is
+/// called here. Each catalog entry is pinned so the wording cannot drift back
+/// into two vocabularies for the same setting.
+#[test]
+fn the_login_item_row_names_one_concept_in_its_switch_and_its_states() {
+    for (locale, label, platform, operating_system, build) in [
+        (
+            "en-US",
+            "Run at startup",
+            "Running at startup is unavailable on this system",
+            "Running at startup is unavailable on this operating system",
+            "Running at startup is unavailable in development builds",
+        ),
+        (
+            "zh-CN",
+            "开机自启动",
+            "当前系统不支持开机自启动",
+            "当前操作系统不支持开机自启动",
+            "开发版本不支持开机自启动",
+        ),
+    ] {
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.app_system.open_at_login.label"),
+            label
+        );
+        for (key, expected) in [
+            ("unsupported_platform", platform),
+            ("unsupported_os", operating_system),
+            ("unsupported_build", build),
+        ] {
+            assert_eq!(
+                bongocat_i18n::text(locale, &format!("settings.app_system.startup.{key}")),
+                expected,
+                "{locale}: {key} names the setting differently from its switch"
+            );
+        }
     }
 }
 

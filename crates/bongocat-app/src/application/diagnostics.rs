@@ -17,6 +17,12 @@ impl Application {
         &self.config_store.layout().logs
     }
 
+    /// This build's storage root, for a subsystem that keeps its own directory
+    /// beside the product's rather than inside any one of them.
+    pub fn storage_root(&self) -> &Path {
+        &self.config_store.layout().root
+    }
+
     pub fn application_log_diagnostics(&self) -> ApplicationLogDiagnostics {
         self.application_log.diagnostics()
     }

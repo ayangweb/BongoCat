@@ -13,6 +13,51 @@ use super::*;
 use super::model_projection::*;
 use super::projection::*;
 
+/// What each of the active model's behaviors is called.
+///
+/// Only the rows that exist, for the active model only: a behavior with no row is one
+/// the user has not renamed, and the window draws its numbered label. A row naming a
+/// behavior the model no longer declares is dropped rather than sent — whether a
+/// behavior still exists is a property of the package, and the window would have no row
+/// to put the name on.
+fn model_behavior_names(
+    application: &Application,
+    catalog: &SettingsModelCatalog,
+) -> Vec<SettingsModelBehaviorName> {
+    let Some(model) = application.live_model_identity() else {
+        return Vec::new();
+    };
+    let declared = catalog
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.id == model.id && entry.origin == settings_origin_from_config(model.source)
+        })
+        .and_then(|entry| match &entry.availability {
+            SettingsModelAvailability::Ready { behaviors } => Some(
+                behaviors
+                    .iter()
+                    .map(settings_model_behavior_id)
+                    .collect::<Vec<_>>(),
+            ),
+            SettingsModelAvailability::Invalid { .. } => None,
+        });
+    let Some(declared) = declared else {
+        return Vec::new();
+    };
+    application
+        .config()
+        .model
+        .behavior_names
+        .iter()
+        .filter(|row| row.model == model && declared.contains(&row.behavior_id))
+        .map(|row| SettingsModelBehaviorName {
+            behavior_id: row.behavior_id.clone(),
+            name: row.name.clone(),
+        })
+        .collect()
+}
+
 /// How long an input-capability answer stays usable.
 ///
 /// On macOS the system answers this query through a TCC round trip on its own
@@ -58,6 +103,7 @@ pub(super) struct SettingsSnapshotClock {
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     observed_overlay_visible: Option<bool>,
+    observed_video_output_status: Option<bongocat_runtime::VideoOutputStatus>,
     observed_network_status: Option<bongocat_ui_protocol::SettingsNetworkStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
@@ -72,6 +118,7 @@ impl SettingsSnapshotClock {
             observed_input_diagnostics: None,
             observed_startup_item: None,
             observed_overlay_visible: None,
+            observed_video_output_status: None,
             observed_network_status: None,
             diagnostics_export: None,
             input_capability: InputCapabilityCache {
@@ -130,6 +177,19 @@ impl SettingsSnapshotClock {
         previous
     }
 
+    pub(super) fn observe_video_output_status(
+        &mut self,
+        status: bongocat_runtime::VideoOutputStatus,
+    ) {
+        if self
+            .observed_video_output_status
+            .is_some_and(|previous| previous != status)
+        {
+            self.mark_changed();
+        }
+        self.observed_video_output_status = Some(status);
+    }
+
     pub(super) fn observe_overlay_visible(&mut self, visible: bool) {
         if self
             .observed_overlay_visible
@@ -178,6 +238,10 @@ pub(super) fn snapshot(
 ) -> SettingsSnapshot {
     let (runtime, input_diagnostics) =
         observe_snapshot_state(application, clock, startup_item, catalog_changed);
+    // The catalog is scanned once and read twice: the library page lists it, and the
+    // names shown against the active model's behaviors filter by it. Scanning per
+    // reader would double the most expensive part of building a snapshot.
+    let model_catalog = settings_model_catalog(application);
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -211,6 +275,8 @@ pub(super) fn snapshot(
         overlay_visible: runtime.overlay_visible,
         overlay_always_on_top_available: application.overlay_always_on_top_available,
         overlay: SettingsOverlay {
+            window_mode: runtime.overlay_settings.window_mode,
+            window_background_color: runtime.overlay_settings.window_background_color,
             click_through: runtime.overlay_settings.click_through,
             hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,
             always_on_top: runtime.overlay_settings.always_on_top,
@@ -262,12 +328,17 @@ pub(super) fn snapshot(
             &application.config().model.gamepad_auto_switch,
         ),
         remember_last_expression: application.config().model.remember_last_expression,
+        toggle_repeated_expression: application.config().model.toggle_repeated_expression,
+        allow_motion_overlap: application.config().model.allow_motion_overlap,
         logging: settings_logging_from_config(&application.config().logging),
         network: crate::config_projection::settings_network_from_config(
             &application.config().network,
         ),
         network_status: settings_network_status(&bongocat_net::network_status()),
+        alpha_output_enabled: application.config().alpha_output.enabled,
+        alpha_output_status: settings_alpha_output_status(runtime.video_output_status),
         shortcuts: settings_shortcuts(application.config()),
+        model_behavior_names: model_behavior_names(application, &model_catalog),
         startup_item,
         diagnostics_export: clock.diagnostics_export,
         input_diagnostics,
@@ -282,7 +353,7 @@ pub(super) fn snapshot(
                     })
             })
             .or_else(|| configured_model_key(application)),
-        model_catalog: settings_model_catalog(application),
+        model_catalog,
     }
 }
 
@@ -302,6 +373,7 @@ pub(super) fn observe_snapshot_state(
     let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
     clock.observe_overlay_visible(runtime.overlay_visible);
+    clock.observe_video_output_status(runtime.video_output_status);
     clock.observe_network_status(settings_network_status(&bongocat_net::network_status()));
     let input_diagnostics = settings_input_diagnostics(
         &runtime.input,
@@ -405,4 +477,21 @@ pub(super) fn observe_snapshot_state(
     }
     clock.coalesce_changes_since(revision_before);
     (runtime, input_diagnostics)
+}
+
+fn settings_alpha_output_status(
+    status: bongocat_runtime::VideoOutputStatus,
+) -> bongocat_ui_protocol::SettingsAlphaOutputStatus {
+    use bongocat_runtime::VideoOutputStatus as Runtime;
+    use bongocat_ui_protocol::SettingsAlphaOutputStatus as Settings;
+    match status {
+        Runtime::Disabled => Settings::Disabled,
+        Runtime::Starting => Settings::Starting,
+        Runtime::Running => Settings::Running,
+        Runtime::Stopping => Settings::Stopping,
+        Runtime::DeviceUnavailable => Settings::DeviceUnavailable,
+        Runtime::PermissionDenied => Settings::PermissionDenied,
+        Runtime::UnsupportedFormat => Settings::UnsupportedFormat,
+        Runtime::Failed => Settings::Failed,
+    }
 }

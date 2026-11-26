@@ -360,6 +360,9 @@ impl SettingsView {
     /// persisted value and one typed command that carries it; two callers would
     /// only be an invitation to change one and forget the other.
     fn write_hold_modifier(&mut self, modifier: Option<ModifierKey>, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.editing_blocked(self.snapshot.as_ref()) {
             return;
         }

@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 pub struct MonotonicMillis(u64);
 
 impl MonotonicMillis {
+    /// Return a process-wide monotonic timestamp for input producers.
+    ///
+    /// Network arrivals and local platform capture use the same origin so they
+    /// can be ordered safely by one runtime. Remote timestamps are re-stamped
+    /// on arrival and are never compared across machines.
+    pub fn now() -> Self {
+        static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = ORIGIN.get_or_init(std::time::Instant::now).elapsed();
+        Self::new(elapsed.as_millis().min(u128::from(u64::MAX)) as u64)
+    }
+
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
@@ -495,6 +506,48 @@ pub struct SequencedInputEvent {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InputDiagnostics {
     pub captured_down: u64,
+    /// Unique captured keyboard downs, without identities or text.
+    pub keyboard_activity: u64,
+    /// Unique captured keyboard releases, without identities or text.
+    ///
+    /// It is counted beside [`Self::keyboard_activity`] rather than derived from
+    /// it: a plugin that plays one sound for a press and another for a release
+    /// has to tell the two edges apart, and a release the platform reported
+    /// after the runtime had already forgotten the press is still a release the
+    /// user performed.
+    pub keyboard_release: u64,
+    /// Captured space presses, a subset of [`Self::keyboard_activity`].
+    pub space_activity: u64,
+    /// Captured space releases, a subset of [`Self::keyboard_release`].
+    pub space_release: u64,
+    /// Captured Enter presses, a subset of [`Self::keyboard_activity`].
+    pub enter_activity: u64,
+    /// Captured Enter releases, a subset of [`Self::keyboard_release`].
+    pub enter_release: u64,
+    /// Captured Backspace presses, a subset of [`Self::keyboard_activity`].
+    pub backspace_activity: u64,
+    /// Captured Backspace releases, a subset of [`Self::keyboard_release`].
+    pub backspace_release: u64,
+    /// Captured Tab presses, a subset of [`Self::keyboard_activity`].
+    pub tab_activity: u64,
+    /// Captured Tab releases, a subset of [`Self::keyboard_release`].
+    pub tab_release: u64,
+    /// Captured left-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_left_activity: u64,
+    /// Captured left-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_left_release: u64,
+    /// Captured right-Shift presses, a subset of [`Self::keyboard_activity`].
+    pub shift_right_activity: u64,
+    /// Captured right-Shift releases, a subset of [`Self::keyboard_release`].
+    pub shift_right_release: u64,
+    /// Captured left-Control presses, a subset of [`Self::keyboard_activity`].
+    pub ctrl_left_activity: u64,
+    /// Captured left-Control releases, a subset of [`Self::keyboard_release`].
+    pub ctrl_left_release: u64,
+    /// Unique captured mouse button downs, without identities or coordinates.
+    pub mouse_activity: u64,
+    /// Unique captured mouse button releases, without identities or coordinates.
+    pub mouse_release: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
     pub released_by_reset: u64,
@@ -566,31 +619,6 @@ impl InputProducer {
             submitter,
             state: std::sync::Arc::new(std::sync::Mutex::new(InputProducerState::default())),
             transport: std::sync::Arc::new(InputTransportCounters::default()),
-        }
-    }
-
-    /// The submitter this producer forwards to.
-    ///
-    /// Exposed so a caller can build a wrapper around the same destination — a relay
-    /// that mirrors events elsewhere, for instance — without the producer having to
-    /// learn about that destination itself.
-    pub fn submitter(&self) -> std::sync::Arc<dyn InputSubmitter> {
-        std::sync::Arc::clone(&self.submitter)
-    }
-
-    /// A producer that hands events to `submitter` while sharing this one's
-    /// sequence bookkeeping.
-    ///
-    /// The multiplayer tee needs exactly this: the runtime sees events from two
-    /// senders — the room and this machine's own capture — and its gap detection
-    /// is only sound while every sender draws numbers from the same counter. A
-    /// fresh producer would restart the count at zero, and every one of its
-    /// frames would read as stale against the other sender's.
-    pub fn with_submitter(&self, submitter: std::sync::Arc<dyn InputSubmitter>) -> Self {
-        Self {
-            submitter,
-            state: std::sync::Arc::clone(&self.state),
-            transport: std::sync::Arc::clone(&self.transport),
         }
     }
 

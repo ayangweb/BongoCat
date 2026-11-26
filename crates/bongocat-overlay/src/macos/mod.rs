@@ -32,9 +32,10 @@ pub(crate) use textures::*;
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
     FrameTimingCollector, MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
-    OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
-    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, blend_factors, corner_radius_uniform,
+    OverlayInteractionSinks, OverlayPluginInteraction, OverlayPluginLayer, OverlayPluginTargets,
+    OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds, OverlaySessionOptions,
+    OverlayTickOutcome, OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors,
+    corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },
@@ -55,7 +56,8 @@ use bongocat_platform::{
 use bongocat_render::{
     BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
-    RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
+    RenderResources, RenderSnapshot, TextureAsset, TextureId, legacy_key_overlay_bounds,
+    quad_vertices, validate_render_snapshot,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer,
@@ -80,7 +82,7 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent,
-    NSEventMask, NSMainMenuWindowLevel, NSNormalWindowLevel, NSPanel, NSScreen, NSView,
+    NSEventMask, NSNormalWindowLevel, NSPanel, NSScreen, NSStatusWindowLevel, NSView,
     NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowLevel, NSWindowStyleMask,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};

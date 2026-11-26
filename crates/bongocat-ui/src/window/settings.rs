@@ -20,6 +20,86 @@ pub(super) fn random_behavior_settings_after_mode_change(
 }
 
 impl SettingsView {
+    /// Attach this window to the running plugin service.
+    ///
+    /// The service outlives the window, so a window that opens attaches to what is
+    /// already running rather than starting anything of its own. A window opened
+    /// with no service attached shows the center's unavailable state, which is what
+    /// a build without the plugin service looks like.
+    pub(super) fn set_plugin_host(&mut self, host: PluginHost) {
+        self.plugin_host = host;
+    }
+
+    /// Keep the plugin center's copy of the service's state current.
+    ///
+    /// The service owns the plugins and ticks them on its own thread; this is only
+    /// how the page notices that a plugin's own view changed — a countdown's
+    /// remaining time, a control it re-labelled. The poll stops while the window is
+    /// hidden, exactly as the snapshot poll does: nothing it renders can be seen.
+    pub(super) fn start_plugin_center_polling(&self, cx: &mut Context<Self>) {
+        let executor = cx.background_executor().clone();
+        let host = self.plugin_host.clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                executor.timer(Duration::from_millis(200)).await;
+                let visible = match this.update(cx, |view, _| !view.window_hidden()) {
+                    Ok(visible) => visible,
+                    Err(_) => break,
+                };
+                if !visible || !host.is_available() {
+                    continue;
+                }
+                let poll = host.clone();
+                let changed = executor
+                    .spawn(async move {
+                        let before = poll.snapshot();
+                        poll.refresh();
+                        poll.snapshot() != before || poll.has_failures()
+                    })
+                    .await;
+                if changed && this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    pub(super) fn update_plugin_host(
+        &self,
+        operation: impl FnOnce(PluginHost) + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let executor = cx.background_executor().clone();
+        let host = self.plugin_host.clone();
+        cx.spawn(async move |this, cx| {
+            executor
+                .spawn(async move {
+                    operation(host);
+                })
+                .await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    }
+
+    pub(super) fn preview_plugin(
+        &mut self,
+        plugin: &str,
+        key: &str,
+        value: &str,
+        hovered: bool,
+        lifetime: std::sync::Weak<()>,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .plugin_host
+            .queue_preview(plugin, key, value, hovered, lifetime)
+        {
+            self.update_plugin_host(move |host| host.drain_previews(), cx);
+        }
+    }
+
     /// Keep the rendered snapshot current while the window is on screen.
     ///
     /// The window is created for each open and destroyed on close. The poll still
@@ -141,6 +221,25 @@ impl SettingsView {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    pub(super) fn set_alpha_output_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::AlphaOutput,
+            Some(SettingValue::AlphaOutputEnabled {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_overlay_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot
@@ -186,6 +285,9 @@ impl SettingsView {
 
     #[cfg(target_os = "windows")]
     pub(super) fn set_taskbar_icon_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -386,110 +488,92 @@ impl SettingsView {
         }
     }
 
-    /// How this machine takes part in a room, as the page is showing it.
-    ///
-    /// The value still waiting in the debounce window wins over the snapshot,
-    /// which is what keeps a typed field from being reset underneath the user:
-    /// the row re-reads its value on every frame, and a snapshot that has not
-    /// received the write yet would otherwise pull the caret back to the old
-    /// text. The same rule the logging policy's two fields use.
     pub(super) fn network_settings_value(&self) -> SettingsNetwork {
-        self.network_settings_debouncer
-            .pending_value()
-            .cloned()
-            .or_else(|| {
-                self.snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.network.clone())
-            })
-            .unwrap_or_default()
+        let mut network = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.network.clone())
+            .unwrap_or_default();
+        if let Some((editor, draft)) = &self.network_draft {
+            match editor {
+                NetworkEditor::Connection => {
+                    network.device = draft.device.clone();
+                    network.client.source = draft.client.source;
+                    network.client.url.clone_from(&draft.client.url);
+                    network.client.token.clone_from(&draft.client.token);
+                }
+                NetworkEditor::Relay => network.server = draft.server.clone(),
+            }
+        }
+        network
     }
 
-    /// Hand one whole multiplayer patch to the debounce window.
-    ///
-    /// A typed field produces one command per pause rather than per keystroke,
-    /// and it starts from the value still in flight so two fields edited in
-    /// quick succession cannot drop each other's change.
+    pub(super) fn edit_network(&mut self, editor: NetworkEditor, cx: &mut Context<Self>) {
+        if self.pending.is_none()
+            && let Some(snapshot) = &self.snapshot
+        {
+            self.network_draft = Some((editor, snapshot.network.clone()));
+            cx.notify();
+        }
+    }
+
+    pub(super) fn cancel_network_edit(&mut self, cx: &mut Context<Self>) {
+        self.network_draft = None;
+        cx.notify();
+    }
+
+    pub(super) fn apply_network_edit(&mut self, cx: &mut Context<Self>) {
+        if self.pending.is_some() {
+            return;
+        }
+        let Some((editor, draft)) = self.network_draft.clone() else {
+            return;
+        };
+        self.network_apply_pending = true;
+        if !self.commit_network_settings(
+            |settings| match editor {
+                NetworkEditor::Connection => {
+                    settings.device = draft.device;
+                    settings.client.source = draft.client.source;
+                    settings.client.url = draft.client.url;
+                    settings.client.token = draft.client.token;
+                    settings.client.enabled = true;
+                }
+                NetworkEditor::Relay => settings.server = draft.server,
+            },
+            cx,
+        ) {
+            self.network_apply_pending = false;
+            self.cancel_network_edit(cx);
+        }
+    }
+
     fn patch_network_settings(
         &mut self,
         mutate: impl FnOnce(&mut SettingsNetwork),
         cx: &mut Context<Self>,
     ) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        let persisted = snapshot.network.clone();
-        let mut settings = self
-            .network_settings_debouncer
-            .pending_value()
-            .cloned()
-            .unwrap_or(persisted);
-        mutate(&mut settings);
-        self.queue_network_settings(settings, cx);
-    }
-
-    fn queue_network_settings(&mut self, settings: SettingsNetwork, cx: &mut Context<Self>) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        let persisted = snapshot.network.clone();
-        let Some(expected_config_revision) = snapshot.config_revision else {
-            return;
-        };
-        // Re-confirming what the configuration already holds is not a change,
-        // and sending it would move the revision for nothing.
-        if settings == persisted && self.pending != Some(PendingOperation::NetworkSettings) {
-            self.network_settings_debouncer.discard_pending();
-            return;
-        }
-        let should_send = self
-            .network_settings_debouncer
-            .observe(settings, Instant::now())
-            .filter(|_| self.pending.is_none())
-            .map(|settings| {
-                self.start_request(
-                    PendingOperation::NetworkSettings,
-                    Some(SettingValue::NetworkSettings {
-                        expected_config_revision,
-                        settings,
-                    }),
-                    cx,
-                );
-            })
-            .is_some();
-        if !should_send {
-            self.schedule_network_settings_flush(cx);
+        if let Some((_, draft)) = &mut self.network_draft {
+            mutate(draft);
+            cx.notify();
         }
     }
 
-    /// Send one discrete multiplayer change straight away.
-    ///
-    /// A switch, a dropdown and adding or removing one displayed device are one
-    /// gesture each, so they are not debounced — but they still start from the
-    /// value the debounce window holds and clear it, so a click that lands
-    /// while a typed field is still settling cannot be followed by an older
-    /// patch that quietly drops the click.
     fn commit_network_settings(
         &mut self,
         mutate: impl FnOnce(&mut SettingsNetwork),
         cx: &mut Context<Self>,
-    ) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
+    ) -> bool {
+        let Some(snapshot) = &self.snapshot else {
+            return false;
         };
         let Some(expected_config_revision) = snapshot.config_revision else {
-            return;
+            return false;
         };
-        let persisted = snapshot.network.clone();
-        let mut settings = self
-            .network_settings_debouncer
-            .pending_value()
-            .cloned()
-            .unwrap_or(persisted);
+        let mut settings = snapshot.network.clone();
         mutate(&mut settings);
-        self.network_settings_debouncer.discard_pending();
-        if settings == snapshot.network && self.pending.is_none() {
-            return;
+        if settings == snapshot.network || self.pending.is_some() {
+            return false;
         }
         self.start_request(
             PendingOperation::NetworkSettings,
@@ -499,6 +583,7 @@ impl SettingsView {
             }),
             cx,
         );
+        true
     }
 
     pub(super) fn set_network_device_id(&mut self, id: String, cx: &mut Context<Self>) {
@@ -532,61 +617,13 @@ impl SettingsView {
         );
     }
 
-    /// Add the id the display group's field is holding to the drawn devices.
-    ///
-    /// The id is read from the field's own state rather than carried in a draft
-    /// on the view, and the field is emptied afterwards: the row is a prompt for
-    /// the next id, so leaving the committed one in it would invite adding it a
-    /// second time — which the write itself refuses, but the user cannot see.
-    pub(super) fn add_network_display_device(
+    /// Select a device announced by the room.
+    pub(super) fn set_network_display_device(
         &mut self,
-        window: &mut Window,
+        device: String,
+        shown: bool,
         cx: &mut Context<Self>,
     ) {
-        let device = self
-            .network_display_device_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_owned();
-        // An empty entry is the state the row starts in, and the reserved word
-        // would add a row the page cannot tell apart from the one that names
-        // this machine.
-        if device.is_empty() || device == NETWORK_SELF_DEVICE {
-            return;
-        }
-        self.commit_network_settings(
-            |settings| {
-                if !settings.client.display.contains(&device) {
-                    settings.client.display.push(device);
-                }
-            },
-            cx,
-        );
-        self.network_display_device_input
-            .update(cx, |input, cx| input.set_value(String::new(), window, cx));
-    }
-
-    /// Replaces this process with a fresh copy of itself.
-    ///
-    /// The pending patches flush first, so whatever the user changed last is on
-    /// disk before the quit lands; the child reads the configuration whole.
-    pub(super) fn restart_to_apply_network_settings(&mut self, cx: &mut Context<Self>) {
-        if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!("sleep 0.3; exec {}", exe.display()))
-                .spawn();
-        }
-        self.request_quit_after_flush(cx);
-    }
-
-    /// Adds one online peer to the list this machine draws.
-    ///
-    /// The id comes from the room's own announcement rather than a typed field,
-    /// but the persisted result is the same object: a peer shown here joins the
-    /// exact list the typed field writes.
-    pub(super) fn show_network_display_device(&mut self, device: String, cx: &mut Context<Self>) {
         // The reserved word would add a row the page cannot tell apart from the
         // one that names this machine, and the room never announces it either.
         if device == NETWORK_SELF_DEVICE {
@@ -594,17 +631,19 @@ impl SettingsView {
         }
         self.commit_network_settings(
             |settings| {
-                if !settings.client.display.contains(&device) {
-                    settings.client.display.push(device);
+                let display = &mut settings.client.display;
+                if !shown {
+                    display.retain(|id| id != &device);
+                } else if !display.contains(&device)
+                    && display
+                        .iter()
+                        .filter(|shown| shown.as_str() != NETWORK_SELF_DEVICE)
+                        .count()
+                        < 2
+                {
+                    display.push(device);
                 }
             },
-            cx,
-        );
-    }
-
-    pub(super) fn remove_network_display_device(&mut self, device: String, cx: &mut Context<Self>) {
-        self.commit_network_settings(
-            |settings| settings.client.display.retain(|shown| shown != &device),
             cx,
         );
     }
@@ -640,7 +679,7 @@ impl SettingsView {
     }
 
     pub(super) fn set_network_server_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.commit_network_settings(|settings| settings.server.enabled = enabled, cx);
+        self.patch_network_settings(|settings| settings.server.enabled = enabled, cx);
     }
 
     pub(super) fn set_network_server_listen(
@@ -796,6 +835,9 @@ impl SettingsView {
     }
 
     pub(super) fn set_overlay_opacity_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -839,6 +881,9 @@ impl SettingsView {
     /// value is clamped to the range the configuration accepts: `0` keeps square
     /// corners and `50` is the full inscribed ellipse.
     pub(super) fn set_overlay_corner_radius_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -885,6 +930,9 @@ impl SettingsView {
     /// UI-local number. The field is whole-second valued, so a fractional entry
     /// is rounded before it is compared with the current configuration.
     pub(super) fn set_overlay_hover_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -936,6 +984,9 @@ impl SettingsView {
     /// fractional entry is rounded before it is compared with the current
     /// configuration.
     pub(super) fn set_overlay_idle_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -1010,6 +1061,48 @@ impl SettingsView {
         self.start_request(
             PendingOperation::RememberLastExpression,
             Some(SettingValue::RememberLastExpression {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// Sent without a debounce, like the other switches: one click is one write.
+    /// It is a switch of its own rather than a detail of the remembered-expression
+    /// one above it, because the two answer different questions — where a model
+    /// starts, and what a repeat trigger does while it is already wearing a face.
+    pub(super) fn set_toggle_repeated_expression(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::ToggleRepeatedExpression,
+            Some(SettingValue::ToggleRepeatedExpression {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
+    pub(super) fn set_allow_motion_overlap(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::AllowMotionOverlap,
+            Some(SettingValue::AllowMotionOverlap {
                 expected_config_revision,
                 enabled,
             }),

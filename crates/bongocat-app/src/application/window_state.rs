@@ -6,7 +6,7 @@
 
 use super::Application;
 use crate::ApplicationError;
-use bongocat_config::{OverlayWindowPlacement, WindowPlacement, WindowState};
+use bongocat_config::{OverlayWindowPlacement, WindowPlacement};
 use std::path::Path;
 
 impl Application {
@@ -18,6 +18,12 @@ impl Application {
         self.window_state.overlay_window
     }
 
+    pub fn device_overlay_window_placements(
+        &self,
+    ) -> &std::collections::BTreeMap<String, OverlayWindowPlacement> {
+        &self.window_state.device_overlay_windows
+    }
+
     pub fn persist_settings_window_placement(
         &mut self,
         placement: Option<WindowPlacement>,
@@ -25,7 +31,8 @@ impl Application {
         if self.window_state.settings_window == placement {
             return Ok(());
         }
-        let window_state = WindowState::with_windows(placement, self.window_state.overlay_window);
+        let mut window_state = self.window_state.clone();
+        window_state.settings_window = placement;
         self.window_state_store.commit(&window_state)?;
         self.window_state = window_state;
         Ok(())
@@ -34,12 +41,22 @@ impl Application {
     pub fn persist_overlay_window_placement(
         &mut self,
         placement: OverlayWindowPlacement,
+        device: Option<&str>,
     ) -> Result<(), ApplicationError> {
-        if self.window_state.overlay_window == Some(placement) {
-            return Ok(());
+        let mut window_state = self.window_state.clone();
+        if let Some(device) = device {
+            if window_state.device_overlay_windows.get(device) == Some(&placement) {
+                return Ok(());
+            }
+            window_state
+                .device_overlay_windows
+                .insert(device.to_owned(), placement);
+        } else {
+            if window_state.overlay_window == Some(placement) {
+                return Ok(());
+            }
+            window_state.overlay_window = Some(placement);
         }
-        let window_state =
-            WindowState::with_windows(self.window_state.settings_window, Some(placement));
         self.window_state_store.commit(&window_state)?;
         self.window_state = window_state;
         Ok(())

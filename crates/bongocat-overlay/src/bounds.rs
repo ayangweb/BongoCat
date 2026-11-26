@@ -15,7 +15,7 @@ use super::*;
 /// right-button drag (and it can be a persisted/manual geometry). The shared
 /// cover rounding keeps the model fully inside the native window and makes a
 /// switch back to a model reproduce its startup dimensions.
-#[cfg(any(not(target_os = "linux"), test))]
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn model_switch_window_bounds(
     current: OverlayWindowBounds,
     canvas: CanvasInfo,
@@ -28,6 +28,8 @@ pub(crate) fn model_switch_window_bounds(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySessionOptions {
+    pub window_mode: bool,
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold gives the pointer back to the user.
     ///
@@ -85,6 +87,8 @@ pub struct OverlaySessionOptions {
 impl OverlaySessionOptions {
     pub const fn with_runtime_settings(self, settings: OverlaySettings) -> Self {
         Self {
+            window_mode: settings.window_mode,
+            window_background_color: settings.window_background_color,
             click_through: settings.click_through,
             hold_modifier_to_interact: settings.hold_modifier_to_interact,
             always_on_top: settings.always_on_top,
@@ -123,10 +127,8 @@ impl OverlaySessionOptions {
         }
     }
 
-    /// Z-order, mouse-routing, hover, opacity, scale and taskbar-button changes
-    /// are applied directly to the native surface. Corner-radius and
-    /// screen-constraint changes still require replacing the native window
-    /// resources.
+    /// Windows replaces presentation resources only when switching window mode.
+    /// macOS replaces them for corner-radius and screen-constraint changes.
     ///
     /// Recalling which modifier suspends pointer routing is not on this list
     /// either: like the hover hide it is consulted inside the frame tick, because
@@ -134,14 +136,28 @@ impl OverlaySessionOptions {
     /// keeps running.
     #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
-        self.corner_radius_percent != next.corner_radius_percent
-            || self.keep_inside_screen != next.keep_inside_screen
+        #[cfg(target_os = "windows")]
+        {
+            self.window_mode != next.window_mode
+        }
+        #[cfg(target_os = "macos")]
+        {
+            self.corner_radius_percent != next.corner_radius_percent
+                || self.keep_inside_screen != next.keep_inside_screen
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = next;
+            false
+        }
     }
 }
 
 impl Default for OverlaySessionOptions {
     fn default() -> Self {
         Self {
+            window_mode: false,
+            window_background_color: [0, 255, 0],
             click_through: false,
             hold_modifier_to_interact: None,
             always_on_top: true,
@@ -197,7 +213,7 @@ impl OverlayWindowBounds {
         Ok(self)
     }
 
-    #[cfg(any(not(target_os = "linux"), test))]
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
         let ratio = f64::from(next_percent) / f64::from(previous_percent);
         Self {
@@ -243,7 +259,7 @@ impl OverlayWindowBounds {
 /// new scale must not apply the ratio a second time. The one-pixel tolerance
 /// absorbs the rounding the physical-to-logical conversion introduces on the
 /// way back from the window system.
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 pub(crate) fn bounds_match_scale(
     bounds: OverlayWindowBounds,
     base: resize_drag::ResizeBase,

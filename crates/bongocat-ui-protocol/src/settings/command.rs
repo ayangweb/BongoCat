@@ -18,6 +18,7 @@ impl<T> SettingsReply<T> {
 pub enum SettingsCommand {
     SettingsWindowPlacementChanged,
     OverlayWindowPlacementChanged {
+        device: Option<String>,
         x: i32,
         y: i32,
         width: u32,
@@ -38,6 +39,16 @@ pub enum SettingsCommand {
     /// model-catalog snapshot.
     ReadAutomaticUpdateSettings {
         reply: SettingsReply<Result<AutomaticUpdateSettings, SettingsError>>,
+    },
+    /// Recheck driver, module, and camera state without changing the system.
+    ReadAlphaSystemStatus {
+        reply: SettingsReply<Result<SettingsAlphaSystemStatus, SettingsError>>,
+    },
+    /// The service stops output before uninstall and performs management off the UI thread.
+    ManageAlphaCamera {
+        expected_config_revision: u64,
+        action: SettingsAlphaManagementAction,
+        reply: SettingsReply<Result<SettingsAlphaSystemStatus, SettingsAlphaManagementError>>,
     },
     /// Which keyboard modifiers are held right now, with the two sides apart.
     ///
@@ -136,6 +147,19 @@ pub enum SettingsCommand {
         settings: SettingsModelSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Give one behavior of one model the name its row shows.
+    ///
+    /// A blank `name` clears it rather than storing a blank label, because "go back to
+    /// the numbered name" is a removal and not a name. The model travels with the
+    /// request because the document keeps one row per model, exactly as the shortcut
+    /// bindings do.
+    SetModelBehaviorName {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetGamepadAxisSettings {
         expected_config_revision: u64,
         settings: SettingsGamepadAxisSettings,
@@ -163,6 +187,22 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// The switch alone, and it reaches the runtime as the same model settings the
+    /// page reads back: the runtime is what knows which expression is in effect,
+    /// so the service persists the choice and pushes the settings rather than
+    /// deciding the toggle itself.
+    SetToggleRepeatedExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetAllowMotionOverlap {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// The number of connected gamepads changed; the settings service
     /// reconciles the configured switch against the runtime's own answer.
     ///
@@ -185,6 +225,11 @@ pub enum SettingsCommand {
     SetNetworkSettings {
         expected_config_revision: u64,
         settings: SettingsNetwork,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetAlphaOutputEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetShortcuts {

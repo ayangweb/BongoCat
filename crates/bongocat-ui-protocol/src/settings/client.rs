@@ -41,8 +41,31 @@ impl SettingsClient {
         width: u32,
         height: u32,
     ) -> Result<(), SettingsServiceClosed> {
+        self.send_overlay_window_placement(None, x, y, width, height)
+    }
+
+    pub fn update_device_overlay_window_placement(
+        &self,
+        device: String,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), SettingsServiceClosed> {
+        self.send_overlay_window_placement(Some(device), x, y, width, height)
+    }
+
+    fn send_overlay_window_placement(
+        &self,
+        device: Option<String>,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), SettingsServiceClosed> {
         self.commands
             .try_send(SettingsCommand::OverlayWindowPlacementChanged {
+                device,
                 x,
                 y,
                 width,
@@ -296,6 +319,24 @@ impl SettingsClient {
         .await
     }
 
+    /// Give one behavior of one model the name its row shows; a blank name clears it.
+    pub async fn set_model_behavior_name(
+        &self,
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetModelBehaviorName {
+            expected_config_revision,
+            model,
+            behavior_id,
+            name,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_model_settings(
         &self,
         expected_config_revision: u64,
@@ -362,6 +403,33 @@ impl SettingsClient {
         .await
     }
 
+    /// Whether triggering the expression already showing turns it off.
+    pub async fn set_toggle_repeated_expression(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetToggleRepeatedExpression {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_allow_motion_overlap(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetAllowMotionOverlap {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
     /// Tell the settings service that gamepad connectivity changed.
     ///
     /// The caller is the product frame source, which observes the runtime's
@@ -395,6 +463,55 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetNetworkSettings {
             expected_config_revision,
             settings,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn manage_alpha_camera(
+        &self,
+        expected_config_revision: u64,
+        action: SettingsAlphaManagementAction,
+    ) -> Result<SettingsAlphaSystemStatus, SettingsAlphaManagementError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::ManageAlphaCamera {
+                expected_config_revision,
+                action,
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsAlphaManagementError::ServiceUnavailable)?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsAlphaManagementError::ServiceUnavailable)?
+    }
+
+    pub async fn read_alpha_system_status(
+        &self,
+    ) -> Result<SettingsAlphaSystemStatus, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::ReadAlphaSystemStatus {
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
+    pub async fn set_alpha_output_enabled(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetAlphaOutputEnabled {
+            expected_config_revision,
+            enabled,
             reply,
         })
         .await
@@ -849,6 +966,50 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetNetworkSettings {
             expected_config_revision,
             settings,
+            reply,
+        })
+    }
+
+    pub fn manage_alpha_camera_blocking(
+        &self,
+        expected_config_revision: u64,
+        action: SettingsAlphaManagementAction,
+    ) -> Result<SettingsAlphaSystemStatus, SettingsAlphaManagementError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::ManageAlphaCamera {
+                expected_config_revision,
+                action,
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsAlphaManagementError::ServiceUnavailable)?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsAlphaManagementError::ServiceUnavailable)?
+    }
+
+    pub fn read_alpha_system_status_blocking(
+        &self,
+    ) -> Result<SettingsAlphaSystemStatus, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::ReadAlphaSystemStatus {
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
+    pub fn set_alpha_output_enabled_blocking(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetAlphaOutputEnabled {
+            expected_config_revision,
+            enabled,
             reply,
         })
     }

@@ -7,12 +7,12 @@
 
 use super::Application;
 use crate::config_projection::{
-    logging_config_from_settings, persistent_dead_zone, random_behavior_mode_to_config,
-    runtime_log_settings,
+    logging_config_from_settings, model_settings_from_config, persistent_dead_zone,
+    random_behavior_mode_to_config, runtime_log_settings,
 };
 use crate::shortcut_config::{active_shortcuts, shortcut_config_from_settings};
 use crate::{ApplicationError, RUNTIME_TIMEOUT};
-use bongocat_config::{Language, Theme as ConfigTheme};
+use bongocat_config::{Language, ModelBehaviorName, ModelIdentity, Theme as ConfigTheme};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_runtime::{
     CursorSettings, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand,
@@ -20,6 +20,29 @@ use bongocat_runtime::{
 };
 
 impl Application {
+    /// Initialize plugin language before either window is opened. The same
+    /// owner forwards subsequent committed application language changes.
+    pub fn attach_plugin_service(&mut self, client: bongocat_plugin_service::PluginServiceClient) {
+        self.plugin_client = Some(client);
+        self.sync_plugin_language();
+    }
+
+    fn sync_plugin_language(&self) {
+        if let Some(client) = &self.plugin_client
+            && client
+                .set_locale_blocking(self.effective_language().code())
+                .is_err()
+        {
+            self.record_log_once(
+                crate::ApplicationLogEvent::new(crate::ApplicationLogCode::ServiceDegraded)
+                    .with_context(crate::app_log::ApplicationLogContext::Service("plugin"))
+                    .with_context(crate::app_log::ApplicationLogContext::Reason(
+                        "plugin_locale_unavailable",
+                    )),
+            );
+        }
+    }
+
     pub fn set_pointer_sensitivity(&mut self, percent: u16) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.input.pointer_sensitivity_percent = percent;
@@ -114,6 +137,7 @@ impl Application {
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
         self.config = next_config;
         self.config_revision = Some(next_revision);
+        self.sync_plugin_language();
         Ok(())
     }
 
@@ -162,6 +186,8 @@ impl Application {
         }
         let mut next_config = self.config.clone();
         next_config.overlay.click_through = settings.click_through;
+        next_config.overlay.window_mode = settings.window_mode;
+        next_config.overlay.window_background_color = settings.window_background_color;
         next_config.overlay.hold_modifier_to_interact = settings.hold_modifier_to_interact;
         next_config.overlay.always_on_top = settings.always_on_top;
         next_config.overlay.scale_percent = settings.scale_percent;
@@ -270,6 +296,63 @@ impl Application {
         Ok(())
     }
 
+    /// Persist whether triggering the expression already showing turns it off.
+    ///
+    /// Configuration plus one runtime settings command, because the runtime is
+    /// what owns the decision: it is the only place that knows which expression
+    /// is in effect, and both trigger sources — the settings window's preview
+    /// button and a shortcut — reach it as the same command.
+    ///
+    /// Nothing about the remembered expressions changes. A repeat that turns an
+    /// expression off deliberately records nothing, so what is remembered is
+    /// still the last face the user chose to wear rather than the one they undid.
+    pub fn set_toggle_repeated_expression(
+        &mut self,
+        enabled: bool,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.toggle_repeated_expression = enabled;
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let runtime_result = self
+            .runtime
+            .client()
+            .send(RuntimeCommand::SetModelSettings(
+                model_settings_from_config(&next_config),
+            ))
+            .map_err(ApplicationError::RuntimeCommand);
+        // The configuration is the source of truth and the commit already landed,
+        // so a runtime that could not take the setting is recorded rather than
+        // rolled back: the next model settings push carries the same value.
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        runtime_result.map(|_| ())
+    }
+
+    pub fn set_allow_motion_overlap(&mut self, enabled: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.allow_motion_overlap = enabled;
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let runtime_result = self
+            .runtime
+            .client()
+            .send(RuntimeCommand::SetModelSettings(
+                model_settings_from_config(&next_config),
+            ))
+            .map_err(ApplicationError::RuntimeCommand);
+        // The configuration is the source of truth and the commit already landed,
+        // so a runtime that could not take the setting is recorded rather than
+        // rolled back: the next model settings push carries the same value.
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        runtime_result.map(|_| ())
+    }
+
     pub fn set_random_behavior_settings(
         &mut self,
         settings: RandomBehaviorSettings,
@@ -321,6 +404,41 @@ impl Application {
                 Err(error)
             }
         }
+    }
+
+    /// Persist the name one behavior's row shows, or clear it.
+    ///
+    /// A blank name is a removal rather than a stored blank label: "go back to the
+    /// numbered name" is what clearing a text field means, and storing an empty string
+    /// would make the page decide whether an empty name is a name. Configuration only
+    /// — a name is display text, so nothing about the running product changes at the
+    /// moment it is written.
+    pub fn set_model_behavior_name(
+        &mut self,
+        model: ModelIdentity,
+        behavior_id: String,
+        name: String,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config
+            .model
+            .behavior_names
+            .retain(|row| !(row.model == model && row.behavior_id == behavior_id));
+        let name = name.trim();
+        if !name.is_empty() {
+            next_config.model.behavior_names.push(ModelBehaviorName {
+                model,
+                behavior_id,
+                name: name.to_owned(),
+            });
+        }
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
     }
 
     pub fn set_model_settings(
@@ -444,6 +562,18 @@ impl Application {
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.network = crate::config_projection::network_config_from_settings(settings);
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    pub fn set_alpha_output_enabled(&mut self, enabled: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.alpha_output.enabled = enabled;
         next_config.validate()?;
         let next_revision = self
             .config_store

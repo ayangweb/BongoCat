@@ -32,24 +32,58 @@ fn enumerated_displays_are_non_empty_and_cover_their_own_center() {
 }
 
 #[test]
-fn the_resize_base_is_the_logical_size_scaled_by_the_window_dpi() {
-    // 100% is defined in logical pixels, while the drag works in the
-    // physical pixels `SetWindowPos` takes.
-    let base = resize_base_for_dpi(350, 350, 96).expect("96 DPI base");
-    assert_eq!(base, ResizeBase::new(350.0, 350.0).expect("square base"));
-
-    let scaled = resize_base_for_dpi(350, 350, 192).expect("192 DPI base");
-    assert_eq!(scaled, ResizeBase::new(700.0, 700.0).expect("doubled base"));
-
-    // 150% is not an exact multiple of 96, so the rounding is what the
-    // window creation path uses as well.
-    let fractional = resize_base_for_dpi(350, 200, 144).expect("144 DPI base");
-    assert_eq!(
-        fractional,
-        ResizeBase::new(
-            f64::from(logical_to_physical(350, 144).expect("scaled width")),
-            f64::from(logical_to_physical(200, 144).expect("scaled height")),
-        )
-        .expect("scaled base")
+fn window_sizing_uses_one_canvas_ratio_at_every_scale_and_dpi() {
+    for (width, height) in [
+        (700.0, 400.0),
+        (612.0, 354.0),
+        (350.0, 700.0),
+        (350.0, 350.0),
+        (1400.0, 350.0),
+    ] {
+        let sizing = WindowSizing::new(CanvasInfo {
+            width,
+            height,
+            origin_x: width / 2.0,
+            origin_y: height / 2.0,
+            pixels_per_unit: 350.0,
+        })
+        .unwrap();
+        for dpi in [96, 120, 144, 192] {
+            for scale in 25..=400 {
+                let (w, h) = sizing.dimensions_for_scale(dpi, scale);
+                assert!(w >= 64 && h >= 64);
+                let expected_height =
+                    (f64::from(w) * f64::from(height) / f64::from(width)).ceil() as u32;
+                assert_eq!(
+                    h, expected_height,
+                    "canvas {width}x{height}, DPI {dpi}, scale {scale}"
+                );
+                let actual = OverlayWindowBounds::new(100, 100, w, h);
+                assert_eq!(
+                    sizing.normalize(actual),
+                    actual,
+                    "normalization is idempotent"
+                );
+                let percent = sizing.scale_percent_for_width(dpi, w).unwrap();
+                let acknowledged = sizing.dimensions_for_scale(dpi, percent);
+                assert!(
+                    w.abs_diff(acknowledged.0) <= 4,
+                    "integer percentage rounding stays bounded"
+                );
+                if (w, h) == sizing.dimensions_for_scale(dpi, 25) {
+                    assert_eq!(percent, 25);
+                }
+            }
+        }
+    }
+    assert!(
+        WindowSizing::new(CanvasInfo {
+            width: 0.0,
+            height: 350.0,
+            origin_x: 0.0,
+            origin_y: 0.0,
+            pixels_per_unit: 350.0,
+        })
+        .is_none()
     );
 }

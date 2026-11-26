@@ -57,6 +57,12 @@ pub(crate) fn settings_language_display_name(
         SettingsLanguage::Korean => {
             bongocat_i18n::text(locale, "settings.appearance.language.options.korean")
         }
+        SettingsLanguage::French => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.french")
+        }
+        SettingsLanguage::Russian => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.russian")
+        }
     }
 }
 
@@ -183,10 +189,15 @@ pub(crate) mod tests {
             cursor_settings: SettingsCursorSettings::default(),
             gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             remember_last_expression: false,
+            toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             logging: SettingsLogging::default(),
             network: SettingsNetwork::default(),
             network_status: SettingsNetworkStatus::default(),
+            alpha_output_enabled: false,
+            alpha_output_status: Default::default(),
             shortcuts: SettingsShortcuts::default(),
+            model_behavior_names: Vec::new(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics::default(),
@@ -290,6 +301,8 @@ pub(crate) mod tests {
             ("vi-VN", "Tiếng Việt"),
             ("pt-BR", "Português"),
             ("ko-KR", "한국어"),
+            ("fr-FR", "Français"),
+            ("ru-RU", "Русский"),
         ];
         for (language, (code, endonym)) in SettingsLanguage::ALL
             .into_iter()
@@ -343,6 +356,14 @@ pub(crate) mod tests {
         assert_eq!(
             settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Korean,),
             "시스템"
+        );
+        assert_eq!(
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::French),
+            "Système"
+        );
+        assert_eq!(
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Russian),
+            "Системный"
         );
         assert_eq!(
             settings_language_from_display_name("Deutsch", SettingsLanguage::English,),

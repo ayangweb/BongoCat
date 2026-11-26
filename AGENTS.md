@@ -19,6 +19,27 @@
 - Bundle ID 固定 `com.ayangweb.bongo-cat`。Development 与 Production 共用数据结构、使用不同存储根；开发构建不得读取、写入或锁住生产数据。
 - 不引入 Tauri、WebView、Node.js、JavaScript 或第二套 UI framework。
 
+### 1.1 单仓库插件开发与发布
+
+- 官方插件、插件 SDK、插件打包、签名工具和发布工作流的唯一源码是本仓库。
+- `just dev`、`just dev-smoke` 和 `just plugin-tests` 直接构建本仓库 `plugins/` 下的当前主机
+  平台产物，并由 workspace 内的插件打包工具生成开发 catalog。
+- 插件仍是独立可执行进程，不进入应用进程，也不链接进应用二进制；应用只保留插件协议消费、
+  Plugin Center、安装与生命周期、存储和 overlay 集成。
+- 应用 Release 使用 `v*` tag 与 `releases/latest`；插件 Release 使用 `plugins-v*` tag，并且
+  必须显式非 Latest。插件包位于对应不可变 Release，生产 catalog 固定读取
+  `plugin-catalog` 分支的签名 `plugins.json`。
+- 插件 catalog、插件签名密钥和应用更新签名密钥彼此独立。发布顺序固定为构建全部平台插件、
+  验证包与状态、签名并验证 catalog、发布非 Latest Release、重新下载校验，最后更新
+  `plugin-catalog` 分支。
+- 插件版本和历史由 `plugins/release-state.json` 的 Release 资产约束。首个
+  `plugins-v1.0.0` 由当前源码完整构建；同版本源码变化必须提升插件版本，不得放宽不可变检查。
+- 插件发布在 `master` 上完成：依次更新插件版本与 `plugins/CHANGELOG*.md` 的发布日期，提交标题
+  必须逐字为 `chore: release plugins-v<version>`，再打同名附注 tag。发布 commit 只包含版本与
+  修订日期等发布元数据；功能修复必须先单独提交。
+- 不得把插件源码或资源加入应用 bundle，也不得把应用更新签名密钥用于插件。未经用户明确
+  要求，不得 commit、push、打插件 Tag、创建插件 Release 或修改签名配置。
+
 ## 2. 任务流程
 
 ### 2.1 实现决策阶梯（ADR-0030）
@@ -31,12 +52,12 @@
 ### 2.2 开始前
 
 1. 检查当前分支和 `git status`，保留全部用户修改；先 `git fetch` 把上游同步到最新（见 §10）。
-2. 定位 TODO 中对应阶段、任务和退出门槛；读现有实现与测试，不从文档标题推断行为。
+2. 明确当前任务及相关 ADR 中的退出门槛；读现有实现与测试，不从文档标题推断行为。涉及用户可见变化时，先按 §9.5 判断它是独立发布变化，还是同一 PR 内尚未发布功能的继续完善。
 3. 明确最小交付范围、平台范围和验证方式；跨阶段门禁先完成前置 spike，否则明确报告阻塞。
 
 ### 2.3 实施
 
-1. 遵循既有模块边界与命名，改动只覆盖请求和当前 TODO 项；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
+1. 遵循既有模块边界与命名，改动只覆盖请求和当前任务；先完成最小闭环再扩展，不同时铺开多个未验证子系统。
 2. 平台差异只放在 platform adapter 或 `cfg` 模块，不扩散到 runtime、model、config、UI。
 3. 新依赖说明用途、维护状态、许可证和替换边界。
 4. 不做无关重构、批量格式化，不覆盖用户未提交修改，不动无关 lockfile、生成文件与资产 metadata。
@@ -45,21 +66,29 @@
 
 1. 按 §9 跑与风险相称的格式化、静态检查、测试和平台 smoke test。
 2. 复查正常、错误、重启和 shutdown 路径，以及依赖方向、平台类型泄漏、`unsafe` 范围和日志隐私。
-3. 完成定义全部满足并有证据时才勾选 TODO checkbox；架构、行为协议或退出条件变化时同步 Technical Design、TODO 与 ADR。
-4. 最终报告列出改动、验证命令与结果、未运行测试、已知风险、CHANGELOG 判断和下一项未完成任务。文档任务无需声称运行代码测试。
+3. 完成定义全部满足并有证据时才宣称完成；架构、行为协议或退出条件变化时同步 Technical Design 与 ADR。
+4. 最终报告列出改动、验证命令与结果、未运行测试、已知风险、按 §9.5 作出的 CHANGELOG 判断、按 §3 需要开发者手动删除的本地状态（如有）和下一项未完成任务。文档任务无需声称运行代码测试。
 
-## 3. 阶段与数据版本
+## 3. 阶段、版本与兼容性
+
+兼容性按**是否已随正式版本发布**判断，与代码是否已在 `master` 无关。判断基线是 `CHANGELOG.md` 与平台 tag（如 `v2.3.1`）实际记录的最新正式版本：该版本及更早版本里存在的行为和数据算“已发布”，`Unreleased` 及其后续内容一律算“未发布”。
+
+- **已发布**：修改已发布版本的公开行为、协议、配置或数据格式时必须考虑向后兼容，按 §3.2 处理。
+- **未发布**：未发布功能即使已合并到 `master`，也不保留兼容逻辑。直接改或删原有实现，不为同一版本内的历史实现写迁移分支、字段 alias、serde 默认值兜底、旧消息兼容、双路径分支或“旧数据兜底”，也不为其补“旧 → 新”回归测试。
+- **开发过程中需要开发者手动处理的状态**（本地数据、插件包、配置、构建产物等）：不写兼容代码，在最终报告里写清“需要删除什么、为什么”，让开发者自行清理即可。重新验证安装、卸载或更新流程时，直接删除本地数据后重装即可，无需代码专门处理这些历史状态。
+
+### 3.1 阶段推进
 
 - 每次只推进一个最小闭环；新增能力先有自动化 contract 或 ADR，再进入实现。ADR-0011 允许已通过自动化 contract 且不依赖缺失外部证据的模块先进入正式实现。
-- 门禁未过的能力不得宣称完成（Live2D、输入可靠性、双平台渲染等）；未取得 Cubism 书面授权、SDK 分发、实机输入/UI/GPU、签名、Windows 实机安装升级卸载与 soak 证据时，不得分发含受限 artifact 的安装包。
+- 门禁未过的能力不得宣称完成（Live2D、输入可靠性、双平台渲染等）；未取得 Cubism 书面授权、SDK 分发、实机输入/UI/GPU、更新签名、Windows 实机安装升级卸载与 soak 证据时，不得分发含受限 artifact 的安装包。操作系统代码签名与公证不属于发布门禁。
 - 不批量迁移历史功能，不为目录美观预建空 crate，未经授权不删除历史源码和行为对照。
 - `config.json` 与 window state 显式带 `schema_version: 1`，保留单一严格解析入口：非 1 明确拒绝，不静默转换。
 - 不做旧 Tauri/Pinia 格式的兼容、探测、字段 alias、自动导入或目录 fallback，也不为开发期中间版本写迁移分支。
 - 历史源码只保留在远端受保护分支 `pre-refactor-tauri`，仅作行为考古与模型兼容参考，不重新接入工作树或依赖图；上游参考实现是 [MMmmmoko/Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)，见 `docs/migration/bongo-cat-mver-reference.md`。结论须由实际代码、配置或实机行为证明。
 
-### 3.1 配置与数据兼容性
+### 3.2 已发布版本的配置与数据兼容性
 
-新增或修改配置项、持久化数据、状态结构时，前提是**已存在的数据仍能正常读取并正常启动**。新版本不得因为配置或数据结构变化导致旧数据读取失败、启动失败或行为异常。
+适用于 §3 判定为“已发布”的配置项、持久化数据与状态结构。新增或修改它们时，前提是**已存在的数据仍能正常读取并正常启动**。新版本不得因为配置或数据结构变化导致旧数据读取失败、启动失败或行为异常。
 
 - 新增字段必须兼容“旧数据里没有该字段”的情况：用 `#[serde(default)]`、`Option<T>` 或等价默认值，**不得**把新字段设为必填，否则旧文件解析失败并落入恢复流程甚至启动失败。
 - 收紧取值范围、改变字段语义、枚举成员或 ID 生成规则前，先确认旧数据仍合法；确实不兼容时采用迁移方案（顺序、幂等、失败可回滚），并单独建立 ADR、设计、测试与发布门禁，不得直接改坏已有数据。
@@ -123,7 +152,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 
 ## 7. 配置、文件安全与更新
 
-- 配置只接受当前完整 v1，JSON key 用 `snake_case` 与当前产品领域名称；字段演进规则见 §3.1。
+- 配置只接受当前完整 v1，JSON key 用 `snake_case` 与当前产品领域名称；已发布字段的演进规则见 §3.2。
 - 构建产物固定携带 Development/Production 环境，运行时输入不得切换；配置、状态、模型、备份、日志、锁、单实例命名和更新 channel 全部按环境隔离。
 - 写入使用同目录临时文件、flush 和原子替换；失败保留原文件和备份。
 - `config.json` 损坏时按“最新有效备份 → 默认配置”处理；无 backup 时写入并使用默认配置。不得新增恢复窗口、恢复提示、restore command、operational gate 或“需重启”流程（ADR-0054）；非 v1 仍走严格版本入口。
@@ -138,10 +167,12 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - 类型从 `gpui_kit` 根导出，平台、组件、资源分别用 `gpui_kit::platform`、`gpui_kit::component`、`gpui_kit::assets`；仅业务特殊行为或无等价 primitive 时保留薄封装。
 - 创建组件前调用 `gpui_kit::init(cx)`；窗口根视图用 `gpui_kit::component::Root`；系统外观变化用 `Theme::sync_system_appearance(Some(window), cx)`。
 - 短暂反馈用 `gpui_kit::component::notification::Notification`，右下角固定为 `Theme::global_mut(cx).notification.placement = Anchor::BottomRight`；`Root` 已挂载 dialog、sheet 与 notification layer，业务根视图不得重复渲染。通知须含可操作上下文（如快捷键冲突写出实际 chord），不用页面内临时错误文本代替。
+- **所有错误提示一律复用现有全局通知组件**：通过 `Window::push_notification` 发布 `NotificationType::Error`；加载、安装、卸载、更新、配置、预览和后台运行失败均不例外。严禁页面内错误条、错误占位文本、自定义错误提示组件或另建 toast/banner；插件自身也不得用普通 `UiNode::Text` 冒充错误提示，须经 typed 错误上报交由宿主通知。正常 loading、empty、暂停状态与控件原有输入约束不属于错误提示。
+- 错误文案必须本地化并写明来源、操作和相关对象；插件错误须明确“插件”和插件名称，禁止只写“加载失败”或直接显示内部错误、路径与协议诊断。轮询同一故障只通知一次，恢复后再次失败可重新通知；显式重试使用稳定通知 ID 替换旧消息，批量操作合并失败项，禁止重复刷屏或静默吞错。
 - 语义色通过 `ActiveTheme::theme()` 读取；不重复硬编码颜色、字号、间距、圆角或控件高度，无明确产品需求时用组件默认值与 `Theme`。
 - 常用组件：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、`Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)` + `Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、`Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog`、`Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`，分别订阅 `InputEvent` 与 `NumberInputEvent`；范围、步长和最终校验来自业务 schema，组件事件不得绕过 typed command。组件已在自身输入边界限制的条件不要再新增错误码或本地化文案。
-- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在 TODO 记录已迁移组件、剩余特殊控件和官方文档依据。
+- 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出，并在相关 ADR 记录已迁移组件、剩余特殊控件和官方文档依据。
 - visual-first 契约（ADR-0054）：不维护 screen-reader/AccessKit tree、辅助桥、隐藏 label/action 或仅供辅助技术的文案，也不新增直接 AccessKit 依赖。
 - 设置界面安静、紧凑、适合重复操作；图标表达常用工具并提供可见 tooltip；控件覆盖 hover、active、focus、disabled、loading、error；Development、Production 与 smoke 使用同一套可见组成，smoke 只改变驱动方式。
 - 支持浅色、深色、系统主题和现有本地化语言；文案遵循 `docs/localization-copy-conventions.md`（省略号只用单个 `…`，由 `tools/validate-locales.py` 强制）。
@@ -175,7 +206,7 @@ just schema                                             # 从 Rust 类型生成�
 
 - 不在 `Justfile`、CI 或文档中重实现平台判断、目录复制、`Info.plist` 注入、`.app`/`.dmg`/NSIS 组装或版本解析；不重新引入 `scripts/` 或自维护 `.nsi`。
 - 版本号只来自 `[workspace.package].version`；平台与产物集合由 `crates/bongocat-packaging` 声明，并与 `tools/tests/test_packaging_contract.py`、`deny.toml`、`bongocat-update::UpdateTargetTriple` 保持一致。
-- 更新载荷组装与签名属于该 crate，`SIGNING_PRIVATE_KEY` 与 `SIGNING_PRIVATE_KEY_PASSWORD` 是唯一注入点；未设置则跳过签名，release workflow 断言发布构建已签名。签名必须是最后一步，签名后不得改名、重压缩或 strip；私钥不得进入源码、产物或日志，公钥写入 `bongocat-update::RELEASE_SIGNING_KEY`。
+- 更新载荷组装与签名属于该 crate，`SIGNING_PRIVATE_KEY` 与 `SIGNING_PRIVATE_KEY_PASSWORD` 是唯一注入点；未设置则跳过签名，release workflow 断言发布构建已签名。签名必须是最后一步，签名后不得改名、重压缩或 strip；私钥不得进入源码、产物或日志。应用与插件公钥分别以 `release-trust/app.pub`、`release-trust/plugin.pub` 为版本化事实来源，并在编译期嵌入对应常量，不得在运行时从可配置路径读取。
 - 每次 `just build` 只写当前 target 的 fragment（`<os>-<arch>.json`），运行时只请求共享 `latest.json`，多 target 发布必须先执行 `just manifest`；不在 CI 或脚本里拼 manifest JSON。
 - 细节与退出条件见 ADR-0033、ADR-0034 与 `docs/update-signing-guide.md`。
 
@@ -185,26 +216,35 @@ just schema                                             # 从 Rust 类型生成�
 - Renderer 不阻塞 runtime，鼠标移动不阻塞释放边沿。
 - 模型加载/切换失败不破坏当前可用模型；配置写入或损坏恢复不丢失当前环境的可用配置或用户模型。
 - 退出不依赖强杀，所有 worker 在超时内 join；8 小时 soak 无持续内存、GPU、handle、线程或日志增长。
-- scaffold 不等于功能完成；编译通过不等于平台行为完成；单个模型通过不等于模型兼容完成；增加超时不等于修复 issue #47；未验证签名、权限和回滚不等于可发布。
+- scaffold 不等于功能完成；编译通过不等于平台行为完成；单个模型通过不等于模型兼容完成；增加超时不等于修复 issue #47；未验证更新签名、权限和回滚不等于可发布。操作系统代码签名与公证不属于发布门禁。
 
-### 9.4 文档与 TODO
+### 9.4 文档与验收
 
 - 架构决策、约束变化和 go/no-go 结果写入 `docs/adr/`；Benchmark 写入 `docs/benchmark/`；历史考古写入 `docs/migration/`。
 - Technical Design 只描述当前目标架构，不写历史路线、候选方案比较或已放弃设计，也不把旧配置兼容重新纳入产品范围。
 - 根级用户/贡献者文档同时维护英文与简体中文：`README.md` / `README.zh-CN.md`、`CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`、`CHANGELOG.md` / `CHANGELOG.zh-CN.md`；英文文件不带语言后缀，修改一份必须同步另一份。
-- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design、TODO 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，必须保留替换、迁移、重写、默认行为变化和升级注意事项。
+- 公开文档只说明产品行为、用户流程和必要操作，不展示内部代号、迁移叙事或不必要的源码文件名；开发背景由 `AGENTS.md`、Technical Design 与 ADR 承载，公开文档只保留受保护的 `pre-refactor-tauri` 分支链接。`CHANGELOG` 是面向用户的版本通知，不是开发流水账；条目粒度与修改时机统一按 §9.5，必要的替换、迁移、重写、默认行为变化和升级注意事项合并进该 PR 的同一条摘要。
 - 仓库自有文件名与用户文档不使用历史重写阶段的名称或同义内部限定词；普通文案中的 `native` 只用于操作系统原生能力或 Cubism Native 官方产品名；既有 Rust 类型与 API 边界不因文档清理顺带重命名。
-- TODO checkbox 仅在完成定义完整满足后勾选；部分完成保持 `[ ]` 并写明状态与剩余工作；新任务放入正确 phase，标明依赖与退出条件。
+- 相关 ADR 中的验收项仅在完成定义完整满足后标记完成；部分完成写明状态与剩余工作，保留依赖与退出条件。
 - changelog 分段标题词表、版本标题和发版 commit 规则见 `docs/changelog-conventions.md`；没有对应的下一个版本标题时统一写入 `Unreleased`，不得自行创建版本标题。
+
+### 9.5 CHANGELOG：一个 PR 至多一条
+
+- **以整个 PR 的最终交付为单位，每种语言至多一条摘要**，不是每个 commit、每轮对话、每个子功能或每次修复各写一条。未开 PR 时，同一功能分支按一个待交付 PR 判断；中英文是同一条的翻译，不算两条。不得把同一 PR 拆到“新功能 / 界面 / 问题修复”等多个 section 重复记录。
+- **什么时候新增：**独立 PR 交付了用户可见的新功能，或修改了已发布版本的行为，才在最小闭环完成后、提交/推送前同步检查两份日志；需要记录时用一条简短摘要概括最终结果。纯内部重构、测试、CI、格式化、注释、文档、构建、依赖调整和未落地实现不写。
+- **什么时候不改：**同一 PR 内尚未发布功能的补全、调试、缺陷修复、布局调整、文案润色、测试和 review 修改，都属于该功能的开发过程，不新增条目，也不把这些细节追加到已有摘要中。不能仅因本轮改动“用户可见”就写日志；先确认它是否已由该 PR 的功能摘要覆盖。
+- **什么时候只改原条目：**仅当该 PR 已有摘要不再准确，或遗漏核心交付、必要升级注意事项时，原位改写同一条，不追加第二条、不追加子列表。实现过程、修复细节、测试证据和限制写入 PR 正文、ADR 或任务报告。涉及升级风险的必要提醒保留在同一条中，不因“一条”规则省略。
+- **检查范围：**先看 PR 相对目标分支的完整 diff（未开 PR 默认目标为 `origin/master`），再纳入本地未提交修改，辨认本 PR 已有条目。不能只看 `git log @{u}..HEAD`：已推送到功能分支的条目仍属于同一个 PR，不能因为后续又有 commit 就再写一条。
+- **交付前复核：**本 PR 对两份日志各贡献零条或一条，内容对应且归入同一个最合适的 section；已重复时合并并删除由此产生的空 section。不改其他 PR 的条目或已发布版本的历史记录。最终报告明确写“新增一条 / 改写原条目 / 跳过”及理由。
 
 ## 10. Git 与交付
 
 - 未经用户明确要求，不 commit、push、开 PR、release 或打 tag。
-- 主分支是 `master`（以 `origin/HEAD` 为准）。`master` 上禁止直接提交，按实际改动创建 `<type>/<short-topic>` 语义分支（如 `feat/settings-window`、`fix/input-release`、`docs/phase-0-plan`）后再提交；已在其他分支时按用户指定执行，未指定则先询问。未经要求不创建、删除、重命名或切换分支，不 reset、checkout、覆盖或格式化无关文件。
+- 主分支是 `master`（以 `origin/HEAD` 为准）。除 §10.2 的发布版本外，`master` 上禁止直接提交，按实际改动创建 `<type>/<short-topic>` 语义分支（如 `feat/settings-window`、`fix/input-release`、`docs/phase-0-plan`）后再提交；已在其他分支时按用户指定执行，未指定则先询问。未经要求不创建、删除、重命名或切换分支，不 reset、checkout、覆盖或格式化无关文件。
 - Commit message 必须依据实际 staged diff，遵循 Conventional Commits：`<type>: <summary>`，只有 scope 有明确区分价值时用 `<type>(<scope>): <summary>`。type 用 `feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci`、`chore`，不用 `update`、`changes`、`misc`；summary 用简洁英文祈使句、不加句号、建议不超过 72 字符；不兼容变更加 `!` 并在正文写 `BREAKING CHANGE:`。提交前核对 staged diff，排除未暂存或无关改动。
 - **推送顺序固定为「先拉上游 → 解决冲突 → 验证 → 提交 → push」。** 动手写代码前先 `git fetch`（必要时 `git pull --ff-only`），在最新上游之上工作；提交前若发现远端已有新 commit，必须先把上游改动合入并解决冲突再提交，不得留下 `Merge remote-tracking branch 'origin/master' into <branch>` 这类 merge commit。合并后必须在最终树上重跑完整验证，不能沿用合入前的结论。
 - 冲突按实际语义逐个解决，不用 `checkout --ours/--theirs` 覆盖对方实质改动，解决后确认本任务改动仍在。合并后若出现失败测试，先判断是否由本次改动引入（在纯上游 commit 上单独复跑）；上游自身失败不代为修复，如实报告并交由用户决定。
-- push 前先完成 CHANGELOG 检查。判断范围是待推送 commit（`git log @{u}..HEAD`）及其 diff：存在用户可见的新增、移除、默认值/行为/性能/UI/平台/本地化/配置格式变化或升级注意事项时，同步更新两份 changelog 并沿用现有 section 与文案风格；纯内部重构、测试、CI、格式化、注释、构建、依赖调整和未落地实现跳过，不新增临时 section。CHANGELOG 修改必须先提交再 push，判断结论写入最终报告。
+- push 前必须按 §9.5 检查整个 PR 的 CHANGELOG，而不是按本次待推送 commit 追加条目；同一 PR 已有准确摘要且本次只是继续完善时不改。需要修改时同步两份日志、沿用既有 section 与文案风格，先提交再 push，判断结论写入最终报告。
 
 ### 10.1 推送代码与 PR
 
@@ -215,6 +255,12 @@ just schema                                             # 从 Rust 类型生成�
 - 完成推送和 PR 创建后 `git switch` 回主分支（默认 `master`），工作树不留在本次开发分支。
 - PR 标题沿用同一 Conventional Commits 标题，正文写清改动、验证结果、未运行测试和已知风险。
 - 未经明确要求不打 tag、不 release。
+
+### 10.2 发布版本
+
+用户明确要求**“发布版本”**（如“发布 2.2.0 版本”）时，直接在 `master` 上完成，不建分支、不开 PR，固定顺序是：fetch 并确认 `master` 与上游一致 → 改 `[workspace.package].version` 并 `cargo update --workspace` 同步 `Cargo.lock` → 两份 changelog 的 `## Unreleased` 改为 `## <version> - <date>` → `just release-notes` 与 `python3 -m unittest tools.tests.test_release_changelog_contract` 本地校验 → 在 `master` 提交 `chore: release v<version>` → 打附注 tag `v<version>` → `git push origin master` 与 `git push origin v<version>` 触发 release 流水线。
+
+- 发布 commit 只包含版本号、`Cargo.lock` 与 changelog 标题等版本相关改动，功能改动不得混入；标题与 tag 规则见 `docs/changelog-conventions.md` §3。
 
 ## 11. 本 fork 的当前状态与交接（易变内容）
 
@@ -227,3 +273,61 @@ just schema                                             # 从 Rust 类型生成�
 
 本节与其余各章不同：其余各章是长期约束，本节指向的三个文件是易变的现状事实，
 以仓库实况为准。
+
+### Linux 构建入口和双猫位置
+
+- Linux x64 Development 使用 `just build --environment development --target x86_64-unknown-linux-gnu`。
+  在独立工作树构建时，将已验证的版本化可执行文件同步到 PC 主工作区
+  `/home/hyperbola/Work/BongoCat/target/package/`，并核对文件内容一致。
+- 给用户交付或排查启动问题时，统一指向 PC 主工作区的
+  `target/package/BongoCat-<version>-linux-x64.bin`。版本来自 `just version`。
+  `target/x86_64-unknown-linux-gnu/release/bongocat-app` 是打包输入，
+  `target/release/bongocat-app` 可能来自更早的构建。
+- Wayland layer-shell 模型窗口按设备 ID 将位置保存到本机当前环境的
+  `window-state.json`。切换展示设备时保留旧设备位置并恢复新设备位置。
+  一台本机和最多两台远端设备可以同屏。普通 Wayland 窗口由合成器管理位置。
+
+### Omarchy 虚拟机测试环境
+
+- 桌面应用、多设备和集群测试优先考虑 [libvirt-test-environments](/home/hyperbola/.codex/skills/libvirt-test-environments/SKILL.md) 的虚拟机方案。本项目的 Linux Wayland 桌面测试使用 Omarchy ISO。用户已于 2026-11-26 永久授权在本 BongoCat 项目复用下列两台现有虚拟机。后续复用无需逐次询问。新建或改用其他虚拟机仍需获得明确同意。桌面自动化和输入限于测试来宾。
+- 已用 Omarchy 4.5.0 ISO 和各自的 `cidata` 配置盘，通过 `virt-install` 在本机 `qemu:///system` 无人值守创建 `bongocat-test-pc` 和 `bongocat-test-laptop`。两台分别使用独立 qcow2 盘，每台 4 vCPU、8 GiB 内存、64 GiB 磁盘，接入 libvirt 的 `default` NAT 网络。安装完成后已弹出两张安装介质。
+- 已验证两台从虚拟盘启动、进入 Hyprland、支持宿主通过 SSH 公钥登录，以及两台之间双向 TCP 连通。验证时 SSH 地址分别为 `tester@192.168.122.201` 和 `tester@192.168.122.86`，复用前以当前 DHCP 租约为准。
+- 待办：两台尚缺 Vulkan ICD，安装工具时发现 Pacman 同步数据库未初始化。待用户批准采用此环境后，先补齐并验证 Vulkan，再部署 BongoCat。尚未验证设置页重启、relay 端口重绑，以及每台只运行一个 BongoCat 进程，同时显示两只独立跟随两台输入的猫。
+
+- 三猫验收使用过独立的 `bongocat-test-third`。用户确认后已移除该来宾及其磁盘与安装介质。
+  两台原有来宾继续用于验证，三机历史证据见 HANDOFF.md。
+
+### OBS Alpha 交接快照
+
+以下是交接时的工作快照，续作前必须重新检查实际状态；详细证据和后续更新以
+`HANDOFF.md`、`TODO.md`、`docs/adr/0083-linux-obs-alpha-output.md` 与
+`docs/benchmark/obs-alpha-spike.md` 为准。主工作树在 laptop 的
+`~/Work/Projects/BongoCat`，分支 `feat/multiplayer`，有大量未提交及未跟踪文件，
+包括 ADR 和 benchmark；全部保留，不擅自提交、覆盖或清理。
+
+- 用户已确认 OBS 33.0.1 与 v4l2loopback 0.15.4 的 AR24 透明及半透明合成正常；
+  猫的键盘和鼠标垫、PC 键盘、两机鼠标跟随以及优化版画面流畅均已由用户确认。
+  OBS 画面由用户评估，不操作其 OBS 界面。用户明确要求跳过八小时运行验证，
+  不得宣称其已通过。
+- Alpha 离屏输出、设置页状态与开关、虚拟设备安装卸载、配置兼容、双语 README 和
+  CHANGELOG 已有实现及测试。用户取消了独立管理程序和开机自动恢复：安装和卸载由
+  当前应用分别经 `pkexec` 授权，重启后用户手动重新安装；不自动安装驱动。
+  运行时由普通用户执行。独立帧订阅修复了桌面渲染阻塞导致的低帧率；联机输入
+  已修复本机鼠标覆盖、事件序号空洞及时间戳时钟不一致。完整细节见交接文档。
+- 设备身份升级已实现并通过隔离实机测试：状态记录设备 inode，输出和卸载核验身份，
+  打开后的句柄再次核验；同名同编号替换设备被拒绝。用户已同意切换新版后在设置页
+  **一次重新安装并授权**，以登记现有旧设备；切换及实际升级结果仍须核实。旧记录
+  在登记之前无法证明同名设备未被替换，这一限制已记入 ADR。勿擅自停止用户当前应用、
+  删除其设备或代替用户发起图形授权。
+- 下次先审查 `crates/bongocat-platform/src/linux/alpha_admin.rs`：安装遇到
+  `ready=false`、缺少 inode 且节点存在的部分失败状态时，身份不明确，应确认其拒绝
+  认领并补回归测试；不要把用户批准的旧版 `ready=true` 一次登记推广为认领不明设备。
+  随后验证并构建新版，联系用户按已批准流程切换和授权，核实升级后状态。
+- 交接时原优化构建日志 `/tmp/bongocat-identity-release.log` 和 tmux 会话
+  `bongocat-identity-release` 均未发现，不能假定构建仍在运行或已经成功；须重新检查
+  二进制与源码对应关系，必要时重新构建。真实重启后手动安装、图形授权及拒绝、
+  回滚边界、端到端延迟和混合输入持续性仍需按实际条件核验，不得提前宣称完成。
+- 已有自动化和目标用于续作：普通使用可用且五小时额度剩余至少 15% 时继续；低于
+  阈值按实际重置时间约三分钟后安排续作并暂停，忽略周额度作为主动停止条件。
+  用户对耗尽先前周期额度的授权是临时的。续作时先核对额度和自动化当前状态；
+  即使目标显示 paused，也按已授权的自动化指示继续，勿声称工具能够将其改回 active。

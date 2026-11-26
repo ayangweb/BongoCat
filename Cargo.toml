@@ -17,16 +17,24 @@ members = [
     "crates/bongocat-overlay",
     "crates/bongocat-packaging",
     "crates/bongocat-platform",
+    "crates/bongocat-plugin-manager",
+    "crates/bongocat-plugin-hud",
+    "crates/bongocat-plugin-packaging",
+    "crates/bongocat-plugin-sdk",
+    "crates/bongocat-plugin-service",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
+    "plugins/input-source",
+    "plugins/key-sounds",
+    "plugins/pomodoro",
     "crates/bongocat-net",
 ]
 
 [workspace.package]
-version = "2.1.1"
+version = "2.4.1"
 edition = "2024"
 rust-version = "1.97"
 license = "Apache-2.0"
@@ -39,41 +47,52 @@ ashpd = { version = "=0.13.13", default-features = false, features = ["async-io"
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+base64 = "=0.23.1"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
-dirs = "=6.0.0"
-embed-resource = "=3.0.11"
+dirs = "=7.0.0"
+embed-resource = "=3.0.12"
 flate2 = "=1.1.10"
 futures-util = "=0.3.34"
 global-hotkey = "=0.8.0"
-gpui-kit = "=0.7.1"
+gpui-kit = "=0.7.3"
+gpui-pre-reqwest-client = { version = "=0.3.9", default-features = false }
 gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "c7e97f54e9e4b10ff89d3527560a22f6817329ea", default-features = false }
 rust-i18n = "=4.2.4"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-libc = "=0.2.189"
-muda = { version = "=0.20.0", default-features = false }
-opener = { version = "=0.8.5", features = ["reveal"] }
+libc = "=0.2.190"
+minisign = "=0.10.0"
+muda = { version = "=0.21.2", default-features = false }
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSImage", "NSImageRep", "NSGraphicsContext", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDictionary", "CFNotificationCenter", "CFRunLoop", "CFString", "CFURL"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSURL", "NSString"] }
+opener = { version = "=0.9.0", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
 permission-flow = { git = "https://github.com/ayangweb/permission-flow", rev = "fad0354d960cf775ac332e6375916f7cc6424c7b" }
 plist = "=1.10.1"
-proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
-rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
+rodio = { version = "=0.23.0", default-features = false, features = ["playback", "flac"] }
 schemars = { version = "=1.2.2", features = ["derive"] }
+semver = "=1.0.28"
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
+serde_json = "=1.0.154"
+sha2 = "=0.11.1"
 smithay-client-toolkit = { version = "=0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
 tar = "=0.4.46"
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
-tray-icon = { version = "=0.25.0", default-features = false }
+tray-icon = { version = "=0.26.1", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Environment", "Win32_System_Registry", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging"] }
+zip = { version = "=9.0.2", default-features = false, features = ["deflate-flate2"] }
 wayland-client = { version = "=0.31.15", features = ["dlopen", "system"] }
-zip = { version = "=8.6.0", default-features = false }
 
 bongocat-config = { path = "crates/bongocat-config" }
 bongocat-input = { path = "crates/bongocat-input" }
@@ -88,6 +107,11 @@ bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
+bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
+bongocat-plugin-manager = { path = "crates/bongocat-plugin-manager" }
+bongocat-plugin-hud = { path = "crates/bongocat-plugin-hud" }
+bongocat-plugin-packaging = { path = "crates/bongocat-plugin-packaging" }
+bongocat-plugin-service = { path = "crates/bongocat-plugin-service" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
 bongocat-storage = { path = "crates/bongocat-storage" }

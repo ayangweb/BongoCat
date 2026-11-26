@@ -23,6 +23,11 @@ pub(crate) struct ResizeMonitorState {
     pub(crate) drag: Cell<Option<ResizeDrag>>,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The current plugin layer's hit-test data. A plugin that draws a control
+    /// claims the click that lands on it; the panel keeps every other click.
+    pub(crate) plugin_targets: Cell<OverlayPluginTargets>,
+    /// Where a plugin's click is reported.
+    pub(crate) plugin_interaction_sender: Cell<Option<SyncSender<OverlayPluginInteraction>>>,
 }
 
 /// The right-button event monitor for one panel, together with the state its
@@ -56,8 +61,12 @@ pub(crate) fn install_context_menu_monitor(
     base: Option<ResizeBase>,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    plugin_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
 ) -> Option<RightButtonMonitor> {
-    if context_menu_sender.is_none() && resize_sender.is_none() {
+    if context_menu_sender.is_none()
+        && resize_sender.is_none()
+        && plugin_interaction_sender.is_none()
+    {
         return None;
     }
     let window_number = panel.windowNumber();
@@ -67,6 +76,8 @@ pub(crate) fn install_context_menu_monitor(
         drag: Cell::new(None),
         context_menu_sender,
         resize_sender,
+        plugin_targets: Cell::new(OverlayPluginTargets::default()),
+        plugin_interaction_sender: Cell::new(plugin_interaction_sender),
     });
     let shared = Rc::clone(&state);
     let handler: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
@@ -79,6 +90,11 @@ pub(crate) fn install_context_menu_monitor(
                     objc2_app_kit::NSEventType::RightMouseDown => begin_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseDragged => drag_resize(&state),
                     objc2_app_kit::NSEventType::RightMouseUp => finish_resize(&state),
+                    objc2_app_kit::NSEventType::LeftMouseDown
+                        if handle_plugin_click(&state, event_ref) =>
+                    {
+                        return std::ptr::null_mut();
+                    }
                     _ => {}
                 }
             }
@@ -90,7 +106,8 @@ pub(crate) fn install_context_menu_monitor(
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(
             NSEventMask::RightMouseDown
                 | NSEventMask::RightMouseDragged
-                | NSEventMask::RightMouseUp,
+                | NSEventMask::RightMouseUp
+                | NSEventMask::LeftMouseDown,
             &handler,
         )
     }?;
@@ -161,6 +178,36 @@ pub(crate) fn request_context_menu(state: &ResizeMonitorState) {
     if let Some(sender) = &state.context_menu_sender {
         let _ = sender.try_send(OverlayContextMenuRequest);
     }
+}
+
+/// Resolve window-local AppKit coordinates through the actual content view.
+/// Returning true consumes the press instead of also beginning a background drag.
+pub(crate) fn handle_plugin_click(state: &ResizeMonitorState, event: &NSEvent) -> bool {
+    let Some(sender) = state.plugin_interaction_sender.take() else {
+        return false;
+    };
+    let targets = state.plugin_targets.take();
+    let interaction = state.panel.contentView().and_then(|content| {
+        let location = content.convertPoint_fromView(event.locationInWindow(), None);
+        let bounds = content.bounds();
+        let (x, y) = crate::plugin_layer::content_point_to_device(
+            location.x - bounds.origin.x,
+            location.y - bounds.origin.y,
+            bounds.size.height,
+            state.panel.backingScaleFactor(),
+            content.isFlipped(),
+        );
+        targets.interaction_at(x, y)
+    });
+    let consumed = interaction.is_some_and(|interaction| match sender.try_send(interaction) {
+        Ok(()) => true,
+        // A full queue must not turn a button press into an accidental drag.
+        Err(std::sync::mpsc::TrySendError::Full(_)) => true,
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => false,
+    });
+    state.plugin_interaction_sender.set(Some(sender));
+    state.plugin_targets.set(targets);
+    consumed
 }
 
 /// Apply one drag step to the panel, keeping the window's top edge where it is.

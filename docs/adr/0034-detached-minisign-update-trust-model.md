@@ -66,10 +66,12 @@ ADR-0029 把更新栈换成 `self_update 1.3.0`，信任模型为 zipsign ed2551
 ### 2. 信任模型：detached minisign 签名，密钥缺失时失败关闭
 
 `RELEASE_SIGNING_KEY: Option<&str>` 存放 **base64 的 minisign 公钥盒文本**（即
-`cargo packager signer generate-key` 写出的 `.pub` 文件内容）。仓库现已内嵌一把发布公钥
+`cargo packager signer generate-key` 写出的 `.pub` 文件内容）。版本化文件
+`release-trust/app.pub` 是唯一事实来源，并由 `include_str!` 在编译期嵌入该常量
 （key ID `DF5E2C9D255DD85E`），Production 构建的 `UpdateRuntime::is_available()` 因而可以为真。
-公钥为 `None`、空串或纯空白时，runtime 在**发出任何请求之前**返回
-`update_signature_key_missing`；系统菜单不会在没有有效公钥时显示「检查更新」入口。
+公钥文件缺失、为空或纯空白时，构建或 runtime 门禁失败，不会静默接受未签名载荷；runtime 在
+**发出任何请求之前**返回 `update_signature_key_missing`，系统菜单不会在没有有效公钥时显示
+「检查更新」入口。
 
 这条门禁是刻意的第二道防线。库对空 `pubkey` 的行为是解码失败（`Error::Base64` /
 `Minisign`），即 fail-closed 而非 ADR-0029 记录的 `self_update` fail-open；但项目仍保留
@@ -124,7 +126,7 @@ macOS 的归档由 `crates/bongocat-packaging` 用 `tar` + `flate2` 从已完成
 密钥对由**同一个入口**一次性生成：`just keygen <file>`（`crates/bongocat-packaging` 的
 `--generate-signing-key`）。它用同一份精确 pin 的 `cargo-packager` 调 `generate_key` /
 `save_keypair`，因此不需要任何全局 `cargo install`；生成后显式把私钥收紧到 `0600`，并打印公钥
-那一行供填入 `RELEASE_SIGNING_KEY`。生成是离线的运维动作，不在 CI 中执行。
+那一行供写入 `release-trust/app.pub`。生成是离线的运维动作，不在 CI 中执行。
 
 release workflow 反过来**断言**发布构建一定签过名：未配置 secret 时 job 直接失败，
 并在打包后逐项校验载荷、`.sig` 与 manifest 存在且形状正确。这消除了"发布一批无人能更新的
@@ -255,8 +257,8 @@ ADR-0021 / ADR-0022 / ADR-0025 / ADR-0026 的退役能力沿用 ADR-0029 的记�
      反序列化失败。下载、验签与安装仍未执行，线上尚无可用的新流程 release。排查细节、由此修正的
      诊断粒度与新增的能力测试见 ADR-0035 的"真实端点首次运行的结果"。
 2. **Windows**：安装器静默安装、`/R` 重启、被占用可执行文件的替换、安装失败回滚，均未实测。
-3. **`.app` 的 codesign + notarize**：当前打包只做 ad-hoc 或注入身份的 `codesign`，
-   公证仍是独立发布门禁。归档必须在公证**之后**生成，否则签名对象不是最终分发的 bundle。
+3. **`.app` 使用 ad-hoc codesign**：本项目没有 Developer ID 签名证书，签名与公证不属于
+   发布门禁。更新归档直接包含最终的 ad-hoc 签名 bundle。
 4. **密钥轮换**：单公钥模型下，换钥匙必须先发布一个"认识新钥匙"的版本，否则已安装用户
    的更新链直接断裂。轮换流程尚未设计。
 5. **降级攻击**：仍只按 semver 比较。manifest 由 HTTPS 保护，但能够替换 manifest 的攻击者
@@ -265,5 +267,5 @@ ADR-0021 / ADR-0022 / ADR-0025 / ADR-0026 的退役能力沿用 ADR-0029 的记�
 
 ## 后续边界
 
-本 ADR 不实现 endpoint 配置界面、公钥注入的自动化、update worker、更新 UI、操作系统包签名
-验证或失败启动恢复。在待验证项 1 与 2 完成前，不得声称更新功能或 stable 发布完成。
+本 ADR 不实现 endpoint 配置界面、公钥注入的自动化、update worker、更新 UI 或失败启动恢复。
+在待验证项 1 与 2 完成前，不得声称更新功能或 stable 发布完成。

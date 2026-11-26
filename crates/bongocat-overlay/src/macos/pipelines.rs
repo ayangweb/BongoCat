@@ -35,6 +35,13 @@ pub(crate) const SHADER_SOURCE: &str = r#"
         float3 padding;
     };
 
+    // The plugin layer is one quad in the window's own pixel space rather than
+    // in model space, so it reuses the vertex layout but carries its own
+    // transform.
+    struct PixelUniforms {
+        float4 scale_offset;
+    };
+
     struct RasterVertex {
         float4 position [[position]];
         float2 uv;
@@ -75,6 +82,23 @@ pub(crate) const SHADER_SOURCE: &str = r#"
         return output;
     }
 
+    vertex RasterVertex layer_vertex(
+        const device Vertex* vertices [[buffer(0)]],
+        constant PixelUniforms& uniforms [[buffer(1)]],
+        uint vertex_id [[vertex_id]]
+    ) {
+        RasterVertex output;
+        output.position = float4(
+            vertices[vertex_id].position * uniforms.scale_offset.xy
+                + uniforms.scale_offset.zw,
+            0.0,
+            1.0
+        );
+        output.uv = vertices[vertex_id].uv;
+        output.uv.y = 1.0 - output.uv.y;
+        return output;
+    }
+
     // The source texture is an ordinary UNORM view on purpose. This is the
     // encoded-space compatibility blend: do not insert a linear/sRGB conversion
     // here without changing both backends and the product contract.
@@ -109,6 +133,16 @@ pub(crate) const SHADER_SOURCE: &str = r#"
         float alpha = model_texture.sample(texture_sampler, input.uv).a;
         return float4(0.0, 0.0, 0.0, alpha);
     }
+
+    // The plugin layer is already premultiplied by the host's rasterizer, so the
+    // fragment stage only samples it and lets the normal blend factors apply.
+    fragment float4 layer_fragment(
+        RasterVertex input [[stage_in]],
+        texture2d<float> layer_texture [[texture(0)]],
+        sampler texture_sampler [[sampler(0)]]
+    ) {
+        return layer_texture.sample(texture_sampler, input.uv);
+    }
 "#;
 
 #[repr(C)]
@@ -121,6 +155,17 @@ pub(crate) struct Uniforms {
     pub(crate) corner_radius: [f32; 4],
     pub(crate) opacity: f32,
     pub(crate) padding: [f32; 3],
+}
+
+/// The uniforms the plugin layer's vertex shader reads.
+///
+/// It is only the pixel-to-clip transform: the layer carries no model colour,
+/// no mask and no corner radius, because those belong to the model and the
+/// window rather than to a plugin's panel.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct PixelUniforms {
+    pub(crate) scale_offset: [f32; 4],
 }
 
 pub(crate) struct Mesh {
@@ -151,6 +196,8 @@ pub(crate) struct Pipelines {
     pub(crate) additive: RenderPipelineState,
     pub(crate) multiplicative: RenderPipelineState,
     pub(crate) mask: RenderPipelineState,
+    /// The plugin layer's pipeline: one premultiplied quad in window pixels.
+    pub(crate) layer: RenderPipelineState,
 }
 
 impl Pipelines {
@@ -176,11 +223,18 @@ pub(crate) fn create_pipelines(device: &Device) -> Result<Pipelines, OverlayErro
     let mask_fragment = library
         .get_function("cubism_mask_fragment", None)
         .map_err(|error| OverlayError::new(format!("load mask fragment shader: {error}")))?;
+    let layer_vertex = library
+        .get_function("layer_vertex", None)
+        .map_err(|error| OverlayError::new(format!("load layer vertex shader: {error}")))?;
+    let layer_fragment = library
+        .get_function("layer_fragment", None)
+        .map_err(|error| OverlayError::new(format!("load layer fragment shader: {error}")))?;
     Ok(Pipelines {
         normal: create_pipeline(device, &vertex, &fragment, BlendMode::Normal)?,
         additive: create_pipeline(device, &vertex, &fragment, BlendMode::Additive)?,
         multiplicative: create_pipeline(device, &vertex, &fragment, BlendMode::Multiplicative)?,
         mask: create_mask_pipeline(device, &vertex, &mask_fragment)?,
+        layer: create_pipeline(device, &layer_vertex, &layer_fragment, BlendMode::Normal)?,
     })
 }
 

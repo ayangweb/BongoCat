@@ -20,8 +20,8 @@ use std::sync::{
 };
 
 use bongocat_input::{
-    InputControl, InputEdge, InputEvent, InputSource, InputSubmitError, InputSubmitter,
-    SequencedInputEvent,
+    InputControl, InputEdge, InputEvent, InputProducer, InputPublishError, InputSource,
+    InputSubmitError, InputSubmitter, ModifierKey, PressedModifiers, SequencedInputEvent,
 };
 use bongocat_net::protocol::InputFrame;
 
@@ -93,15 +93,14 @@ impl Coalescer {
 
 /// An [`InputSubmitter`] that copies user input to a bounded channel.
 ///
-/// Submission to the runtime is unconditional and comes last, so the runtime
-/// sees a full queue here exactly as it would have without the tee: the copy is
-/// an observer of that path, never a gate on it.
+/// The network copy never blocks the runtime. Local delivery may be suppressed
+/// when the pet is configured to follow a different device.
 pub struct TeeSubmitter {
-    inner: Arc<dyn InputSubmitter>,
+    inner: InputProducer,
     /// The room side of the copy. `None` for a machine that is in a room but
     /// has switched sharing off: it still needs the gate on its own pet, it
     /// just has no audience to forward to.
-    sink: Option<SyncSender<InputFrame>>,
+    sink: Arc<Mutex<Option<SyncSender<InputFrame>>>>,
     /// Whether the local pet is drawing this machine's own input.
     ///
     /// A machine that switched "this machine" off in the device list still
@@ -109,6 +108,7 @@ pub struct TeeSubmitter {
     /// keys this user presses. When this flag is set the copy still reaches the
     /// sink and the runtime never sees the event; the room is the only audience.
     suppress_local: Arc<AtomicBool>,
+    local_modifiers: Mutex<PressedModifiers>,
     /// The tee's own sequence, not the runtime's. The runtime's sequence also
     /// counts resets, reconciliations and the events this tee filters out, so
     /// reusing it would report a gap for every frame that was never sent.
@@ -119,17 +119,83 @@ pub struct TeeSubmitter {
 
 impl TeeSubmitter {
     pub fn new(
-        inner: Arc<dyn InputSubmitter>,
+        inner: InputProducer,
         sink: Option<SyncSender<InputFrame>>,
+        suppress_local: Arc<AtomicBool>,
+    ) -> Self {
+        Self::with_switchable_sink(inner, Arc::new(Mutex::new(sink)), suppress_local)
+    }
+
+    pub fn with_switchable_sink(
+        inner: InputProducer,
+        sink: Arc<Mutex<Option<SyncSender<InputFrame>>>>,
         suppress_local: Arc<AtomicBool>,
     ) -> Self {
         Self {
             inner,
             sink,
             suppress_local,
+            local_modifiers: Mutex::new(PressedModifiers::NONE),
             sequence: AtomicU64::new(0),
             coalescer: Mutex::new(Coalescer::default()),
             counters: TeeCounters::default(),
+        }
+    }
+
+    /// Physical modifiers from this host, including while the local model is suppressed.
+    pub fn local_modifiers(&self) -> PressedModifiers {
+        *self
+            .local_modifiers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn observe_modifier(&self, event: &InputEvent) {
+        match event {
+            InputEvent::Edge {
+                control: InputControl::Key(key),
+                edge,
+                ..
+            } => {
+                if let Some(modifier) = ModifierKey::from_hid_usage(key.hid_usage()) {
+                    let mut pressed = self
+                        .local_modifiers
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    if *edge == InputEdge::Down {
+                        pressed.insert(modifier);
+                    } else {
+                        *pressed = pressed.iter().filter(|held| *held != modifier).fold(
+                            PressedModifiers::NONE,
+                            |mut result, held| {
+                                result.insert(held);
+                                result
+                            },
+                        );
+                    }
+                }
+            }
+            InputEvent::Reconcile { pressed, .. } => {
+                let mut modifiers = PressedModifiers::NONE;
+                for control in pressed {
+                    if let InputControl::Key(key) = control
+                        && let Some(modifier) = ModifierKey::from_hid_usage(key.hid_usage())
+                    {
+                        modifiers.insert(modifier);
+                    }
+                }
+                *self
+                    .local_modifiers
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = modifiers;
+            }
+            InputEvent::Reset { .. } => {
+                *self
+                    .local_modifiers
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = PressedModifiers::NONE;
+            }
+            _ => {}
         }
     }
 
@@ -189,7 +255,10 @@ impl TeeSubmitter {
             // separately. A frame built here therefore has nothing to fill in.
             bounds: None,
         };
-        let Some(sink) = self.sink.as_ref() else {
+        let Ok(sink) = self.sink.try_lock() else {
+            return;
+        };
+        let Some(sink) = sink.as_ref() else {
             // Sharing is off: the gate above still decides what the pet sees,
             // but there is no room audience to copy to.
             return;
@@ -206,11 +275,22 @@ impl TeeSubmitter {
 
 impl InputSubmitter for TeeSubmitter {
     fn submit(&self, event: SequencedInputEvent) -> Result<(), InputSubmitError> {
+        self.observe_modifier(&event.event);
         self.offer(&event);
         if self.suppress_local.load(Ordering::Acquire) {
             return Ok(());
         }
-        let result = self.inner.submit(event);
+        // Only events that pass the local gate consume a runtime sequence.
+        // Remote events use this same producer, so discarded local input cannot
+        // fabricate a gap and reset a held remote key.
+        let result = self
+            .inner
+            .publish(event.event)
+            .map(|_| ())
+            .map_err(|error| match error {
+                InputPublishError::QueueFull(_) => InputSubmitError::QueueFull,
+                InputPublishError::RuntimeStopped(_) => InputSubmitError::RuntimeStopped,
+            });
         // TEMP DIAGNOSTIC — remove once the round trip is confirmed.
         if result.is_err() {
             let _ = writeln!(std::io::stderr(), "tee: inner rejected: {:?}", result);
@@ -224,6 +304,29 @@ mod tests {
     use super::*;
     use bongocat_input::{InputResetReason, MonotonicMillis, PhysicalKey};
     use std::sync::mpsc;
+
+    #[test]
+    fn physical_modifiers_are_tracked_even_when_local_animation_is_suppressed() {
+        let recorder = Arc::new(Recorder::default());
+        let tee = TeeSubmitter::new(
+            InputProducer::new(recorder),
+            None,
+            Arc::new(AtomicBool::new(true)),
+        );
+        let modifier = ModifierKey::LeftShift;
+        for edge in [InputEdge::Down, InputEdge::Up] {
+            tee.observe_modifier(&InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::from_hid_usage(modifier.hid_usage())),
+                edge,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(0),
+            });
+            assert_eq!(
+                tee.local_modifiers().holds(modifier),
+                edge == InputEdge::Down
+            );
+        }
+    }
 
     /// A stand-in for the runtime's submitter: records what reached it and
     /// answers `Ok`, so a test can tell "the tee dropped the copy" apart from
@@ -267,12 +370,64 @@ mod tests {
     fn tee(bound: usize) -> (TeeSubmitter, Arc<Recorder>, mpsc::Receiver<InputFrame>) {
         let recorder = Arc::new(Recorder::default());
         let (sender, receiver) = mpsc::sync_channel(bound);
-        let inner: Arc<dyn InputSubmitter> = recorder.clone();
+        let inner = InputProducer::new(recorder.clone());
         (
             TeeSubmitter::new(inner, Some(sender), Arc::new(AtomicBool::new(false))),
             recorder,
             receiver,
         )
+    }
+
+    #[test]
+    fn suppressed_local_events_do_not_create_remote_sequence_gaps() {
+        let recorder = Arc::new(Recorder::default());
+        let remote = bongocat_input::InputProducer::new(recorder.clone());
+        let tee = TeeSubmitter::new(remote.clone(), None, Arc::new(AtomicBool::new(true)));
+        let local = InputProducer::new(Arc::new(tee));
+        remote
+            .publish(key_edge(InputEdge::Down, 10, 0).event)
+            .unwrap();
+        local
+            .publish(key_edge(InputEdge::Down, 11, 0).event)
+            .unwrap();
+        remote
+            .publish(key_edge(InputEdge::Up, 12, 0).event)
+            .unwrap();
+        let events = recorder.submitted.lock().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.sequence)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+    }
+
+    #[test]
+    fn forwarded_local_and_remote_events_share_runtime_sequence() {
+        let recorder = Arc::new(Recorder::default());
+        let remote = InputProducer::new(recorder.clone());
+        let tee = TeeSubmitter::new(remote.clone(), None, Arc::new(AtomicBool::new(false)));
+        let local = InputProducer::new(Arc::new(tee));
+        remote
+            .publish(key_edge(InputEdge::Down, 10, 0).event)
+            .unwrap();
+        local
+            .publish(key_edge(InputEdge::Down, 11, 0).event)
+            .unwrap();
+        remote
+            .publish(key_edge(InputEdge::Up, 12, 0).event)
+            .unwrap();
+        assert_eq!(
+            recorder
+                .submitted
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|event| event.sequence)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
     }
 
     #[test]

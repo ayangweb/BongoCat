@@ -15,6 +15,8 @@ pub enum SettingsLanguage {
     Vietnamese,
     Portuguese,
     Korean,
+    French,
+    Russian,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -63,7 +65,7 @@ impl Default for SettingsLogging {
 }
 
 impl SettingsLanguage {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 10] = [
         Self::System,
         Self::ChineseSimplified,
         Self::ChineseTraditional,
@@ -72,6 +74,8 @@ impl SettingsLanguage {
         Self::Vietnamese,
         Self::Portuguese,
         Self::Korean,
+        Self::French,
+        Self::Russian,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -84,6 +88,8 @@ impl SettingsLanguage {
             Self::Vietnamese => "vi-VN",
             Self::Portuguese => "pt-BR",
             Self::Korean => "ko-KR",
+            Self::French => "fr-FR",
+            Self::Russian => "ru-RU",
         }
     }
 
@@ -100,6 +106,8 @@ impl SettingsLanguage {
             Self::Vietnamese => "vi-VN",
             Self::Portuguese => "pt-BR",
             Self::Korean => "ko-KR",
+            Self::French => "fr-FR",
+            Self::Russian => "ru-RU",
             Self::System | Self::English => "en-US",
         }
     }

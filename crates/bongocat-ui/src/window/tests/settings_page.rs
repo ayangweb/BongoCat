@@ -49,7 +49,7 @@ fn model_behavior_rows_are_named_by_flattened_position() {
             behaviors: behaviors.to_vec(),
         },
     )];
-    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries);
+    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries, &[]);
     assert_eq!(rows.len(), behaviors.len());
 
     let english = rows
@@ -472,6 +472,8 @@ fn the_native_and_component_halves_pin_together() {
 #[test]
 fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     let settings = SettingsOverlay {
+        window_mode: false,
+        window_background_color: [0, 255, 0],
         click_through: false,
         hold_modifier_to_interact: Some(ModifierKey::LeftShift),
         always_on_top: false,
@@ -774,6 +776,65 @@ fn the_remembered_expression_switch_sends_the_revision_it_was_rendered_from(
     assert!(endpoint.try_recv().is_err());
 }
 
+/// The toggle is its own row and its own command, not a second field of the
+/// remembered-expression switch.
+///
+/// They sit next to each other on the page, which is exactly why they need to stay
+/// separable: remembering a face and reacting to a repeated trigger are different
+/// questions, and a row that changed one while the user reached for the other is
+/// the failure this guards.
+#[gpui_kit::test]
+fn the_expression_toggle_switch_sends_its_own_command(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    assert!(
+        !initial.toggle_repeated_expression,
+        "a fresh configuration repeats an expression rather than turning it off"
+    );
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_toggle_repeated_expression(true, cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetToggleRepeatedExpression {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("the switch must reach the service as its own typed command")
+    else {
+        panic!("the switch must use the typed expression-toggle command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert!(enabled);
+
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.toggle_repeated_expression = true;
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    view.update(visual, |view, _| {
+        assert_eq!(
+            view.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.toggle_repeated_expression),
+            Some(true),
+            "the confirmed snapshot is what the switch then renders"
+        );
+        assert_eq!(
+            view.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.remember_last_expression),
+            Some(false),
+            "confirming the toggle must not also move the remembered-expression switch"
+        );
+    });
+    assert!(endpoint.try_recv().is_err());
+}
+
 #[gpui_kit::test]
 fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);
@@ -793,6 +854,41 @@ fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppC
         endpoint.try_recv().is_err(),
         "an interval nothing reads must not reach the service"
     );
+}
+
+#[gpui_kit::test]
+fn motion_overlap_switch_uses_a_revision_checked_command(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    assert!(!initial.allow_motion_overlap);
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+    view.update(visual, |view, cx| view.set_allow_motion_overlap(true, cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetAllowMotionOverlap {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint.try_recv().expect("overlap command")
+    else {
+        panic!("expected typed overlap command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert!(enabled);
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.allow_motion_overlap = true;
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    view.update(visual, |view, _| {
+        assert!(
+            view.snapshot
+                .as_ref()
+                .expect("confirmed snapshot")
+                .allow_motion_overlap
+        );
+    });
+    assert!(endpoint.try_recv().is_err());
 }
 
 /// The peers row counts a room this machine is in, and says so otherwise.

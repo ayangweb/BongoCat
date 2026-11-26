@@ -20,6 +20,7 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv6Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -120,6 +121,8 @@ pub enum RelayError {
     Bind(SocketAddr, std::io::Error),
     #[error("relay stopped: {0}")]
     Io(#[from] std::io::Error),
+    #[error("relay worker panicked")]
+    WorkerPanicked,
 }
 
 /// Accepts connections until the listener fails; never returns on success.
@@ -127,41 +130,168 @@ pub enum RelayError {
 /// Every accepted connection is served on its own thread, so one slow or
 /// malicious peer cannot stop the relay from accepting the next one.
 pub fn run(config: RelayConfig) -> Result<(), RelayError> {
-    let listener = bind_listener(&config)?;
-    let token: Arc<str> = Arc::from(config.token.as_str());
-    let hub: Arc<Mutex<Hub>> = Arc::new(Mutex::new(Hub::default()));
+    BoundRelay::bind(config)?.run()
+}
 
-    for accepted in listener.incoming() {
-        let Ok(stream) = accepted else {
-            // A single failed `accept` (fd exhaustion, a client that vanished
-            // mid-handshake) must not take the listener down.
-            continue;
-        };
-        let token = Arc::clone(&token);
-        let hub = Arc::clone(&hub);
-        let _ = thread::Builder::new()
-            .name("bongocat-relay-conn".to_owned())
-            .spawn(move || serve_connection(stream, token, hub));
+/// A relay whose listening socket has already been acquired.
+pub struct BoundRelay {
+    listener: TcpListener,
+    config: RelayConfig,
+}
+
+/// Owns the listener and all connections belonging to that listener.
+pub struct RunningRelay {
+    stop: Arc<AtomicBool>,
+    worker: Option<thread::JoinHandle<Result<(), RelayError>>>,
+}
+
+impl RunningRelay {
+    pub fn stop(mut self) -> Result<(), RelayError> {
+        self.stop_and_join()
     }
 
-    Ok(())
+    fn stop_and_join(&mut self) -> Result<(), RelayError> {
+        let Some(worker) = self.worker.take() else {
+            return Ok(());
+        };
+        self.stop.store(true, Ordering::Release);
+        worker.thread().unpark();
+        worker.join().map_err(|_| RelayError::WorkerPanicked)?
+    }
+}
+
+impl Drop for RunningRelay {
+    fn drop(&mut self) {
+        let _ = self.stop_and_join();
+    }
+}
+
+impl BoundRelay {
+    /// Bind before reporting the relay as running or starting its worker.
+    pub fn bind(config: RelayConfig) -> Result<Self, RelayError> {
+        let listener = bind_listener(&config)?;
+        Ok(Self { listener, config })
+    }
+
+    pub fn spawn(self) -> Result<RunningRelay, RelayError> {
+        self.listener.set_nonblocking(true)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&stop);
+        let worker = thread::Builder::new()
+            .name("bongocat-relay".to_owned())
+            .spawn(move || self.run_managed(&signal))?;
+        Ok(RunningRelay {
+            stop,
+            worker: Some(worker),
+        })
+    }
+
+    fn run_managed(self, stop: &AtomicBool) -> Result<(), RelayError> {
+        let Self { listener, config } = self;
+        let token: Arc<str> = Arc::from(config.token.as_str());
+        let hub = Arc::new(Mutex::new(Hub::default()));
+        let mut connections: Vec<(TcpStream, thread::JoinHandle<()>)> = Vec::new();
+        while !stop.load(Ordering::Acquire) {
+            let mut index = 0;
+            while index < connections.len() {
+                if connections[index].1.is_finished() {
+                    let (_, finished) = connections.swap_remove(index);
+                    let _ = finished.join();
+                } else {
+                    index += 1;
+                }
+            }
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let Ok(shutdown) = stream.try_clone() else {
+                        continue;
+                    };
+                    if stream.set_nonblocking(false).is_err() {
+                        continue;
+                    }
+                    if let Ok(worker) =
+                        spawn_connection(stream, Arc::clone(&token), Arc::clone(&hub))
+                    {
+                        connections.push((shutdown, worker));
+                    }
+                }
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => thread::park_timeout(POLL_INTERVAL),
+            }
+        }
+        drop(listener);
+        for (socket, _) in &connections {
+            let _ = socket.shutdown(Shutdown::Both);
+        }
+        for (_, worker) in connections {
+            let _ = worker.join();
+        }
+        Ok(())
+    }
+
+    /// Accept connections until the listener stops.
+    pub fn run(self) -> Result<(), RelayError> {
+        let Self { listener, config } = self;
+        let token: Arc<str> = Arc::from(config.token.as_str());
+        let hub: Arc<Mutex<Hub>> = Arc::new(Mutex::new(Hub::default()));
+
+        for accepted in listener.incoming() {
+            let Ok(stream) = accepted else {
+                // A single failed `accept` (fd exhaustion, a client that vanished
+                // mid-handshake) must not take the listener down.
+                continue;
+            };
+            let token = Arc::clone(&token);
+            let hub = Arc::clone(&hub);
+            let _ = spawn_connection(stream, token, hub);
+        }
+
+        Ok(())
+    }
+}
+
+fn spawn_connection(
+    stream: TcpStream,
+    token: Arc<str>,
+    hub: Arc<Mutex<Hub>>,
+) -> std::io::Result<thread::JoinHandle<()>> {
+    thread::Builder::new()
+        .name("bongocat-relay-conn".to_owned())
+        .spawn(move || serve_connection(stream, token, hub))
 }
 
 /// Binds the configured address, falling back to IPv4 when a dual-stack listen
 /// is not available on this host.
 fn bind_listener(config: &RelayConfig) -> Result<TcpListener, RelayError> {
     let addr = config.bind.addr(config.port);
-    match TcpListener::bind(addr) {
+    match bind_tcp_listener(addr) {
         Ok(listener) => Ok(listener),
         Err(error) => {
             if config.bind == BindMode::DualStack
-                && let Ok(listener) = TcpListener::bind(BindMode::Ipv4Only.addr(config.port))
+                && let Ok(listener) = bind_tcp_listener(BindMode::Ipv4Only.addr(config.port))
             {
                 return Ok(listener);
             }
             Err(RelayError::Bind(addr, error))
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn bind_tcp_listener(addr: std::net::SocketAddr) -> std::io::Result<TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    let socket = Socket::new(Domain::for_address(addr), Type::STREAM, Some(Protocol::TCP))?;
+    // Accepted connections in TIME_WAIT must not prevent a managed relay restart.
+    socket.set_reuse_address(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(128)?;
+    Ok(socket.into())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn bind_tcp_listener(addr: std::net::SocketAddr) -> std::io::Result<TcpListener> {
+    TcpListener::bind(addr)
 }
 
 /// Serves one connection from the handshake to the last cleanup step.
@@ -920,6 +1050,169 @@ fn is_timeout(error: &WsError) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn relay_port_is_released_when_process_is_replaced() {
+        use std::os::unix::process::CommandExt;
+
+        const STAGE: &str = "BONGOCAT_TEST_RESTART_STAGE";
+        const PORT: &str = "BONGOCAT_TEST_RESTART_PORT";
+        const TEST: &str = "relay::tests::relay_port_is_released_when_process_is_replaced";
+        match std::env::var(STAGE).as_deref() {
+            Ok("bind") => {
+                let port = std::env::var(PORT).unwrap().parse().unwrap();
+                let _relay = super::BoundRelay::bind(super::RelayConfig {
+                    bind: super::BindMode::LocalOnly,
+                    port,
+                    token: "test".to_owned(),
+                })
+                .expect("bind before exec");
+                let error = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST])
+                    .env(STAGE, "rebind")
+                    .exec();
+                panic!("exec failed: {error}");
+            }
+            Ok("rebind") => {
+                let port = std::env::var(PORT).unwrap().parse().unwrap();
+                super::BoundRelay::bind(super::RelayConfig {
+                    bind: super::BindMode::LocalOnly,
+                    port,
+                    token: "test".to_owned(),
+                })
+                .expect("exec must close the previous listening socket");
+            }
+            _ => {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                let port = listener.local_addr().unwrap().port();
+                drop(listener);
+                let status = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST])
+                    .env(STAGE, "bind")
+                    .env(PORT, port.to_string())
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+        }
+    }
+
+    #[test]
+    fn binding_reports_an_occupied_port_and_releases_it_on_drop() {
+        let config = super::RelayConfig {
+            bind: super::BindMode::LocalOnly,
+            port: 0,
+            token: "test".to_owned(),
+        };
+        let relay = super::BoundRelay::bind(config.clone()).expect("first bind");
+        let port = relay.listener.local_addr().expect("address").port();
+        let occupied = super::RelayConfig { port, ..config };
+        assert!(matches!(
+            super::BoundRelay::bind(occupied.clone()),
+            Err(super::RelayError::Bind(_, _))
+        ));
+        drop(relay);
+        assert!(super::BoundRelay::bind(occupied).is_ok());
+    }
+
+    #[test]
+    fn managed_relay_stops_peers_and_releases_its_port() {
+        let config = RelayConfig {
+            bind: BindMode::LocalOnly,
+            port: 0,
+            token: "test".into(),
+        };
+        let bound = BoundRelay::bind(config.clone()).unwrap();
+        let address = bound.listener.local_addr().unwrap();
+        let running = bound.spawn().unwrap();
+        let (mut peer, _) = tungstenite::connect(format!("ws://{address}")).unwrap();
+        let tungstenite::stream::MaybeTlsStream::Plain(stream) = peer.get_mut() else {
+            panic!("expected a local plain WebSocket");
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+
+        let started = Instant::now();
+        running.stop().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(peer.read().is_err());
+        assert!(
+            BoundRelay::bind(RelayConfig {
+                port: address.port(),
+                ..config
+            })
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejected_replacement_preserves_the_existing_room_session() {
+        use crate::client::{
+            AdmissionError, ClientCommand, ClientConfig, ClientEvent, prepare_room,
+        };
+
+        let bound = BoundRelay::bind(RelayConfig {
+            bind: BindMode::LocalOnly,
+            port: 0,
+            token: "room".into(),
+        })
+        .unwrap();
+        let url = format!("ws://{}", bound.listener.local_addr().unwrap());
+        let relay = bound.spawn().unwrap();
+        let device = |id: &str, publish| DeviceInfo {
+            id: id.into(),
+            name: id.into(),
+            publish,
+        };
+        let publisher = ClientConfig {
+            url: url.clone(),
+            token: "room".into(),
+            device: device("pc", true),
+        };
+        let timeout = Duration::from_secs(2);
+        let active = prepare_room(publisher.clone(), timeout).unwrap();
+        let watcher = prepare_room(
+            ClientConfig {
+                url,
+                token: "room".into(),
+                device: device("laptop", false),
+            },
+            timeout,
+        )
+        .unwrap();
+        assert!(
+            matches!(watcher.initial_roster, ClientEvent::Joined { peers, .. } if peers.iter().any(|peer| peer.id == "pc"))
+        );
+        assert!(matches!(
+            prepare_room(
+                ClientConfig {
+                    token: "wrong".into(),
+                    ..publisher
+                },
+                timeout
+            ),
+            Err(AdmissionError::Refused)
+        ));
+
+        active
+            .commands
+            .send(ClientCommand::Publish(InputFrame {
+                src: "pc".into(),
+                seq: 1,
+                t: 0,
+                control: bongocat_input::InputControl::Key(bongocat_input::PhysicalKey::KEY_A),
+                edge: bongocat_input::InputEdge::Down,
+                bounds: None,
+            }))
+            .unwrap();
+        assert!(
+            matches!(watcher.events.recv_timeout(timeout).unwrap(), ClientEvent::Input(frame) if frame.src == "pc")
+        );
+        assert!(active.worker.stop(timeout));
+        assert!(watcher.worker.stop(timeout));
+        relay.stop().unwrap();
+    }
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 

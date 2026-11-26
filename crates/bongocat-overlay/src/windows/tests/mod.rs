@@ -13,4 +13,5 @@ mod session;
 mod textures;
 mod thread_settle;
 mod window;
+mod window_mode;
 mod window_proc;

@@ -27,6 +27,7 @@ bongocat-log.workspace = true
 bongocat-model.workspace = true
 bongocat-overlay.workspace = true
 bongocat-platform.workspace = true
+bongocat-plugin-service.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 bongocat-storage.workspace = true
@@ -34,12 +35,14 @@ bongocat-ui.workspace = true
 bongocat-update.workspace = true
 clap.workspace = true
 gpui-kit.workspace = true
+gpui-pre-reqwest-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+bongocat-plugin-manager.workspace = true
 tempfile.workspace = true
 
 [build-dependencies]

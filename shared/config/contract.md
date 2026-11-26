@@ -48,6 +48,8 @@ updates
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `click_through`                       | 指针事件是否穿透                       |
+| `overlay`     | `window_mode`                         | Windows 普通窗口模式，默认 `false`；macOS 不应用 |
+| `overlay`     | `window_background_color`             | 窗口模式背景 RGB，三个 `0..=255` 字节，默认 `[0, 255, 0]` |
 | `overlay`     | `hold_modifier_to_interact`           | 按住即临时恢复交互的**物理**修饰键：`left_control`、`left_shift`、`left_alt`、`left_meta`、对应 `right_*`，或为 `null`（默认，无键） |
 | `overlay`     | `always_on_top`                       | 是否置顶                               |
 | `overlay`     | `scale_percent`                       | 模型/窗口缩放百分比                    |
@@ -80,7 +82,10 @@ updates
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
 | `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
 | `model`       | `remember_last_expression`          | 模型是否回到该模型上次使用的表情，默认 `false` |
+| `model`       | `allow_motion_overlap`             | 不同动作独立计时、按启动顺序叠加求值，默认 `false`，旧数据缺少字段时使用默认值 |
+| `model`       | `toggle_repeated_expression`        | 再次触发当前正在显示的同一表情时关闭它，默认 `false` |
 | `model`       | `last_expressions`                  | 每个模型各自记住的表情，模型身份为 `{ id, source }`，默认 `[]` |
+| `model`       | `behavior_names`                     | 每个模型各自给动作和表情起的名字，模型身份为 `{ id, source }` 加 `behavior_id`，默认 `[]` |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
@@ -97,6 +102,26 @@ updates
 投影：键盘门禁移除键盘键图和手部贡献，手柄门禁移除手柄按钮、手部、摇杆和扳机贡献；原始采集、
 pressed state、释放校正、设备生命周期 Reset、诊断以及独立快捷键注册不受影响。解除门禁后仍由
 同一可靠输入状态继续处理释放，不能通过过滤路径制造卡键。
+
+`model.toggle_repeated_expression` 默认 `false`。表情一旦应用就保持到被替换，因此重复触发同一表情
+一直是空操作；打开后它变成「关掉它」——按当前正在显示的那张脸等于回到模型自己的默认表情，而默认
+表情在切换模型之外没有别的入口。该字段带 `#[serde(default)]`：旧文档没有这个键，读出来是 `false`
+（保持既有行为），而不是被严格 v1 入口拒绝后走「最新有效备份 → 默认配置」恢复流程。
+
+它是独立的开关而不是 `model.remember_last_expression` 的一个取值：两者回答不同问题——一个是模型
+从哪里开始，另一个是重复触发时做什么。关闭动作不写 `model.last_expressions`：记住一个刚被关掉的
+表情会让它在下次启动时以「用户选过」的名义回来。随机播放走 renderer 而不是 command 队列，因此
+永远不参与这个开关。
+
+`model.behavior_names` 是**每个模型每个行为一行**的名字列表，默认 `[]`，字段带 `#[serde(default)]`：
+旧文档没有这个键时按「没有起过名字」加载，而不是被严格 v1 入口拒绝后走恢复流程。
+
+行的身份是 `model` 加 `behavior_id`，与快捷键绑定、随机播放勾选同一套拼法，因此同一个行为在整份
+配置里只有一种写法。名字是行自己的显示文本，所以会被 trim、丢弃控制字符并限长 64 个字符；空白名字
+不会被存下来——清空字段是「回到编号名称」，是一次删除而不是一个名字。一个模型的一个行为最多一行，
+两行会让标签取决于解析顺序。
+
+模型被删除时它的名字跟着一起删除；内置模型与导入模型同名时保留内置那一行，因为那指的是另一个模型。
 
 `model.show_all_pressed_keys` 默认 `false`，即兼容模式：同一只手只画最后按下且仍有效的那个键的
 键位图。打开后每个仍按住的键各自保留一张键位图，按下顺序从旧到新排列，渲染器按该顺序绘制，
@@ -305,15 +330,16 @@ typed command 与配置校验两处都被拒绝并保留旧值。语义来源与
 `P0 首发`，作为当前 v1 字段进入初始版本。这不引入迁移或兼容逻辑：初始版本仍是全新首版，
 三个字段直接写在当前 v1 schema、默认值、fixture 与实现中。
 
-`appearance.language` 是严格的八值枚举：`system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN`、
-`pt-BR` 和 `ko-KR`，默认 `system`；未知值由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。
+`appearance.language` 是严格的十值枚举：`system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN`、
+`pt-BR`、`ko-KR`、`fr-FR` 和 `ru-RU`，默认 `system`；未知值由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。
 `system` 在每次启动时读取平台首选 locale，按 primary subtag 归类（RFC 4647 language-subtag
 fallback）：`ar`、`ar-EG`、`ar-SA` 等阿拉伯语 locale 映射为 `ar-SA`，`vi` 与 `vi-VN` 等越南语
 locale 映射为 `vi-VN`，`pt` 与 `pt-PT` 等葡萄牙语 locale 映射为 `pt-BR`，`ko` 等韩语 locale 映射为
-`ko-KR`，英语和所有其它 locale 都映射为 `en-US`。`zh` 是 primary subtag 唯一无法判定的情形：简繁是
+`ko-KR`，`fr`、`fr-CA` 等法语 locale 映射为 `fr-FR`，`ru`、`ru-KZ` 等俄语 locale 映射为 `ru-RU`，
+英语和所有其它 locale 都映射为 `en-US`。`zh` 是 primary subtag 唯一无法判定的情形：简繁是
 不同书写体系而非地区变体，因此 `zh-Hant` 与 `TW`/`HK`/`MO` 映射为 `zh-TW`，其余 `zh` 标签映射为
 `zh-CN`。系统解析结果只决定实际显示语言，不覆写持久化偏好；显式选择 `zh-CN`、`zh-TW`、`en-US`、
-`ar-SA`、`vi-VN`、`pt-BR` 或 `ko-KR` 时不受系统 locale 影响。
+`ar-SA`、`vi-VN`、`pt-BR`、`ko-KR`、`fr-FR` 或 `ru-RU` 时不受系统 locale 影响。
 
 捕获的键盘按键没有超时配置，`input` 因此只有 `gamepad` 一个命名空间。清除一个已按下
 control 的路径是且只有三条：可靠的 KeyUp、平台 pressed-set 校正触发的 reconciliation，

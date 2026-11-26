@@ -1,5 +1,8 @@
 {
   "schema_version": 1,
+  "alpha_output": {
+    "enabled": false
+  },
   "logging": {
     "level": "info",
     "retention_days": 7
@@ -9,6 +12,8 @@
     "language": "system"
   },
   "overlay": {
+    "window_mode": false,
+    "window_background_color": [0, 255, 0],
     "click_through": false,
     "hold_modifier_to_interact": null,
     "always_on_top": true,
@@ -54,7 +59,10 @@
       "disconnected_model": null
     },
     "remember_last_expression": false,
-    "last_expressions": []
+    "toggle_repeated_expression": false,
+    "allow_motion_overlap": false,
+    "last_expressions": [],
+    "behavior_names": []
   },
   "network": {
     "device": {

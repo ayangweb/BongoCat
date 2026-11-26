@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "快速鍵"
     },
-    "multiplayer": {
-      "title": "連線"
-    },
     "app_system": {
       "title": "應用程式與系統"
     },
     "about": {
       "title": "關於"
+    },
+    "plugins": {
+      "title": "外掛中心",
+      "empty": "暫無可用外掛程式。"
+    },
+    "multiplayer": {
+      "title": "連線"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "設定",
     "quit": "結束 BongoCat"
   },
+  "application_menu": {
+    "file": "檔案",
+    "edit": "編輯",
+    "window": "視窗",
+    "services": "服務",
+    "close": "關閉",
+    "minimize": "縮到最小",
+    "zoom": "縮放",
+    "hide": "隱藏 BongoCat",
+    "hide_others": "隱藏其他",
+    "show_all": "全部顯示",
+    "undo": "還原",
+    "redo": "重做",
+    "cut": "剪下",
+    "copy": "拷貝",
+    "paste": "貼上",
+    "select_all": "全選"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "允許監聽鍵盤和滑鼠？",
-      "description": "BongoCat 需要讀取輸入裝置，才能回應其他應用程式中的鍵盤和滑鼠操作。點擊確定後，系統會要求管理員授權；僅輸入監聽輔助程序取得權限，設定和模型視窗仍以一般使用者執行。選擇稍後設定可繼續使用，但鍵鼠回應暫時無法使用。",
-      "confirm": "確定"
-    },
     "later": "稍後設定",
     "input_monitoring": {
       "title": "需要「輸入監控」權限",
@@ -53,22 +70,23 @@
       "title": "建議以系統管理員身分執行",
       "description": "BongoCat 需要系統管理員權限，才能在其他應用程式以系統管理員權限執行時繼續接收鍵盤與滑鼠輸入。\n\n設定方式：按右鍵 BongoCat → 內容 → 相容性 → 勾選「以系統管理員身分執行此程式」。",
       "open_program_folder": "結束並前往設定"
+    },
+    "linux": {
+      "title": "允許監聽鍵盤和滑鼠？",
+      "description": "BongoCat 需要讀取輸入裝置，才能回應其他應用程式中的鍵盤和滑鼠操作。點擊確定後，系統會要求管理員授權；僅輸入監聽輔助程序取得權限，設定和模型視窗仍以一般使用者執行。選擇稍後設定可繼續使用，但鍵鼠回應暫時無法使用。",
+      "confirm": "確定"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "版本資訊",
-        "label": "版本",
-        "environment": {
-          "development": "開發版",
-          "release": "正式版"
-        }
+        "label": "版本"
       }
     },
     "software_information": {
       "title": "軟體資訊",
-      "description": "以 JSON 複製版本、系統與執行狀態資訊，回報問題時使用。",
+      "description": "複製版本、系統與執行資訊，用於問題回報。",
       "copy": "複製",
       "copy_success": "軟體資訊已複製"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "問題回報",
-      "description": "請先複製軟體資訊，再貼到問題回報中。",
       "action": "回報問題"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "模型匯入完成",
       "failed": "模型匯入失敗",
+      "selection_dialog": {
+        "title": "選擇模型"
+      },
       "mver_dialog": {
         "title": "選擇要轉換的模式",
         "description": "請選擇要匯入的 BongoCat Mver 模式。",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "動作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "tooltip": "重新命名",
+        "field": "名稱"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快速鍵佔用"
@@ -315,7 +339,10 @@
       "dock_icon_update_failed": "無法更新 Dock 圖示。",
       "window_hide_failed": "無法隱藏設定視窗",
       "window_layout_save_failed": "無法儲存視窗版面配置",
-      "application_shutdown_failed": "BongoCat 未能完全關閉"
+      "application_shutdown_failed": "BongoCat 未能完全關閉",
+      "network_relay_failed": "無法啟動伺服器。請檢查監聽位址和連接埠。",
+      "network_room_failed": "無法加入房間。請檢查位址和金鑰。",
+      "network_restore_failed": "無法恢復先前的連線工作階段。請檢查連線後再試一次。"
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "視窗模式"
+      },
+      "window_background_color": {
+        "label": "視窗背景顏色"
+      },
       "behavior": {
         "title": "視窗行為"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "記住每個模型上次使用的表情"
         },
+        "toggle_repeated_expression": {
+          "label": "重複觸發同一表情時關閉它"
+        },
+        "allow_motion_overlap": {
+          "label": "疊加播放動作"
+        },
         "random_behavior_mode": {
           "label": "隨機播放動作或表情",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "滑鼠追蹤靈敏度（%）",
-          "description": "100% 為預設速度。數值越小移動越慢；到達邊界後，多餘的位移會被捨棄。"
-        },
         "title": "滑鼠",
         "mirror_mouse_tracking_horizontal": {
           "label": "水平翻轉滑鼠跟隨"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "強制移動滑鼠",
           "description": "在擷取指標的應用程式（例如全螢幕遊戲）中也能繼續跟隨滑鼠移動。"
+        },
+        "sensitivity": {
+          "label": "滑鼠追蹤靈敏度（%）",
+          "description": "100% 為預設速度。數值越小移動越慢；到達邊界後，多餘的位移會被捨棄。"
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "顯示工作列圖示"
       },
       "dock_icon": {
-        "label": "顯示 Dock 圖示"
+        "label": "始終顯示 Dock 圖示"
       },
       "auto_update": {
         "label": "自動檢查更新",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "登入時啟動"
+        "label": "開機自動啟動"
       },
       "startup": {
         "checking": "正在檢查登入項目…",
@@ -533,13 +574,73 @@
         "stale": "應用程式位置已變更；重新切換一次開關即可修復",
         "requires_approval": "請在系統設定中核准 BongoCat",
         "not_found": "登入項目缺失；重新切換一次開關即可修復",
-        "unsupported_platform": "目前系統不支援登入時啟動",
-        "unsupported_os": "目前作業系統不支援登入時啟動",
-        "unsupported_build": "開發版本不支援登入時啟動"
+        "unsupported_platform": "目前系統不支援開機自動啟動",
+        "unsupported_os": "目前作業系統不支援開機自動啟動",
+        "unsupported_build": "開發版本不支援開機自動啟動"
+      }
+    },
+    "alpha": {
+      "camera": "虛擬攝影機",
+      "driver": "驅動程式",
+      "enable": "啟用 Alpha 輸出",
+      "error": {
+        "authorization": "授權失敗或已取消，請檢查系統授權代理是否運作",
+        "busy": "攝影機操作進行中",
+        "config": "無法儲存輸出設定",
+        "conflict": "無法驗證攝影機所有權",
+        "driver": "請先安裝 v4l2loopback 驅動程式",
+        "operation": "攝影機操作失敗",
+        "permission": "無法設定攝影機權限",
+        "rollback": "安裝失敗且回復需要處理",
+        "service": "設定服務不可用",
+        "stale": "設定已變更，請重新整理後重試",
+        "stop": "無法停止輸出，請重試",
+        "unsupported": "所需工具或服務不可用"
+      },
+      "install": "安裝虛擬攝影機",
+      "management": "裝置管理",
+      "module": "核心模組",
+      "output": "輸出",
+      "refresh": "重新偵測",
+      "retry": "重試輸出",
+      "title": "Alpha 輸出",
+      "uninstall": "解除安裝虛擬攝影機",
+      "value": {
+        "available": "可用",
+        "checking": "正在偵測…",
+        "conflict": "裝置所有權衝突",
+        "control_missing": "未安裝 v4l2loopback-ctl",
+        "driver_missing": "未安裝驅動程式",
+        "failed": "失敗",
+        "format": "不支援的格式",
+        "installed": "已安裝",
+        "loaded": "已載入",
+        "module_tools_missing": "核心模組工具不可用",
+        "not_installed": "未安裝",
+        "not_loaded": "未載入",
+        "off": "已關閉",
+        "permission": "權限不足",
+        "pkexec_missing": "未安裝 pkexec",
+        "recovery": "請重新安裝虛擬攝影機",
+        "running": "運作中",
+        "starting": "正在啟動",
+        "stopping": "正在停止",
+        "udev_missing": "未安裝 udevadm",
+        "unavailable": "裝置不可用",
+        "unknown": "未知",
+        "unsupported": "不可用"
       }
     },
     "multiplayer": {
-      "restart_notice": "連線服務會在 BongoCat 啟動時建立，修改後重新啟動 BongoCat 才會生效。",
+      "editor": {
+        "connect": "連線",
+        "change_connection": "變更連線…",
+        "edit_connection": "設定連線…",
+        "apply_relay": "套用伺服器設定",
+        "edit_relay": "設定伺服器…",
+        "cancel": "取消",
+        "disconnect": "中斷連線"
+      },
       "device": {
         "title": "本機",
         "id": {
@@ -554,24 +655,19 @@
         "self": {
           "label": "本機（跟隨自己的輸入）"
         },
-        "remove": "移除",
-        "add": {
-          "label": "新增裝置 ID",
-          "action": "新增"
-        },
         "peer": {
-          "show": "展示此裝置",
           "sharing": "共享中",
-          "not_sharing": "未共享"
+          "not_sharing": "未共享",
+          "offline": "離線",
+          "saved": "已選裝置",
+          "unnamed": "未命名裝置"
         },
-        "empty": "清單為空是合法的：一台機器可以只把自己的輸入送到房間，而不顯示任何東西。"
+        "empty": "從房間裝置中選擇要顯示的貓。"
       },
       "client": {
         "title": "用戶端",
-        "enabled": {
-          "label": "加入房間"
-        },
         "source": {
+          "label": "連線方式",
           "options": {
             "follow_local": "跟隨本機的連線服務",
             "manual": "手動指定位址"
@@ -588,7 +684,7 @@
         }
       },
       "server": {
-        "title": "伺服端",
+        "title": "伺服器",
         "enabled": {
           "label": "在本機執行連線服務"
         },
@@ -614,7 +710,7 @@
       "status": {
         "title": "狀態",
         "server": {
-          "label": "連線服務",
+          "label": "伺服器",
           "stopped": "未執行"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "房間內其他裝置",
           "none": "不在房間內"
         },
-        "bound": {
-          "label": "正在跟隨",
-          "none": "暫無"
+        "device_id": {
+          "label": "本機裝置 ID",
+          "copy": "複製",
+          "copy_failed": "無法複製本機裝置 ID。"
         },
         "latency": {
           "label": "延遲",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "狀態與裝置選擇"
-      },
-      "restart": {
-        "action": "重新啟動"
       }
+    }
+  },
+  "plugins": {
+    "enable": "啟用",
+    "disable": "停用",
+    "loading": "正在載入外掛…",
+    "discovery_failed": "無法載入外掛清單，請重試。",
+    "install": "安裝",
+    "update": "更新",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "update_all_success": "所有外掛程式均已更新。",
+    "available_version": "可用版本 %{version}",
+    "uninstall": "卸載",
+    "uninstall_confirm": "確定要卸載「%{name}」嗎？",
+    "settings": {
+      "open": "設定",
+      "title": "%{name} 設定",
+      "empty": "此外掛沒有可設定的項目。"
+    },
+    "version": "版本 %{version}",
+    "errors": {
+      "install_failed": "外掛安裝失敗：%{name}",
+      "update_failed": "外掛更新失敗：%{name}",
+      "enable_failed": "外掛啟用失敗：%{name}",
+      "disable_failed": "外掛停用失敗：%{name}",
+      "uninstall_failed": "外掛解除安裝失敗：%{name}",
+      "action_failed": "外掛操作失敗：%{name}",
+      "configure_failed": "外掛設定儲存失敗：%{name}",
+      "update_all_failed": "以下外掛更新失敗：%{names}",
+      "with_reason": "%{message}（%{reason}）",
+      "service_unavailable": "外掛服務無法使用",
+      "not_installed": "找不到此外掛",
+      "not_running": "外掛未執行",
+      "load_failed": "外掛載入失敗：%{name}",
+      "runtime_failed": "外掛執行異常：%{name}",
+      "reported": "外掛錯誤：%{name}（%{reason}）",
+      "preview_failed": "外掛預覽失敗：%{name}"
     }
   },
   "linux_input": {

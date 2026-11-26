@@ -338,6 +338,7 @@ impl Application {
             render_consumer,
             application_log,
             core_log_diagnostics: None,
+            plugin_client: None,
             update_diagnostics: None,
             run_marker,
             panic_hook: None,

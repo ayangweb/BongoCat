@@ -27,5 +27,6 @@ fn preset_model(id: &str) -> CommittedModel {
 mod automatic;
 mod error;
 mod evaluate;
+mod expression;
 mod model;
 mod motion;

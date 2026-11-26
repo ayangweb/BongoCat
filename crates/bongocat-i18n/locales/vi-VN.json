@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "Phím tắt"
     },
-    "multiplayer": {
-      "title": "Nhiều máy"
-    },
     "app_system": {
       "title": "Ứng dụng & hệ thống"
     },
     "about": {
       "title": "Giới thiệu"
+    },
+    "plugins": {
+      "title": "Trung tâm tiện ích",
+      "empty": "Không có plugin khả dụng."
+    },
+    "multiplayer": {
+      "title": "Nhiều máy"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "Cài đặt",
     "quit": "Thoát BongoCat"
   },
+  "application_menu": {
+    "file": "Tệp",
+    "edit": "Sửa",
+    "window": "Cửa sổ",
+    "services": "Dịch vụ",
+    "close": "Đóng",
+    "minimize": "Thu nhỏ",
+    "zoom": "Thu phóng",
+    "hide": "Ẩn BongoCat",
+    "hide_others": "Ẩn ứng dụng khác",
+    "show_all": "Hiển thị tất cả",
+    "undo": "Hoàn tác",
+    "redo": "Làm lại",
+    "cut": "Cắt",
+    "copy": "Sao chép",
+    "paste": "Dán",
+    "select_all": "Chọn tất cả"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "Cho phép theo dõi bàn phím và chuột?",
-      "description": "BongoCat cần truy cập thiết bị đầu vào để phản hồi thao tác bàn phím và chuột trong các ứng dụng khác. Sau khi xác nhận, hệ thống sẽ yêu cầu quyền quản trị viên. Chỉ tiến trình hỗ trợ đầu vào nhận quyền này; cửa sổ cài đặt và mô hình vẫn chạy với quyền người dùng thông thường. Chọn thiết lập sau để tiếp tục mà không có phản hồi bàn phím và chuột.",
-      "confirm": "OK"
-    },
     "later": "Thiết lập sau",
     "input_monitoring": {
       "title": "Cần cấp quyền Giám sát đầu vào",
@@ -53,22 +70,23 @@
       "title": "Khuyến nghị chạy với quyền quản trị",
       "description": "BongoCat cần quyền quản trị để tiếp tục nhận thông tin từ bàn phím và chuột khi một ứng dụng khác đang chạy với đặc quyền quản trị.\n\nĐể thiết lập: nhấp phải vào BongoCat → Thuộc tính → Tương thích → bật \"Chạy chương trình này với tư cách quản trị viên\".",
       "open_program_folder": "Thoát và mở Cài đặt"
+    },
+    "linux": {
+      "title": "Cho phép theo dõi bàn phím và chuột?",
+      "description": "BongoCat cần truy cập thiết bị đầu vào để phản hồi thao tác bàn phím và chuột trong các ứng dụng khác. Sau khi xác nhận, hệ thống sẽ yêu cầu quyền quản trị viên. Chỉ tiến trình hỗ trợ đầu vào nhận quyền này; cửa sổ cài đặt và mô hình vẫn chạy với quyền người dùng thông thường. Chọn thiết lập sau để tiếp tục mà không có phản hồi bàn phím và chuột.",
+      "confirm": "OK"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "Thông tin phiên bản",
-        "label": "Phiên bản",
-        "environment": {
-          "development": "Bản dựng phát triển",
-          "release": "Bản phát hành"
-        }
+        "label": "Phiên bản"
       }
     },
     "software_information": {
       "title": "Thông tin phần mềm",
-      "description": "Sao chép thông tin phiên bản, hệ thống và môi trường chạy dưới dạng JSON để đưa vào báo cáo lỗi.",
+      "description": "Sao chép thông tin phiên bản, hệ thống và môi trường chạy để báo cáo lỗi.",
       "copy": "Sao chép",
       "copy_success": "Đã sao chép thông tin phần mềm"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "Góp ý vấn đề",
-      "description": "Hãy sao chép thông tin phần mềm trước, rồi dán vào báo cáo.",
       "action": "Báo cáo sự cố"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "Đã nhập mô hình",
       "failed": "Nhập mô hình thất bại",
+      "selection_dialog": {
+        "title": "Chọn mô hình"
+      },
       "mver_dialog": {
         "title": "Chọn chế độ cần chuyển đổi",
         "description": "Chọn các chế độ BongoCat Mver cần nhập.",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "Chuyển động %{index}",
-      "expression": "Biểu cảm %{index}"
+      "expression": "Biểu cảm %{index}",
+      "rename": {
+        "tooltip": "Đổi tên",
+        "field": "Tên"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} đã được gán cho một phím tắt khác"
@@ -309,13 +333,16 @@
       "software_info_copy_failed": "Không thể sao chép thông tin phần mềm",
       "external_link_open_failed": "Không thể mở liên kết",
       "log_location_open_failed": "Không thể mở thư mục nhật ký ứng dụng",
-      "login_startup_update_failed": "Không thể cập nhật cài đặt mở khi đăng nhập",
+      "login_startup_update_failed": "Không thể cập nhật cài đặt tự động khởi động cùng hệ thống",
       "system_icon_update_failed": "Không thể cập nhật biểu tượng hệ thống.",
       "taskbar_icon_update_failed": "Không thể cập nhật biểu tượng thanh tác vụ.",
       "dock_icon_update_failed": "Không thể cập nhật biểu tượng Dock.",
       "window_hide_failed": "Không thể ẩn cửa sổ cài đặt",
       "window_layout_save_failed": "Không thể lưu bố cục cửa sổ",
-      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn"
+      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn",
+      "network_relay_failed": "Không thể khởi động bộ Máy chủ phòng. Hãy kiểm tra địa chỉ và cổng lắng nghe.",
+      "network_room_failed": "Không thể vào phòng. Hãy kiểm tra địa chỉ và khóa.",
+      "network_restore_failed": "Không thể khôi phục phiên kết nối trước. Hãy kiểm tra kết nối và thử lại."
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Chế độ cửa sổ"
+      },
+      "window_background_color": {
+        "label": "Màu nền cửa sổ"
+      },
       "behavior": {
         "title": "Hành vi cửa sổ"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "Ghi nhớ biểu cảm cuối cùng của mỗi mô hình"
         },
+        "toggle_repeated_expression": {
+          "label": "Tắt biểu cảm khi kích hoạt lại"
+        },
+        "allow_motion_overlap": {
+          "label": "Cho phép chồng chuyển động"
+        },
         "random_behavior_mode": {
           "label": "Phát ngẫu nhiên chuyển động hoặc biểu cảm",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "Độ nhạy theo dõi chuột (%)",
-          "description": "100% là tốc độ mặc định. Giá trị thấp hơn làm chuyển động chậm hơn; phần di chuyển vượt quá giới hạn sẽ bị bỏ qua."
-        },
         "title": "Chuột",
         "mirror_mouse_tracking_horizontal": {
           "label": "Lật theo dõi chuột theo chiều ngang"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "Buộc di chuyển chuột",
           "description": "Vẫn theo dõi chuột trong các ứng dụng chiếm giữ con trỏ, chẳng hạn như trò chơi toàn màn hình."
+        },
+        "sensitivity": {
+          "label": "Độ nhạy theo dõi chuột (%)",
+          "description": "100% là tốc độ mặc định. Giá trị thấp hơn làm chuyển động chậm hơn; phần di chuyển vượt quá giới hạn sẽ bị bỏ qua."
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "Hiện biểu tượng trên thanh tác vụ"
       },
       "dock_icon": {
-        "label": "Hiện biểu tượng trên Dock"
+        "label": "Luôn hiện biểu tượng Dock"
       },
       "auto_update": {
         "label": "Tự động kiểm tra cập nhật",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "Mở khi đăng nhập"
+        "label": "Tự động khởi động cùng hệ thống"
       },
       "startup": {
         "checking": "Đang kiểm tra mục khởi động…",
@@ -533,13 +574,73 @@
         "stale": "Vị trí ứng dụng đã lưu đã thay đổi; hãy tắt rồi bật lại công tắc để sửa",
         "requires_approval": "Cấp quyền cho BongoCat trong Cài đặt hệ thống",
         "not_found": "Thiếu mục khởi động; hãy tắt rồi bật lại công tắc để sửa",
-        "unsupported_platform": "Tính năng mở khi đăng nhập không khả dụng trên hệ thống này",
-        "unsupported_os": "Tính năng mở khi đăng nhập không khả dụng trên hệ điều hành này",
-        "unsupported_build": "Tính năng mở khi đăng nhập không khả dụng trong bản dựng phát triển"
+        "unsupported_platform": "Tính năng tự động khởi động không khả dụng trên hệ thống này",
+        "unsupported_os": "Tính năng tự động khởi động không khả dụng trên hệ điều hành này",
+        "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
+      }
+    },
+    "alpha": {
+      "camera": "Camera ảo",
+      "driver": "Trình điều khiển",
+      "enable": "Bật đầu ra Alpha",
+      "error": {
+        "authorization": "Ủy quyền thất bại hoặc bị hủy; hãy kiểm tra trình xác thực",
+        "busy": "Camera đang được xử lý",
+        "config": "Không thể lưu cài đặt đầu ra",
+        "conflict": "Không thể xác minh quyền sở hữu camera",
+        "driver": "Hãy cài trình điều khiển v4l2loopback trước",
+        "operation": "Thao tác camera thất bại",
+        "permission": "Không thể đặt quyền camera",
+        "rollback": "Cài đặt thất bại và cần xử lý hoàn tác",
+        "service": "Dịch vụ cài đặt không khả dụng",
+        "stale": "Cài đặt đã thay đổi; hãy kiểm tra lại",
+        "stop": "Không thể dừng đầu ra; hãy thử lại",
+        "unsupported": "Thiếu công cụ hoặc dịch vụ cần thiết"
+      },
+      "install": "Cài camera ảo",
+      "management": "Quản lý thiết bị",
+      "module": "Mô-đun nhân",
+      "output": "Đầu ra",
+      "refresh": "Kiểm tra lại",
+      "retry": "Thử lại đầu ra",
+      "title": "Đầu ra Alpha",
+      "uninstall": "Gỡ camera ảo",
+      "value": {
+        "available": "Khả dụng",
+        "checking": "Đang kiểm tra…",
+        "conflict": "Xung đột quyền sở hữu",
+        "control_missing": "Chưa cài v4l2loopback-ctl",
+        "driver_missing": "Chưa cài trình điều khiển",
+        "failed": "Thất bại",
+        "format": "Định dạng không hỗ trợ",
+        "installed": "Đã cài",
+        "loaded": "Đã nạp",
+        "module_tools_missing": "Công cụ mô-đun không khả dụng",
+        "not_installed": "Chưa cài",
+        "not_loaded": "Chưa nạp",
+        "off": "Đã tắt",
+        "permission": "Không có quyền",
+        "pkexec_missing": "Chưa cài pkexec",
+        "recovery": "Cài đặt lại camera ảo",
+        "running": "Đang chạy",
+        "starting": "Đang khởi động",
+        "stopping": "Đang dừng",
+        "udev_missing": "Chưa cài udevadm",
+        "unavailable": "Thiết bị không khả dụng",
+        "unknown": "Không rõ",
+        "unsupported": "Không khả dụng"
       }
     },
     "multiplayer": {
-      "restart_notice": "Dịch vụ kết nối được tạo khi BongoCat khởi động. Khởi động lại BongoCat để thay đổi trên trang này có hiệu lực.",
+      "editor": {
+        "connect": "Kết nối",
+        "change_connection": "Đổi kết nối…",
+        "edit_connection": "Thiết lập kết nối…",
+        "apply_relay": "Áp dụng cài đặt máy chủ",
+        "edit_relay": "Cấu hình máy chủ…",
+        "cancel": "Hủy",
+        "disconnect": "Ngắt kết nối"
+      },
       "device": {
         "title": "Máy này",
         "id": {
@@ -554,24 +655,19 @@
         "self": {
           "label": "Máy này (theo chính input của máy)"
         },
-        "remove": "Xóa",
-        "add": {
-          "label": "Thêm mã thiết bị",
-          "action": "Thêm"
-        },
         "peer": {
-          "show": "Hiện thiết bị này",
           "sharing": "đang chia sẻ",
-          "not_sharing": "không chia sẻ"
+          "not_sharing": "không chia sẻ",
+          "offline": "ngoại tuyến",
+          "saved": "Thiết bị đã chọn",
+          "unnamed": "Thiết bị chưa đặt tên"
         },
-        "empty": "Danh sách trống là hợp lệ: một máy có thể chỉ gửi input của nó vào phòng mà không hiển thị gì cả."
+        "empty": "Chọn thiết bị trong phòng để hiển thị."
       },
       "client": {
         "title": "Vào phòng",
-        "enabled": {
-          "label": "Vào phòng"
-        },
         "source": {
+          "label": "Cách kết nối",
           "options": {
             "follow_local": "Theo dịch vụ trên máy này",
             "manual": "Tự nhập địa chỉ"
@@ -588,7 +684,7 @@
         }
       },
       "server": {
-        "title": "Chạy dịch vụ",
+        "title": "Máy chủ phòng",
         "enabled": {
           "label": "Chạy dịch vụ trên máy này"
         },
@@ -614,7 +710,7 @@
       "status": {
         "title": "Trạng thái",
         "server": {
-          "label": "Dịch vụ",
+          "label": "Máy chủ phòng",
           "stopped": "Chưa chạy"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "Thiết bị khác trong phòng",
           "none": "Chưa ở trong phòng"
         },
-        "bound": {
-          "label": "Đang theo",
-          "none": "Chưa có"
+        "device_id": {
+          "label": "ID thiết bị này",
+          "copy": "Sao chép",
+          "copy_failed": "Không thể sao chép ID của thiết bị này."
         },
         "latency": {
           "label": "Độ trễ",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "Trạng thái và thiết bị"
-      },
-      "restart": {
-        "action": "Khởi động lại"
       }
+    }
+  },
+  "plugins": {
+    "enable": "Bật",
+    "disable": "Tắt",
+    "loading": "Đang tải tiện ích…",
+    "discovery_failed": "Không thể tải danh sách tiện ích. Vui lòng thử lại.",
+    "install": "Cài đặt",
+    "update": "Cập nhật",
+    "update_all": "Cập nhật tất cả",
+    "update_available": "Có bản cập nhật",
+    "update_all_success": "Tất cả plugin đã được cập nhật.",
+    "available_version": "Phiên bản có sẵn %{version}",
+    "uninstall": "Gỡ cài đặt",
+    "uninstall_confirm": "Bạn có chắc muốn gỡ cài đặt %{name} không?",
+    "settings": {
+      "open": "Cài đặt",
+      "title": "Cài đặt %{name}",
+      "empty": "Tiện ích này không có cài đặt nào."
+    },
+    "version": "Phiên bản %{version}",
+    "errors": {
+      "install_failed": "Cài đặt plugin thất bại: %{name}",
+      "update_failed": "Cập nhật plugin thất bại: %{name}",
+      "enable_failed": "Không thể bật plugin: %{name}",
+      "disable_failed": "Không thể tắt plugin: %{name}",
+      "uninstall_failed": "Gỡ cài đặt plugin thất bại: %{name}",
+      "action_failed": "Thao tác plugin thất bại: %{name}",
+      "configure_failed": "Không thể lưu cài đặt plugin: %{name}",
+      "update_all_failed": "Không thể cập nhật các plugin: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "Dịch vụ plugin không khả dụng",
+      "not_installed": "Không tìm thấy plugin",
+      "not_running": "Plugin chưa chạy",
+      "load_failed": "Tải plugin thất bại: %{name}",
+      "runtime_failed": "Plugin đã dừng bất ngờ: %{name}",
+      "reported": "Lỗi plugin: %{name} — %{reason}",
+      "preview_failed": "Xem trước plugin thất bại: %{name}"
     }
   },
   "linux_input": {

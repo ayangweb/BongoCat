@@ -1,0 +1,25 @@
+[package]
+name = "bongocat-plugin-packaging"
+description = "Plugin-only packaging, catalog signing, and release-history tooling."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64.workspace = true
+bongocat-plugin-sdk.workspace = true
+flate2.workspace = true
+minisign.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[lints]
+workspace = true

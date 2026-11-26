@@ -1,6 +1,6 @@
 # ADR-0043: Startup Item Backend via auto-launch
 
-状态：Accepted
+状态：Accepted；Windows 后端由 ADR-0095 取代，macOS 保持不变
 日期：2026-09-17
 取代：ADR-0013
 修订：ADR-0051 取代了"Development 构建从此支持启动项"这一条决策——开发构建现在按构建环境汇报

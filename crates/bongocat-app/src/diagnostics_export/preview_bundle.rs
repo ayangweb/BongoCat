@@ -275,7 +275,7 @@ fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
         if file.is_dir() || file.compression() != CompressionMethod::Stored {
             return Err(PreviewBundleError);
         }
-        names.push(file.name().to_owned());
+        names.push(file.name().map_err(|_| PreviewBundleError)?.into_owned());
     }
     names.sort_unstable();
     let mut expected = PREVIEW_BUNDLE_ENTRIES.map(str::to_owned);

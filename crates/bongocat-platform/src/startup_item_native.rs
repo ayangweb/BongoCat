@@ -7,6 +7,14 @@ const PRODUCT_BUNDLE_IDENTIFIER: &str = "com.ayangweb.bongo-cat";
 pub(super) fn state(
     environment: StartupItemEnvironment,
 ) -> Result<StartupItemState, StartupItemError> {
+    #[cfg(target_os = "windows")]
+    if let Some(enabled) = super::startup_item_windows::state(environment)? {
+        return Ok(if enabled {
+            StartupItemState::Enabled
+        } else {
+            StartupItemState::Disabled
+        });
+    }
     let backend = backend(environment)?;
     match backend.is_enabled() {
         Ok(true) => Ok(StartupItemState::Enabled),
@@ -20,22 +28,35 @@ pub(super) fn set_enabled(
     enabled: bool,
 ) -> Result<StartupItemState, StartupItemError> {
     let backend = backend(environment)?;
-    let current = backend
-        .is_enabled()
-        .map_err(|_| StartupItemError::StateReadFailed)?;
-    if current == enabled {
-        return state(environment);
-    }
-    if enabled {
-        backend.enable().map_err(enable_error)?;
-    } else {
+    #[cfg(target_os = "windows")]
+    {
+        // Replace the published Run registration only after the new task is registered.
+        super::startup_item_windows::set_enabled(environment, enabled)?;
         backend
             .disable()
             .map_err(|_| StartupItemError::DisableFailed)?;
+        state(environment)
     }
-    state(environment)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let current = backend
+            .is_enabled()
+            .map_err(|_| StartupItemError::StateReadFailed)?;
+        if current == enabled {
+            return state(environment);
+        }
+        if enabled {
+            backend.enable().map_err(enable_error)?;
+        } else {
+            backend
+                .disable()
+                .map_err(|_| StartupItemError::DisableFailed)?;
+        }
+        state(environment)
+    }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn enable_error(error: auto_launch::Error) -> StartupItemError {
     match error {
         auto_launch::Error::AppPathDoesntExist(_) | auto_launch::Error::AppPathIsNotAbsolute(_) => {
@@ -117,14 +138,14 @@ mod tests {
             Ok(StartupItemState::Enabled)
         );
         assert_eq!(state(environment), Ok(StartupItemState::Enabled));
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         assert!(launch_agent_plist_path(app_name(environment)).exists());
 
         assert_eq!(
             set_enabled(environment, false),
             Ok(StartupItemState::Disabled)
         );
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         assert!(!launch_agent_plist_path(app_name(environment)).exists());
 
         if matches!(original, StartupItemState::Enabled) {
@@ -137,7 +158,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     fn launch_agent_plist_path(app_name: &str) -> std::path::PathBuf {
         let home = std::env::var("HOME").expect("HOME environment variable");
         std::path::Path::new(&home)

@@ -8,7 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
 CI_WORKFLOW = WORKFLOW_DIRECTORY / "verify.yml"
-RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "release.yml"
+RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "app-release.yml"
 DENY = ROOT / "deny.toml"
 DEPENDENCY_POLICY = ROOT / "tools" / "check-dependencies.sh"
 

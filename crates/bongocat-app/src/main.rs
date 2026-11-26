@@ -21,12 +21,18 @@
 
 #[cfg(all(test, not(target_os = "linux")))]
 mod binary_tests;
+#[cfg(any(test, not(target_os = "linux")))]
+mod dev_plugins;
 mod gamepad_observer;
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod model_cover;
 #[cfg(target_os = "linux")]
 mod net_publish;
 #[cfg(not(target_os = "linux"))]
 mod overlay_placement;
+#[cfg(not(target_os = "linux"))]
+mod plugin_input;
 #[cfg(not(target_os = "linux"))]
 mod preset_root;
 mod product_icons;
@@ -58,15 +64,11 @@ use bongocat_app::{
 };
 #[cfg(not(target_os = "linux"))]
 use bongocat_live2d::CoreLogHandle;
-#[cfg(target_os = "linux")]
 #[cfg(not(target_os = "linux"))]
-use bongocat_overlay::OverlayContextMenuRequest;
-#[cfg(not(target_os = "linux"))]
+use bongocat_overlay::{OverlayContextMenuRequest, OverlayWindowBounds};
 use bongocat_overlay::{
-    OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, OverlayWindowBounds,
+    OverlayInteractionSinks, OverlayResizeOutcome, OverlaySessionOptions, ProductOverlaySession,
 };
-use bongocat_overlay::{OverlayInteractionSinks, OverlayResizeOutcome};
-use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
 #[cfg(not(target_os = "linux"))]
 use bongocat_platform::GlobalShortcutService;
 #[cfg(target_os = "windows")]
@@ -92,6 +94,7 @@ use gpui_kit::{
 };
 #[cfg(not(target_os = "linux"))]
 use gpui_kit::{AsyncApp, Context, Window};
+use reqwest_client::ReqwestClient;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
@@ -136,7 +139,10 @@ use product_shutdown::{
 #[cfg(target_os = "windows")]
 use product_shutdown::{request_windows_product_quit, start_windows_product_shutdown};
 #[cfg(target_os = "macos")]
-use product_windows::{apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state};
+use product_windows::{
+    apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state,
+    sync_product_dock_icon,
+};
 #[cfg(target_os = "windows")]
 use product_windows::{
     apply_taskbar_icon_visibility, product_taskbar_icon_state, take_update_restart_request,
@@ -181,7 +187,25 @@ fn gpui_application() -> GpuiApplication {
     // update restart), not by window bookkeeping: the product stays alive behind
     // the overlay and the status icon even when every product window is closed,
     // so GPUI must never auto-quit on last-window-closed.
-    GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
+    //
+    // Plugin card PNGs arrive from GitHub Release in Production and are loaded
+    // by GPUI's image element through `cx.http_client()`. `new_inaccessible`
+    // installs a null client, so the product must provide the same Rustls-backed
+    // client for both Development and Production.
+    let http_client = ReqwestClient::user_agent(&product_user_agent())
+        .expect("the product user agent is a valid HTTP header");
+    GpuiApplication::new_inaccessible(current_platform(false))
+        .with_http_client(std::sync::Arc::new(http_client))
+        .with_quit_mode(QuitMode::Explicit)
+}
+
+fn product_user_agent() -> String {
+    format!(
+        "BongoCat/{} ({}/{})",
+        bongocat_app::PRODUCT_VERSION,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
 }
 
 /// How long a Windows taskbar check waits for the runtime's published
@@ -201,6 +225,17 @@ async fn settle_taskbar_icon(
             .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
         let (model_window, settings_window, model_window_visible) =
             cx.update(product_taskbar_icon_state)?;
+        if snapshot.overlay.window_mode {
+            if snapshot.taskbar_icon_visible == expected
+                && model_window
+                && settings_window
+                && model_window_visible
+            {
+                return Ok(());
+            }
+            Timer::after(TASKBAR_ICON_SETTLE_INTERVAL).await;
+            continue;
+        }
         match taskbar_icon_settle_gap(
             &TaskbarIconSample::new(
                 snapshot.taskbar_icon_visible,
@@ -229,6 +264,13 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    /// The one owner of the installed plugins.
+    ///
+    /// It outlives every window on purpose: a plugin's timer keeps counting while
+    /// the settings window is closed, and the model window draws the panels the
+    /// service composes.
+    plugin_service: Option<bongocat_plugin_service::PluginService>,
+    /// The currently open settings window, if any; close destroys it.
     settings: ProductSettingsWindow,
     /// The worker that owns the update pipeline.
     update_service: Option<bongocat_app::ApplicationUpdateService>,
@@ -247,11 +289,10 @@ struct ProductCoordinator {
     /// value is recorded here and read back by the smoke.
     #[cfg(target_os = "windows")]
     taskbar_icon_visible: bool,
-    /// The macOS Dock icon the product last applied. Kept for the same reason as
-    /// `taskbar_icon_visible`: it is the coordinator's own record of a
-    /// process-wide surface the settings worker cannot observe on its own thread.
+    /// The user's Dock preference while only the cat overlay is running.
+    /// Settings and update windows keep the Dock icon visible independently.
     #[cfg(target_os = "macos")]
-    dock_icon_visible: bool,
+    background_dock_icon_visible: bool,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
     #[cfg(target_os = "windows")]
@@ -290,6 +331,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--input-helper")) {
             return bongocat_input_helper::run();
+        }
+        if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--alpha-helper")) {
+            let mut args = env::args().skip(2);
+            let operation = args.next().ok_or("missing Alpha helper operation")?;
+            if args.next().is_some() || !bongocat_input_helper::is_root() {
+                return Err("invalid Alpha helper invocation".into());
+            }
+            match bongocat_platform::run_alpha_helper(bongocat_app::BUILD_ENVIRONMENT, &operation) {
+                Ok(()) => return Ok(()),
+                Err(error) => std::process::exit(error.exit_code()),
+            }
         }
         if bongocat_input_helper::is_root() {
             return Err(
@@ -414,6 +466,33 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
     }
     application.set_overlay_always_on_top_available(true);
     let application_log = application.log_handle();
+    // The plugin service starts before the overlay, because the overlay is what
+    // draws the layer the service composes: the window has to be handed the
+    // consumer end before its first tick. A store that cannot be opened is not
+    // fatal — the plugin center reports it and the cat still runs.
+    let plugin_storage_root = application.storage_root().to_path_buf();
+    let activity = application.runtime_client().subscribe_activity();
+    let (plugin_service, plugin_overlay_handles) =
+        match bongocat_plugin_service::PluginService::start_with_events(
+            &plugin_storage_root,
+            16,
+            dev_plugins::source(),
+            Box::new(plugin_input::PluginActivity(activity)),
+        ) {
+            Ok(started) => (Some(started.0), Some(started.1)),
+            Err(error) => {
+                application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                        .with_context(ApplicationLogContext::Service("plugin"))
+                        .with_context(ApplicationLogContext::Reason("plugin_service_unavailable")),
+                );
+                let _ = error;
+                (None, None)
+            }
+        };
+    if let Some(service) = &plugin_service {
+        application.attach_plugin_service(service.client());
+    }
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
         application.logs_directory(),
@@ -452,6 +531,8 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
     let permission_check_enabled = !run_options.automated_verification();
 
     let overlay_options = OverlaySessionOptions {
+        window_mode: application.config().overlay.window_mode,
+        window_background_color: application.config().overlay.window_background_color,
         click_through: application.config().overlay.click_through,
         hold_modifier_to_interact: application.config().overlay.hold_modifier_to_interact,
         always_on_top: application.config().overlay.always_on_top,
@@ -582,6 +663,15 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
                 resize_sender: Some(resize_sender),
+                hud_consumer: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.hud_consumer.clone()),
+                hud_interaction_sender: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.interaction_sender.clone()),
+                hud_viewport_reporter: plugin_overlay_handles
+                    .as_ref()
+                    .map(|handles| handles.viewport_reporter.clone()),
             },
         ) {
             Ok(overlay) => overlay,
@@ -698,6 +788,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
             #[cfg(target_os = "windows")]
             overlay,
             settings_service: Some(settings_service),
+            plugin_service,
             settings: ProductSettingsWindow::new(SettingsWindowSeed {
                 language: initial_settings_snapshot.resolved_language,
                 appearance_theme: initial_settings_snapshot.appearance_theme,
@@ -712,7 +803,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
             #[cfg(target_os = "macos")]
-            dock_icon_visible: initial_dock_icon_visible,
+            background_dock_icon_visible: initial_dock_icon_visible,
             #[cfg(target_os = "macos")]
             application_reopens: 0,
             #[cfg(target_os = "windows")]
@@ -731,6 +822,8 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
             #[cfg(target_os = "windows")]
             shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
+        #[cfg(target_os = "macos")]
+        macos_menu::init(cx);
 
         // The overlay started the process as a menu bar accessory application, so a
         // saved "show Dock icon" preference has to be applied after it, not before.
@@ -862,6 +955,13 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                 && !window_handle.is_open()
             {
                 cx.global_mut::<ProductCoordinator>().update_window = None;
+            }
+            #[cfg(target_os = "macos")]
+            if let Err(error) = sync_product_dock_icon(cx) {
+                record_failure(
+                    &cx.global::<ProductCoordinator>().failures,
+                    format!("apply Dock visibility after window close: {error}"),
+                );
             }
         })
         .detach();
@@ -1009,6 +1109,10 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Ok(());
+                        }
+                        #[cfg(target_os = "macos")]
+                        if cx.global::<ProductCoordinator>().settings.seed.language != language {
+                            macos_menu::set_language(language, cx);
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         coordinator.settings.seed.language = language;
@@ -1710,13 +1814,21 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                             coordinator.frame_ticks,
                         )
                     };
-                    // The window is visible, so the existing toggle request is a
-                    // close request. The coordinator must drop this handle when
-                    // GPUI finishes destroying the window.
-                    cx.global::<ProductCoordinator>()
-                        .main_thread_signals
-                        .request_open_settings();
-                    handle_shortcut_toggle_settings(cx);
+                    // Exercise the macOS menu action through the focused window's
+                    // dispatch path, including its deferred close and UI cleanup.
+                    #[cfg(target_os = "macos")]
+                    window_handle
+                        .update(cx, |_, window, cx| {
+                            window.dispatch_action(Box::new(macos_menu::CloseWindow), cx);
+                        })
+                        .map_err(|error| error.to_string())?;
+                    #[cfg(target_os = "windows")]
+                    {
+                        cx.global::<ProductCoordinator>()
+                            .main_thread_signals
+                            .request_open_settings();
+                        handle_shortcut_toggle_settings(cx);
+                    }
                     Ok((frame_ticks, window_handle))
                 });
                 let (baseline_ticks, original_window) = match baseline {
@@ -1843,7 +1955,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                     }
                 }
                 #[cfg(target_os = "macos")]
-                cx.update(request_product_quit);
+                cx.update(|cx| cx.dispatch_action(&macos_menu::Quit));
                 #[cfg(target_os = "windows")]
                 request_windows_product_quit(&smoke_shutdown_requested);
             })
@@ -2162,11 +2274,64 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                         cx.update(request_product_quit);
                         return;
                     }
+                    let mode_result = async {
+                        let initial = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                        let initial_settings = initial.overlay;
+                        for enabled in [!initial_settings.window_mode, initial_settings.window_mode] {
+                            let snapshot = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                            let mut settings = snapshot.overlay;
+                            settings.window_mode = enabled;
+                            smoke_client.set_overlay_settings(snapshot.config_revision.ok_or("window mode revision missing")?, settings).await.map_err(|error| error.to_string())?;
+                            let mut applied = false;
+                            for _ in 0..SMOKE_FIRST_FRAME_WAIT_TICKS {
+                                Timer::after(Duration::from_millis(50)).await;
+                                applied = cx.update(|cx| {
+                                    let coordinator = cx.global::<ProductCoordinator>();
+                                    let overlay = coordinator.overlay.borrow();
+                                    overlay.as_ref().is_some_and(|overlay| overlay.window_mode_is_active() == enabled && overlay.is_visible())
+                                });
+                                if applied { break; }
+                            }
+                            if !applied { return Err("window mode did not reach the product surface".to_owned()); }
+                        }
+                        let restored = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                        if restored.overlay != initial_settings { return Err("window mode changed pet preferences".to_owned()); }
+                        Ok::<(), String>(())
+                    }.await;
+                    if let Err(error) = mode_result {
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                    if let Err(error) = write_smoke_status("window mode toggled and restored") {
+                        record_failure(&smoke_failures, error.to_string());
+                        cx.update(request_product_quit);
+                        return;
+                    }
                 }
 
                 #[cfg(target_os = "macos")]
                 {
                     let dock_result = async {
+                        let window_handle = cx.update(ensure_settings_window)?;
+                        let assert_window_preserved = |cx: &mut App| -> Result<(), String> {
+                            if cx.global::<ProductCoordinator>().settings.window.as_ref()
+                                != Some(&window_handle)
+                            {
+                                return Err("Dock toggle replaced the settings window".to_owned());
+                            }
+                            let visible = window_handle
+                                .update(cx, |_, window, _| {
+                                    bongocat_platform::native_window_is_visible(window)
+                                })
+                                .map_err(|error| error.to_string())?
+                                .map_err(|error| error.to_string())?;
+                            if !visible {
+                                return Err("Dock toggle hid the settings window".to_owned());
+                            }
+                            Ok(())
+                        };
+                        cx.update(assert_window_preserved)?;
                         let initial = smoke_client
                             .read_snapshot()
                             .await
@@ -2174,12 +2339,9 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                         let initial_visibility = initial.dock_icon_visible;
                         let (native_initial, applied_initial) =
                             cx.update(product_dock_icon_state)?;
-                        if native_initial != initial_visibility
-                            || applied_initial != initial_visibility
-                        {
+                        if !native_initial || !applied_initial {
                             return Err(
-                                "startup Dock visibility diverged from the current snapshot"
-                                    .to_owned(),
+                                "settings window did not enable the Dock icon".to_owned(),
                             );
                         }
                         let changed = smoke_client
@@ -2193,14 +2355,15 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                             .map_err(|error| format!("toggle dock icon: {error}"))?;
                         let (native_changed, applied_changed) = cx.update(product_dock_icon_state)?;
                         if changed.dock_icon_visible == initial_visibility
-                            || native_changed != changed.dock_icon_visible
-                            || applied_changed != changed.dock_icon_visible
+                            || !native_changed
+                            || !applied_changed
                         {
                             return Err(
-                                "dock icon toggle did not reach the process activation policy"
-                                    .to_owned(),
+                                "background Dock preference hid an open settings window".to_owned(),
                             );
                         }
+                        Timer::after(Duration::from_millis(100)).await;
+                        let changed_window_result = cx.update(assert_window_preserved);
                         let restored = smoke_client
                             .set_dock_icon_visible(
                                 changed.config_revision.ok_or_else(|| {
@@ -2212,10 +2375,39 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                             .map_err(|error| format!("restore dock icon: {error}"))?;
                         let (native_restored, applied_restored) = cx.update(product_dock_icon_state)?;
                         if restored.dock_icon_visible != initial_visibility
-                            || native_restored != initial_visibility
-                            || applied_restored != initial_visibility
+                            || !native_restored
+                            || !applied_restored
                         {
                             return Err("dock icon visibility was not restored atomically".to_owned());
+                        }
+                        Timer::after(Duration::from_millis(100)).await;
+                        changed_window_result?;
+                        cx.update(assert_window_preserved)?;
+                        let update_window = cx.update(|cx| {
+                            product_windows::ensure_update_window(
+                                cx,
+                                bongocat_ui::UpdateWindowStart::Current,
+                            )
+                        })?;
+                        cx.update(product_windows::toggle_settings_window)?;
+                        Timer::after(Duration::from_millis(100)).await;
+                        let (native_with_update, expected_with_update) =
+                            cx.update(product_dock_icon_state)?;
+                        if !native_with_update || !expected_with_update {
+                            return Err("closing Settings hid the update window's Dock icon".to_owned());
+                        }
+                        cx.update(|cx| {
+                            update_window
+                                .update(cx, |_, window, _| window.remove_window())
+                                .map_err(|error| error.to_string())
+                        })?;
+                        Timer::after(Duration::from_millis(100)).await;
+                        let (native_background, expected_background) =
+                            cx.update(product_dock_icon_state)?;
+                        if native_background != initial_visibility
+                            || expected_background != initial_visibility
+                        {
+                            return Err("closing the last window did not restore the background Dock preference".to_owned());
                         }
                         Ok::<(), String>(())
                     }
@@ -2570,6 +2762,14 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
 struct Product {
     shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
     overlay: Option<ProductOverlaySession>,
+    peer: Option<(bongocat_runtime::RuntimeOwner, ProductOverlaySession)>,
+    extra: Option<(bongocat_runtime::RuntimeOwner, ProductOverlaySession)>,
+    placements: std::collections::BTreeMap<String, bongocat_overlay::OverlayWindowBounds>,
+    local_device: String,
+    primary_device: Option<String>,
+    peer_device: Option<String>,
+    extra_device: Option<String>,
+    network: Arc<Mutex<net_publish::TransportController>>,
     tray: Option<LinuxSystemTray>,
     service: Option<ApplicationSettingsService>,
     settings: ProductSettingsWindow,
@@ -2582,9 +2782,30 @@ struct Product {
 impl Global for Product {}
 #[cfg(target_os = "linux")]
 impl Product {
+    fn remember_positions(&mut self) {
+        for (device, overlay) in [
+            (self.primary_device.as_ref(), self.overlay.as_ref()),
+            (
+                self.peer_device.as_ref(),
+                self.peer.as_ref().map(|(_, overlay)| overlay),
+            ),
+            (
+                self.extra_device.as_ref(),
+                self.extra.as_ref().map(|(_, overlay)| overlay),
+            ),
+        ] {
+            if let Some(device) = device
+                && let Some(bounds) = overlay.and_then(|overlay| overlay.window_bounds().ok())
+            {
+                self.placements.insert(device.clone(), bounds);
+            }
+        }
+    }
+
     fn begin_shutdown(&mut self) -> Option<impl Future<Output = ()> + use<>> {
         // Product-owned quit completes this work before GPUI quits. The OS quit
         // callback can also reach here, after that work has already been taken.
+        self.remember_positions();
         let mut overlay = self.overlay.take()?;
         self.quit.store(true, Ordering::Release);
         self.frame_source.request_stop();
@@ -2598,9 +2819,43 @@ impl Product {
             record_failure(&self.failures, error.to_string());
         }
         let service = self.service.take().expect("running settings service");
+        let peers = [self.peer.take(), self.extra.take()];
+        let placements = std::mem::take(&mut self.placements);
+        let network = self.network.clone();
         let frame_source = self.frame_source.clone();
         let failures = self.failures.clone();
         Some(async move {
+            network
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .shutdown();
+            let client = service.client();
+            for (device, bounds) in placements {
+                for _ in 0..20 {
+                    if client
+                        .update_device_overlay_window_placement(
+                            device.clone(),
+                            bounds.x,
+                            bounds.y,
+                            bounds.width,
+                            bounds.height,
+                        )
+                        .is_ok()
+                    {
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(10)).await;
+                }
+            }
+            for (runtime, overlay) in peers.into_iter().flatten() {
+                frame_source.wait_for_stop().await;
+                if let Err(error) = runtime.shutdown(Duration::from_secs(2)) {
+                    record_failure(&failures, error.to_string());
+                }
+                if let Err(error) = overlay.finish_after_runtime_shutdown() {
+                    record_failure(&failures, error.to_string());
+                }
+            }
             finish_product_services(overlay, service, &frame_source, false, false, &failures).await;
         })
     }
@@ -2620,6 +2875,36 @@ fn presets() -> std::io::Result<tempfile::TempDir> {
     }
     Ok(directory)
 }
+#[cfg(target_os = "linux")]
+fn start_linux_product_input(cx: &mut App, hidden: bool) {
+    if hidden || bongocat_platform::unprivileged_input_is_possible() {
+        if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+            overlay.start_linux_input();
+        }
+    } else {
+        let settings = &cx.global::<Product>().settings;
+        let language = settings.seed.language;
+        if let Some(settings) = settings.window.clone() {
+            let _ = settings.update(cx, |_, window, cx| {
+                window.defer(cx, move |window, cx| {
+                    bongocat_ui::show_linux_input_permission(
+                        language,
+                        |cx| {
+                            cx.defer(|cx| {
+                                if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                                    overlay.start_linux_input();
+                                }
+                            });
+                        },
+                        window,
+                        cx,
+                    );
+                });
+            });
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     if options.automated_verification() {
@@ -2657,51 +2942,90 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         application.ensure_network_server_token()?;
     }
     let network_plan = net_publish::plan(&options, &application.config().network);
+    let mut display = network_plan.initial_display();
+    let mut room_available = network_plan.join.is_some();
+    let fixed_watch = options.watch;
     // Read before `options` is handed to the session below, which consumes it.
     let watching = network_plan.watching();
-    // A machine that joined a room but draws nothing — its own entry is off and
-    // no peer is listed — has no pet to show: leaving the window up would read
-    // as the switch not working. The tray can still bring it back for the
-    // session, exactly as a `--hide` run can.
-    if network_plan.in_room_without_pet() {
-        application.set_overlay_visible(false)?;
-    }
-    // Wrapped here rather than at the session call: `options` is shadowed by the
-    // overlay options two lines down, and the producer has to be wrapped before
-    // the session takes ownership of it. Started before the session so no key of
-    // the watched machine is missed while the overlay is still being built.
-    let input_producer = net_publish::start(
+    application.restore_startup_model()?;
+    let mut peer_runtime = (!fixed_watch)
+        .then(|| application.start_peer_runtime())
+        .transpose()?;
+    let mut extra_runtime = (!fixed_watch)
+        .then(|| application.start_peer_runtime())
+        .transpose()?;
+    let net_publish::NetworkSession {
+        input: input_producer,
+        local_input,
+        display: display_routing,
+        control: network,
+    } = net_publish::start(
+        options.clone(),
         &network_plan,
         application.input_producer(),
         application.cursor_producer(),
+        peer_runtime.as_ref().map(|(runtime, _)| runtime.client()),
+        extra_runtime.as_ref().map(|(runtime, _)| runtime.client()),
     )?;
+    let local_device = application.config().network.device.id.clone();
+    let placements: std::collections::BTreeMap<_, _> = application
+        .device_overlay_window_placements()
+        .iter()
+        .map(|(id, bounds)| {
+            (
+                id.clone(),
+                bongocat_overlay::OverlayWindowBounds::new(
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height,
+                ),
+            )
+        })
+        .collect();
+    let primary_device = if display.local {
+        Some(local_device.clone())
+    } else {
+        display.first_device().map(str::to_owned)
+    };
+    let peer_device = display
+        .both()
+        .then(|| display.first_device().map(str::to_owned))
+        .flatten();
     let config = &application.config().overlay;
     let options = OverlaySessionOptions {
         click_through: config.click_through,
         always_on_top: config.always_on_top,
         keep_inside_screen: config.keep_inside_screen,
-        window_bounds: application.overlay_window_placement().map(|placement| {
-            bongocat_overlay::OverlayWindowBounds::new(
-                placement.x,
-                placement.y,
-                placement.width,
-                placement.height,
-            )
-        }),
+        window_bounds: primary_device
+            .as_ref()
+            .and_then(|id| placements.get(id).copied())
+            .or_else(|| {
+                application.overlay_window_placement().map(|placement| {
+                    bongocat_overlay::OverlayWindowBounds::new(
+                        placement.x,
+                        placement.y,
+                        placement.width,
+                        placement.height,
+                    )
+                })
+            }),
         scale_percent: config.scale_percent,
         opacity_percent: config.opacity_percent,
         corner_radius_percent: config.corner_radius_percent,
         maximum_fps: config.maximum_fps,
         ..Default::default()
     };
+    let peer_bounds = peer_device
+        .as_ref()
+        .and_then(|id| placements.get(id).copied());
     bongocat_platform::set_linux_pointer_sensitivity(
         application.config().input.pointer_sensitivity_percent,
     );
-    application.restore_startup_model()?;
     let application_log = application.log_handle();
     let runtime = application.runtime_client();
     let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
-    let overlay = ProductOverlaySession::start_with_interaction_sinks(
+    let mut overlay = ProductOverlaySession::start_with_interaction_sinks(
         runtime.clone(),
         input_producer,
         application.cursor_producer(),
@@ -2711,8 +3035,38 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         OverlayInteractionSinks {
             context_menu_sender: None,
             resize_sender: Some(resize_sender),
+            hud_consumer: None,
+            hud_interaction_sender: None,
+            hud_viewport_reporter: None,
         },
     )?;
+    overlay.set_linux_display_selected(display.local);
+    let peer = if network_plan.shows_both()
+        && let Some((runtime, consumer)) = peer_runtime.take()
+    {
+        let mut overlay =
+            overlay.start_linux_peer(runtime.client(), consumer, options, peer_bounds)?;
+        overlay.set_linux_display_selected(false);
+        Some((runtime, overlay))
+    } else {
+        None
+    };
+    let extra_device = display.extra_device().map(str::to_owned);
+    let extra = if let Some(id) = &extra_device
+        && let Some((runtime, consumer)) = extra_runtime.take()
+    {
+        let anchor = peer.as_ref().map_or(&overlay, |(_, peer)| peer);
+        let saved = placements.get(id).copied();
+        let mut extra = anchor.start_linux_peer(runtime.client(), consumer, options, saved)?;
+        extra.set_linux_display_selected(false);
+        Some((runtime, extra))
+    } else {
+        None
+    };
+    overlay.set_linux_alpha_output_enabled(
+        application.config().alpha_output.enabled,
+        bongocat_app::BUILD_ENVIRONMENT,
+    );
     application.set_overlay_always_on_top_available(overlay.linux_always_on_top_available());
     let (sender, receiver) = std::sync::mpsc::sync_channel(64);
     let shortcut_service = bongocat_platform::GlobalShortcutService::start(
@@ -2720,7 +3074,24 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         bongocat_app::application_shortcut_dispatcher(runtime, sender),
     )?;
     let tick_runtime = application.runtime_client();
-    let signals = ApplicationMainThreadSignals::default();
+    let network = Arc::new(Mutex::new(network));
+    let network_apply = network.clone();
+    let signals = ApplicationMainThreadSignals::default().with_network_apply(move |config| {
+        let mut network = network_apply
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        network.apply(config).map_err(|error| {
+            SettingsError::new(match error {
+                net_publish::NetworkApplyError::Relay => SettingsErrorCode::NetworkRelayFailed,
+                net_publish::NetworkApplyError::Room => SettingsErrorCode::NetworkRoomFailed,
+                net_publish::NetworkApplyError::Restore => SettingsErrorCode::NetworkRestoreFailed,
+            })
+        })?;
+        Ok(bongocat_app::NetworkRuntimeSelection {
+            has_room: network.connected_room_configured(),
+            publishes_input: network.publishing_configured(),
+        })
+    });
     let (status_sender, status_receiver) = std::sync::mpsc::sync_channel(4);
     let service = ApplicationSettingsService::start_with_product_capabilities(
         application,
@@ -2754,6 +3125,14 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         cx.set_global(Product {
             shortcut_service: Some(shortcut_service),
             overlay: Some(overlay),
+            peer,
+            extra,
+            placements,
+            local_device,
+            primary_device,
+            peer_device,
+            extra_device,
+            network,
             tray,
             service: Some(service),
             settings: ProductSettingsWindow::new(seed),
@@ -2775,50 +3154,8 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             .as_mut()
             .expect("running overlay")
             .set_linux_menu_presentation(presentation.clone(), palette);
-        if hidden {
-            // The explanation is drawn in the settings window, which a hidden run
-            // never opens, and there is nobody in front of the screen to answer it
-            // anyway: the mode was asked for on the command line, so capture
-            // starts without the prompt. A viewer captures nothing either way.
-            if !watching && let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
-                overlay.start_linux_input();
-            }
-        } else if watching {
-            // A viewer draws another machine's input, so it has nothing to
-            // authorise. Opening the dialog would ask for a permission the whole
-            // point of this mode is not to need.
-        } else if bongocat_platform::unprivileged_input_is_possible() {
-            // Group membership (or a udev rule) already opens the devices the
-            // helper reads, so both halves of the old prompt would be noise:
-            // the explanation describes an authorization that is not needed,
-            // and confirming it started a pkexec authentication for a helper
-            // this user can run itself. Capture starts straight away, the way
-            // a hidden run already does.
-            cx.global_mut::<Product>()
-                .overlay
-                .as_mut()
-                .expect("running overlay")
-                .start_linux_input();
-        } else if let Some(settings) = cx.global::<Product>().settings.window.clone() {
-            let _ = settings.update(cx, |_, window, cx| {
-                // The dialog reads Root's window state; release the typed
-                // settings-window update's Root borrow before opening it.
-                window.defer(cx, move |window, cx| {
-                    bongocat_ui::show_linux_input_permission(
-                        seed.language,
-                        |cx| {
-                            // Defer until the explanation dialog has closed.
-                            cx.defer(|cx| {
-                                if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
-                                    overlay.start_linux_input();
-                                }
-                            });
-                        },
-                        window,
-                        cx,
-                    );
-                });
-            });
+        if !watching {
+            start_linux_product_input(cx, hidden);
         }
         if tray_error && let Some(settings) = cx.global::<Product>().settings.window.clone() {
             let _ = settings.update(cx, |_, window, cx| {
@@ -2915,11 +3252,14 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             let mut gamepad_observer = GamepadConnectionObserver::default();
             let started = std::time::Instant::now();
             let mut last_tick = started;
+            let mut pending_alpha_stop: Option<bongocat_app::AlphaOutputStop> = None;
+            let mut input_requested = !watching;
             loop {
                 let scheduling = tick_runtime.frame_scheduling();
                 let interval = bongocat_runtime::frame_interval_for_runtime(
                     scheduling.maximum_fps,
-                    scheduling.overlay_visible,
+                    (scheduling.overlay_visible && display.primary())
+                        || scheduling.video_output_active,
                 )
                 .expect("validated frame rate");
                 Timer::after(interval.saturating_sub(last_tick.elapsed())).await;
@@ -2932,6 +3272,9 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let done = cx.update(|cx| {
                     if quit.load(Ordering::Acquire) {
+                        if let Some(settings) = cx.global::<Product>().settings.window.clone() {
+                            let _ = settings.update(cx, |_, window, _| window.remove_window());
+                        }
                         let shutdown = cx
                             .global_mut::<Product>()
                             .begin_shutdown()
@@ -2943,11 +3286,194 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                         .detach();
                         return true;
                     }
-                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
-                        && let Err(e) = overlay.tick()
+                    if let Some(request) = signals.take_alpha_output_request()
+                        && let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
                     {
-                        record_failure(&failures, e.to_string());
-                        quit.store(true, Ordering::Release);
+                        overlay.set_linux_alpha_output_enabled(
+                            request.enabled(),
+                            bongocat_app::BUILD_ENVIRONMENT,
+                        );
+                        pending_alpha_stop = request.into_stop();
+                    }
+                    if let Some(bongocat_app::NetworkDisplayUpdate {
+                        local_device,
+                        devices,
+                        runtime: available,
+                    }) = signals.take_network_display()
+                        && !fixed_watch
+                    {
+                        if let Some(available) = available {
+                            room_available = available.has_room;
+                        }
+                        let next =
+                            net_publish::DisplaySelection::from_devices(&devices, room_available);
+                        let product = cx.global_mut::<Product>();
+                        product.remember_positions();
+                        product.local_device = local_device;
+                        let primary_device = if next.local {
+                            Some(product.local_device.clone())
+                        } else {
+                            next.first_device().map(str::to_owned)
+                        };
+                        let peer_device = next
+                            .both()
+                            .then(|| next.first_device().map(str::to_owned))
+                            .flatten();
+                        let peer_bounds = peer_device
+                            .as_ref()
+                            .and_then(|id| product.placements.get(id).copied());
+                        if next.both()
+                            && product.peer.is_none()
+                            && let Some((runtime, consumer)) = peer_runtime.take()
+                            && let Some(primary) = &product.overlay
+                        {
+                            match primary.start_linux_peer(
+                                runtime.client(),
+                                consumer,
+                                options,
+                                peer_bounds,
+                            ) {
+                                Ok(overlay) => product.peer = Some((runtime, overlay)),
+                                Err(error) => report_error("peer overlay", error),
+                            }
+                        }
+                        let extra_device = next.extra_device().map(str::to_owned);
+                        let extra_bounds = extra_device
+                            .as_ref()
+                            .and_then(|id| product.placements.get(id).copied());
+                        if extra_device.is_some()
+                            && product.extra.is_none()
+                            && let Some((runtime, consumer)) = extra_runtime.take()
+                            && let Some(anchor) = product
+                                .peer
+                                .as_ref()
+                                .map(|(_, overlay)| overlay)
+                                .or(product.overlay.as_ref())
+                        {
+                            match anchor.start_linux_peer(
+                                runtime.client(),
+                                consumer,
+                                options,
+                                extra_bounds,
+                            ) {
+                                Ok(overlay) => product.extra = Some((runtime, overlay)),
+                                Err(error) => report_error("extra overlay", error),
+                            }
+                        }
+                        if (!next.both() || product.peer.is_some())
+                            && (extra_device.is_none() || product.extra.is_some())
+                        {
+                            if primary_device != product.primary_device
+                                && let Some(saved) = primary_device
+                                    .as_ref()
+                                    .and_then(|id| product.placements.get(id))
+                                && let Some(overlay) = &product.overlay
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            if peer_device != product.peer_device
+                                && let Some(saved) = peer_bounds
+                                && let Some((_, overlay)) = &product.peer
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            if extra_device != product.extra_device
+                                && let Some(saved) = extra_bounds
+                                && let Some((_, overlay)) = &product.extra
+                            {
+                                overlay.restore_linux_position(saved.x, saved.y);
+                            }
+                            product.extra_device = extra_device;
+                            product.primary_device = primary_device;
+                            product.peer_device = peer_device;
+                            display_routing.select(next.clone());
+                            let needs_input = !input_requested
+                                && (next.local
+                                    || available.is_some_and(|state| state.publishes_input));
+                            display = next;
+                            if needs_input {
+                                input_requested = true;
+                                start_linux_product_input(cx, false);
+                            }
+                        }
+                    }
+                    let window_behavior = tick_runtime.snapshot();
+                    if !input_requested
+                        && window_behavior
+                            .overlay_settings
+                            .hold_modifier_to_interact
+                            .is_some()
+                        && window_behavior.overlay_settings.click_through
+                        && scheduling.overlay_visible
+                    {
+                        input_requested = true;
+                        start_linux_product_input(cx, hidden);
+                    }
+                    let window_settings = window_behavior.overlay_settings;
+                    let local_modifiers = local_input.local_modifiers();
+                    let remote_available =
+                        display.remote_available(bongocat_net::network_status().room.as_ref());
+                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                        overlay.set_linux_display_selected(display.local || remote_available);
+                        if let Err(e) = overlay.tick_linux_window(
+                            window_settings,
+                            local_modifiers,
+                            if display.local {
+                                window_behavior.platform_input.service_status
+                                    == bongocat_runtime::PlatformInputServiceStatus::Running
+                            } else {
+                                remote_available
+                            },
+                        ) {
+                            record_failure(&failures, e.to_string());
+                            quit.store(true, Ordering::Release);
+                        }
+                        if pending_alpha_stop.is_some()
+                            && overlay.linux_alpha_output_status()
+                                == bongocat_overlay::AlphaOutputStatus::Disabled
+                            && let Some(stop) = pending_alpha_stop.take()
+                        {
+                            stop.complete();
+                        }
+                    }
+                    let room = bongocat_net::network_status().room;
+                    let product = cx.global_mut::<Product>();
+                    for (window, visible) in [
+                        (&mut product.peer, display.both() && remote_available),
+                        (&mut product.extra, display.extra_available(room.as_ref())),
+                    ] {
+                        if let Some((runtime, overlay)) = window {
+                            overlay.set_linux_display_selected(visible);
+                            let peer = runtime.client();
+                            if peer.snapshot().overlay_visible != scheduling.overlay_visible {
+                                let _ =
+                                    peer.send(bongocat_runtime::RuntimeCommand::SetOverlayVisible(
+                                        scheduling.overlay_visible,
+                                    ));
+                            }
+                            if let Err(error) =
+                                overlay.tick_linux_window(window_settings, local_modifiers, visible)
+                            {
+                                record_failure(&failures, error.to_string());
+                                quit.store(true, Ordering::Release);
+                            }
+                        }
+                    }
+                    if let Some(primary) = &product.overlay {
+                        primary.sync_linux_alpha_scene(
+                            display.primary(),
+                            [
+                                product
+                                    .peer
+                                    .as_mut()
+                                    .map(|(_, overlay)| (overlay, display.both())),
+                                product.extra.as_mut().map(|(_, overlay)| {
+                                    (overlay, display.extra_device().is_some())
+                                }),
+                            ]
+                            .into_iter()
+                            .flatten(),
+                        );
                     }
                     if let Ok(resized) = resize_receiver.try_recv() {
                         let client = client.clone();
@@ -3062,6 +3588,7 @@ fn open_settings(cx: &mut App) {
         product.settings.ensure(
             service.client(),
             service.window_state(),
+            None,
             move |_| {
                 quit.store(true, Ordering::Release);
             },

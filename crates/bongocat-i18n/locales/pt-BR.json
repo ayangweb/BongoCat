@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "Atalhos"
     },
-    "multiplayer": {
-      "title": "Multijogador"
-    },
     "app_system": {
       "title": "App e sistema"
     },
     "about": {
       "title": "Sobre"
+    },
+    "plugins": {
+      "title": "Central de plugins",
+      "empty": "Nenhum plugin disponível."
+    },
+    "multiplayer": {
+      "title": "Multijogador"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "Configurações",
     "quit": "Encerrar o BongoCat"
   },
+  "application_menu": {
+    "file": "Arquivo",
+    "edit": "Editar",
+    "window": "Janela",
+    "services": "Serviços",
+    "close": "Fechar",
+    "minimize": "Minimizar",
+    "zoom": "Ampliar",
+    "hide": "Ocultar BongoCat",
+    "hide_others": "Ocultar Outros",
+    "show_all": "Mostrar Todos",
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "cut": "Recortar",
+    "copy": "Copiar",
+    "paste": "Colar",
+    "select_all": "Selecionar Tudo"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "Permitir o monitoramento do teclado e mouse?",
-      "description": "O BongoCat precisa acessar os dispositivos de entrada para reagir ao teclado e mouse em outros aplicativos. Ao confirmar, o sistema solicitará autorização de administrador. Apenas o processo auxiliar de entrada recebe esse acesso; as configurações e a janela do modelo continuam como usuário comum. Configure depois para continuar sem reações de teclado e mouse.",
-      "confirm": "OK"
-    },
     "later": "Configurar depois",
     "input_monitoring": {
       "title": "Permissão de monitoramento de entrada necessária",
@@ -53,22 +70,23 @@
       "title": "Recomendado executar com acesso de administrador",
       "description": "O BongoCat precisa de acesso de administrador para continuar recebendo a entrada do teclado e do mouse enquanto outro aplicativo é executado com privilégios de administrador.\n\nPara configurar: clique com o botão direito em BongoCat → Propriedades → Compatibilidade → ative \"Executar este programa como administrador\".",
       "open_program_folder": "Sair e abrir as configurações"
+    },
+    "linux": {
+      "title": "Permitir o monitoramento do teclado e mouse?",
+      "description": "O BongoCat precisa acessar os dispositivos de entrada para reagir ao teclado e mouse em outros aplicativos. Ao confirmar, o sistema solicitará autorização de administrador. Apenas o processo auxiliar de entrada recebe esse acesso; as configurações e a janela do modelo continuam como usuário comum. Configure depois para continuar sem reações de teclado e mouse.",
+      "confirm": "OK"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "Informações da versão",
-        "label": "Versão",
-        "environment": {
-          "development": "Build de desenvolvimento",
-          "release": "Build de lançamento"
-        }
+        "label": "Versão"
       }
     },
     "software_information": {
       "title": "Informações do software",
-      "description": "Copie os detalhes da versão, do sistema e do runtime em JSON para um relatório de erro.",
+      "description": "Copie as informações de versão, sistema e execução para um relatório de erro.",
       "copy": "Copiar",
       "copy_success": "Informações do software copiadas"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "Relato de problemas",
-      "description": "Copie primeiro as informações do software e depois cole-as no relatório.",
       "action": "Relatar um problema"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "Importação do modelo concluída",
       "failed": "Falha na importação do modelo",
+      "selection_dialog": {
+        "title": "Selecionar modelos"
+      },
       "mver_dialog": {
         "title": "Escolha os modos para converter",
         "description": "Selecione os modos do BongoCat Mver a importar.",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "Movimento %{index}",
-      "expression": "Expressão %{index}"
+      "expression": "Expressão %{index}",
+      "rename": {
+        "tooltip": "Renomear",
+        "field": "Nome"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} já está atribuído a outro atalho"
@@ -309,13 +333,16 @@
       "software_info_copy_failed": "Não foi possível copiar as informações do software",
       "external_link_open_failed": "Não foi possível abrir o link",
       "log_location_open_failed": "Não foi possível abrir a pasta de registros do aplicativo",
-      "login_startup_update_failed": "Não foi possível atualizar a configuração de abertura no login",
+      "login_startup_update_failed": "Não foi possível atualizar a configuração de inicialização automática",
       "system_icon_update_failed": "Não foi possível atualizar o ícone do sistema.",
       "taskbar_icon_update_failed": "Não foi possível atualizar o ícone da barra de tarefas.",
       "dock_icon_update_failed": "Não foi possível atualizar o ícone do Dock.",
       "window_hide_failed": "Não foi possível ocultar a janela de configurações",
       "window_layout_save_failed": "Não foi possível salvar o layout da janela",
-      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo"
+      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo",
+      "network_relay_failed": "Não foi possível iniciar o Servidor da sala. Verifique o endereço e a porta de escuta.",
+      "network_room_failed": "Não foi possível entrar na sala. Verifique o endereço e a chave.",
+      "network_restore_failed": "Não foi possível restaurar a sessão anterior. Verifique a conexão e tente novamente."
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Modo de janela"
+      },
+      "window_background_color": {
+        "label": "Cor de fundo da janela"
+      },
       "behavior": {
         "title": "Comportamento da janela"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "Lembrar a última expressão de cada modelo"
         },
+        "toggle_repeated_expression": {
+          "label": "Desligar a expressão ao acioná-la novamente"
+        },
+        "allow_motion_overlap": {
+          "label": "Permitir movimentos simultâneos"
+        },
         "random_behavior_mode": {
           "label": "Reproduzir movimentos ou expressões aleatoriamente",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "Sensibilidade do rastreamento do mouse (%)",
-          "description": "100% é a velocidade padrão. Valores menores tornam o movimento mais lento; o deslocamento excedente no limite é descartado."
-        },
         "title": "Mouse",
         "mirror_mouse_tracking_horizontal": {
           "label": "Espelhar o rastreamento do mouse horizontalmente"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "Forçar movimento do mouse",
           "description": "Continua seguindo o mouse em aplicativos que capturam o ponteiro, como jogos em tela cheia."
+        },
+        "sensitivity": {
+          "label": "Sensibilidade do rastreamento do mouse (%)",
+          "description": "100% é a velocidade padrão. Valores menores tornam o movimento mais lento; o deslocamento excedente no limite é descartado."
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "Mostrar o ícone na barra de tarefas"
       },
       "dock_icon": {
-        "label": "Mostrar o ícone no Dock"
+        "label": "Sempre mostrar o ícone no Dock"
       },
       "auto_update": {
         "label": "Verificar atualizações automaticamente",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "Abrir no login"
+        "label": "Iniciar na inicialização"
       },
       "startup": {
         "checking": "Verificando o item de login…",
@@ -533,13 +574,73 @@
         "stale": "O local salvo do aplicativo mudou; desligue e religue o botão para corrigir",
         "requires_approval": "Aprove o BongoCat nas configurações do sistema",
         "not_found": "O item de login está ausente; desligue e religue o botão para corrigir",
-        "unsupported_platform": "A abertura no login não está disponível neste sistema",
-        "unsupported_os": "A abertura no login não está disponível neste sistema operacional",
-        "unsupported_build": "A abertura no login não está disponível em builds de desenvolvimento"
+        "unsupported_platform": "A inicialização automática não está disponível neste sistema",
+        "unsupported_os": "A inicialização automática não está disponível neste sistema operacional",
+        "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
+      }
+    },
+    "alpha": {
+      "camera": "Câmera virtual",
+      "driver": "Driver",
+      "enable": "Ativar saída Alpha",
+      "error": {
+        "authorization": "A autorização falhou ou foi cancelada; verifique o agente de autenticação",
+        "busy": "Uma operação da câmera está em andamento",
+        "config": "Não foi possível salvar a configuração",
+        "conflict": "Não foi possível verificar a propriedade da câmera",
+        "driver": "Instale primeiro o driver v4l2loopback",
+        "operation": "A operação da câmera falhou",
+        "permission": "Não foi possível definir a permissão da câmera",
+        "rollback": "A instalação falhou e a reversão requer atenção",
+        "service": "Serviço de configurações indisponível",
+        "stale": "As configurações mudaram; atualize e tente novamente",
+        "stop": "Não foi possível parar a saída; tente novamente",
+        "unsupported": "Ferramentas ou serviços necessários indisponíveis"
+      },
+      "install": "Instalar câmera virtual",
+      "management": "Gerenciamento de dispositivos",
+      "module": "Módulo do kernel",
+      "output": "Saída",
+      "refresh": "Verificar novamente",
+      "retry": "Tentar saída novamente",
+      "title": "Saída Alpha",
+      "uninstall": "Desinstalar câmera virtual",
+      "value": {
+        "available": "Disponível",
+        "checking": "Verificando…",
+        "conflict": "Conflito de propriedade",
+        "control_missing": "v4l2loopback-ctl não instalado",
+        "driver_missing": "Driver não instalado",
+        "failed": "Falhou",
+        "format": "Formato não suportado",
+        "installed": "Instalado",
+        "loaded": "Carregado",
+        "module_tools_missing": "Ferramentas de módulo indisponíveis",
+        "not_installed": "Não instalado",
+        "not_loaded": "Não carregado",
+        "off": "Desativada",
+        "permission": "Permissão negada",
+        "pkexec_missing": "pkexec não instalado",
+        "recovery": "Reinstale a câmera virtual",
+        "running": "Em execução",
+        "starting": "Iniciando",
+        "stopping": "Parando",
+        "udev_missing": "udevadm não instalado",
+        "unavailable": "Dispositivo indisponível",
+        "unknown": "Desconhecido",
+        "unsupported": "Indisponível"
       }
     },
     "multiplayer": {
-      "restart_notice": "O serviço de conexão é criado quando o BongoCat inicia. Reinicie o BongoCat para que uma alteração nesta página tenha efeito.",
+      "editor": {
+        "connect": "Conectar",
+        "change_connection": "Alterar conexão…",
+        "edit_connection": "Configurar conexão…",
+        "apply_relay": "Aplicar configurações do servidor",
+        "edit_relay": "Configurar servidor…",
+        "cancel": "Cancelar",
+        "disconnect": "Desconectar"
+      },
       "device": {
         "title": "Esta máquina",
         "id": {
@@ -554,24 +655,19 @@
         "self": {
           "label": "Esta máquina (seguir a minha própria entrada)"
         },
-        "remove": "Remover",
-        "add": {
-          "label": "Adicionar um ID de dispositivo",
-          "action": "Adicionar"
-        },
         "peer": {
-          "show": "Mostrar este dispositivo",
           "sharing": "compartilhando",
-          "not_sharing": "não compartilhando"
+          "not_sharing": "não compartilhando",
+          "offline": "offline",
+          "saved": "Dispositivo selecionado",
+          "unnamed": "Dispositivo sem nome"
         },
-        "empty": "Uma lista vazia é válida: uma máquina pode enviar a sua entrada para a sala sem exibir nada dela."
+        "empty": "Escolha quais dispositivos da sala exibir."
       },
       "client": {
         "title": "Entrar em uma sala",
-        "enabled": {
-          "label": "Entrar em uma sala"
-        },
         "source": {
+          "label": "Modo de conexão",
           "options": {
             "follow_local": "Seguir o serviço nesta máquina",
             "manual": "Informar um endereço eu mesmo"
@@ -588,7 +684,7 @@
         }
       },
       "server": {
-        "title": "Servir a conexão",
+        "title": "Servidor da sala",
         "enabled": {
           "label": "Executar o serviço nesta máquina"
         },
@@ -614,7 +710,7 @@
       "status": {
         "title": "Status",
         "server": {
-          "label": "Serviço",
+          "label": "Servidor da sala",
           "stopped": "Não está em execução"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "Outras máquinas na sala",
           "none": "Fora da sala"
         },
-        "bound": {
-          "label": "Seguindo",
-          "none": "Nada ainda"
+        "device_id": {
+          "label": "ID deste dispositivo",
+          "copy": "Copiar",
+          "copy_failed": "Não foi possível copiar o ID deste dispositivo."
         },
         "latency": {
           "label": "Latência",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "Status e dispositivos"
-      },
-      "restart": {
-        "action": "Reiniciar"
       }
+    }
+  },
+  "plugins": {
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "loading": "Carregando plugins…",
+    "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
+    "install": "Instalar",
+    "update": "Atualizar",
+    "update_all": "Atualizar todos",
+    "update_available": "Atualização disponível",
+    "update_all_success": "Todos os plugins estão atualizados.",
+    "available_version": "Versão disponível %{version}",
+    "uninstall": "Desinstalar",
+    "uninstall_confirm": "Tem certeza de que deseja desinstalar %{name}?",
+    "settings": {
+      "open": "Configurações",
+      "title": "Configurações de %{name}",
+      "empty": "Este plugin não tem configurações."
+    },
+    "version": "Versão %{version}",
+    "errors": {
+      "install_failed": "Falha ao instalar o plugin: %{name}",
+      "update_failed": "Falha ao atualizar o plugin: %{name}",
+      "enable_failed": "Não foi possível ativar o plugin: %{name}",
+      "disable_failed": "Não foi possível desativar o plugin: %{name}",
+      "uninstall_failed": "Falha ao desinstalar o plugin: %{name}",
+      "action_failed": "Falha na ação do plugin: %{name}",
+      "configure_failed": "Não foi possível salvar as configurações do plugin: %{name}",
+      "update_all_failed": "Não foi possível atualizar estes plugins: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "O serviço de plugins está indisponível",
+      "not_installed": "O plugin não foi encontrado",
+      "not_running": "O plugin não está em execução",
+      "load_failed": "Falha ao carregar o plugin: %{name}",
+      "runtime_failed": "O plugin parou inesperadamente: %{name}",
+      "reported": "Erro do plugin: %{name} — %{reason}",
+      "preview_failed": "Falha na prévia do plugin: %{name}"
     }
   },
   "linux_input": {

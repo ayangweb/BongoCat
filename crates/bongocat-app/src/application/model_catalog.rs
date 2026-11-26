@@ -8,8 +8,8 @@ use crate::model_listing::{
 use crate::model_titles::normalize_model_title;
 use crate::{ApplicationError, PNG_SIGNATURE};
 use bongocat_config::{
-    BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata, ModelExpressionMemory,
-    ModelInputMode,
+    BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata, ModelBehaviorName,
+    ModelExpressionMemory, ModelInputMode,
 };
 use bongocat_model::{ModelCatalogEntry, ModelId, ModelOrigin, ModelPackageLimits};
 use bongocat_model_store::preset_cover_exists;
@@ -312,7 +312,13 @@ impl Application {
     ) -> Result<(), ApplicationError> {
         let gamepad_auto_switch = self.config.model.gamepad_auto_switch.clone();
         let last_expressions = self.config.model.last_expressions.clone();
-        self.commit_model_metadata(records, gamepad_auto_switch, last_expressions)
+        let behavior_names = self.config.model.behavior_names.clone();
+        self.commit_model_metadata(
+            records,
+            gamepad_auto_switch,
+            last_expressions,
+            behavior_names,
+        )
     }
 
     /// Persist imported model metadata, the gamepad auto switch and the remembered
@@ -327,11 +333,13 @@ impl Application {
         records: Vec<ImportedModelMetadata>,
         gamepad_auto_switch: GamepadAutoSwitchConfig,
         last_expressions: Vec<ModelExpressionMemory>,
+        behavior_names: Vec<ModelBehaviorName>,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.model.imported_models = records;
         next_config.model.gamepad_auto_switch = gamepad_auto_switch;
         next_config.model.last_expressions = last_expressions;
+        next_config.model.behavior_names = behavior_names;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;

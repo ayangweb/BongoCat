@@ -24,6 +24,13 @@ impl SettingsView {
             cx.notify();
         }
         let client = self.client.clone();
+        #[cfg(target_os = "windows")]
+        let sent_window_background = match value.as_ref() {
+            Some(SettingValue::OverlaySettings { settings, .. }) => {
+                Some(settings.window_background_color)
+            }
+            _ => None,
+        };
         let sent_check_for_updates_interval = match value.as_ref() {
             Some(SettingValue::CheckForUpdatesIntervalHours { interval_hours, .. }) => {
                 Some(*interval_hours)
@@ -82,10 +89,6 @@ impl SettingsView {
         };
         let sent_logging_settings = match value.as_ref() {
             Some(SettingValue::LoggingSettings { settings, .. }) => Some(*settings),
-            _ => None,
-        };
-        let sent_network_settings = match value.as_ref() {
-            Some(SettingValue::NetworkSettings { settings, .. }) => Some(settings.clone()),
             _ => None,
         };
         cx.spawn(async move |this, cx| {
@@ -166,6 +169,15 @@ impl SettingsView {
                 }) => {
                     client
                         .set_network_settings(expected_config_revision, settings)
+                        .await
+                }
+                #[cfg(target_os = "linux")]
+                Some(SettingValue::AlphaOutputEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_alpha_output_enabled(expected_config_revision, enabled)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -320,6 +332,37 @@ impl SettingsView {
                         .set_remember_last_expression(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::ToggleRepeatedExpression {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_toggle_repeated_expression(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::AllowMotionOverlap {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_allow_motion_overlap(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::ModelBehaviorName {
+                    expected_config_revision,
+                    model,
+                    behavior_id,
+                    name,
+                }) => {
+                    client
+                        .set_model_behavior_name(
+                            expected_config_revision,
+                            model.clone(),
+                            behavior_id.clone(),
+                            name.clone(),
+                        )
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
@@ -344,6 +387,17 @@ impl SettingsView {
                 let mut snapshot_changed = false;
                 if !is_refresh {
                     view.pending = None;
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    if result.is_ok()
+                        && let Some(color) = sent_window_background
+                    {
+                        view.window_background_debouncer.mark_sent(&color);
+                    }
+                    if view.window_background_debouncer.is_pending() {
+                        view.schedule_window_background_flush(cx);
+                    }
                 }
                 if result.is_ok()
                     && let Some(interval_hours) = sent_check_for_updates_interval
@@ -438,13 +492,11 @@ impl SettingsView {
                         view.schedule_logging_settings_flush(cx);
                     }
                 }
-                if result.is_ok()
-                    && let Some(settings) = sent_network_settings.as_ref()
+                if operation == PendingOperation::NetworkSettings
+                    && std::mem::take(&mut view.network_apply_pending)
+                    && result.is_ok()
                 {
-                    view.network_settings_debouncer.mark_sent(settings);
-                    if view.network_settings_debouncer.is_pending() {
-                        view.schedule_network_settings_flush(cx);
-                    }
+                    view.network_draft = None;
                 }
                 if result.is_err() {
                     if operation == PendingOperation::AppearanceTheme {
@@ -482,9 +534,6 @@ impl SettingsView {
                     if sent_logging_settings.is_some() {
                         view.schedule_logging_settings_flush(cx);
                     }
-                    if sent_network_settings.is_some() {
-                        view.schedule_network_settings_flush(cx);
-                    }
                 }
                 if sent_check_for_updates_interval.is_none()
                     && view.check_for_updates_interval_debouncer.is_pending()
@@ -496,9 +545,6 @@ impl SettingsView {
                 }
                 if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
                     view.schedule_logging_settings_flush(cx);
-                }
-                if sent_network_settings.is_none() && view.network_settings_debouncer.is_pending() {
-                    view.schedule_network_settings_flush(cx);
                 }
                 if let Some(snapshot) = refreshed
                     && accepts_snapshot_revision(

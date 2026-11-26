@@ -50,6 +50,18 @@ impl SettingsView {
             "navigation.settings.title",
         ));
         self.syncing_component_inputs = true;
+        #[cfg(target_os = "windows")]
+        self.window_background_color.update(cx, |picker, cx| {
+            let rgb = self
+                .window_background_debouncer
+                .pending_value()
+                .copied()
+                .unwrap_or(snapshot.overlay.window_background_color);
+            let color = super::window_mode::rgb_color(rgb);
+            if picker.value() != Some(color) {
+                picker.set_value(color, window, cx);
+            }
+        });
         self.language_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(
@@ -153,6 +165,23 @@ impl SettingsView {
             );
             select.set_selected_value(&selected, window, cx);
         });
+        for (input, token) in [
+            (
+                &self.network_client_token_input,
+                network.client.token.as_deref(),
+            ),
+            (
+                &self.network_relay_token_input,
+                network.server.token.as_deref(),
+            ),
+        ] {
+            let token = token.unwrap_or_default();
+            if input.read(cx).value().as_ref() != token {
+                input.update(cx, |input, cx| {
+                    input.set_value(token.to_owned(), window, cx)
+                });
+            }
+        }
         self.random_behavior_mode_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(random_behavior_mode_options(snapshot.resolved_language)),
@@ -205,6 +234,25 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        #[cfg(target_os = "windows")]
+        let window_background_color = cx.new(|cx| {
+            gpui_kit::component::color_picker::ColorPickerState::new(window, cx)
+                .default_value(super::window_mode::rgb_color([0, 255, 0]))
+        });
+        #[cfg(target_os = "windows")]
+        cx.subscribe_in(
+            &window_background_color,
+            window,
+            |view, _, event: &gpui_kit::component::color_picker::ColorPickerEvent, _, cx| {
+                let gpui_kit::component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                    event
+                else {
+                    return;
+                };
+                view.set_window_background_color(*color, cx);
+            },
+        )
+        .detach();
         // Every component built here is seeded with the window's language for the same
         // reason as the frame itself: they are constructed before the first snapshot
         // exists, and a component built in the default language would be replaced —
@@ -270,7 +318,22 @@ impl SettingsView {
                 cx,
             )
         });
-        let network_display_device_input = cx.new(|cx| InputState::new(window, cx));
+        let network_client_token_input = cx.new(|cx| InputState::new(window, cx).masked(true));
+        let network_relay_token_input = cx.new(|cx| InputState::new(window, cx).masked(true));
+        for (input, setter) in [
+            (
+                &network_client_token_input,
+                Self::set_network_client_token as fn(&mut Self, String, &mut Context<Self>),
+            ),
+            (&network_relay_token_input, Self::set_network_server_token),
+        ] {
+            cx.subscribe(input, move |view, input, event: &InputEvent, cx| {
+                if !view.syncing_component_inputs && matches!(event, InputEvent::Change) {
+                    setter(view, input.read(cx).value().to_string(), cx);
+                }
+            })
+            .detach();
+        }
         // Both gamepad auto switch dropdowns open on their "last used" choice,
         // which is the configured default: the first frame already shows the
         // state a fresh configuration is in.
@@ -433,12 +496,26 @@ impl SettingsView {
             .detach();
         }
         Self {
+            #[cfg(target_os = "windows")]
+            window_background_color,
+            #[cfg(target_os = "windows")]
+            window_background_debouncer: crate::SettingsPatchDebouncer::default(),
+            #[cfg(target_os = "windows")]
+            window_background_timer_generation: 0,
             client,
             seed,
             snapshot: None,
             platform_notifications: platform::InputNotifications::default(),
             pending: None,
             pending_notification: None,
+            #[cfg(target_os = "linux")]
+            alpha_system_status: None,
+            #[cfg(target_os = "linux")]
+            alpha_status_checked: false,
+            #[cfg(target_os = "linux")]
+            alpha_operation_pending: false,
+            #[cfg(target_os = "linux")]
+            alpha_management_error: None,
             model_import_success_pending: false,
             model_import_failed_pending: false,
             about_copy_success_pending: false,
@@ -466,17 +543,19 @@ impl SettingsView {
             random_behavior_timer_generation: 0,
             logging_settings_debouncer: crate::SettingsPatchDebouncer::default(),
             logging_settings_timer_generation: 0,
-            network_settings_debouncer: crate::SettingsPatchDebouncer::default(),
-            network_settings_timer_generation: 0,
+            network_draft: None,
+            network_apply_pending: false,
             flush_pending_requested: false,
             quit_after_flush: false,
             model_delete_confirmation: None,
             model_row_focus: BTreeMap::new(),
             model_edit: None,
+            behavior_name: None,
             model_catalog_error_reported: false,
             shortcut_capture: None,
             shortcut_capture_blur_subscription: None,
             shortcut_row_focus: BTreeMap::new(),
+            shortcut_rows: BTreeMap::new(),
             shortcut_play_focus: BTreeMap::new(),
             shortcut_clear_focus: BTreeMap::new(),
             hold_modifier_recording: false,
@@ -484,6 +563,8 @@ impl SettingsView {
             hold_modifier_clear_focus: cx.focus_handle(),
             hold_modifier_blur_subscription: None,
             hold_modifier_recording_generation: 0,
+            plugin_host: PluginHost::default(),
+            plugin_settings: None,
             window_hidden: true,
             navigation_memory: SettingsNavigationMemory::default(),
             applied_theme: None,
@@ -495,8 +576,9 @@ impl SettingsView {
             gamepad_disconnected_model_select,
             network_listen_mode_select,
             network_client_address_select,
-            network_display_device_input,
-            network_display_device_add_focus: cx.focus_handle().tab_stop(true),
+            network_selected_peer_names: Default::default(),
+            network_client_token_input,
+            network_relay_token_input,
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),

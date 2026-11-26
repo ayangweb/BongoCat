@@ -1,6 +1,6 @@
 # BongoCat 贡献指南
 
-[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+[English](CONTRIBUTING.md) | 简体中文
 
 感谢你帮助改进 BongoCat。请确保贡献范围集中、表达清楚，并有可重复的验证结果。
 
@@ -25,6 +25,26 @@ just check
 just build
 just schema
 ```
+
+官方插件源码、SDK 和插件发布工具都是本仓库的 workspace 成员。`just dev` 和
+`just dev-smoke` 会从 `plugins/` 构建当前主机平台的插件包到 `target/plugin-dev`；
+`just plugin-tests` 则运行包含真实插件进程的工作区测试。
+
+### 插件改动与发布
+
+插件行为、界面、SDK 或进程协议的改动都在本仓库完成，并同时补充宿主集成测试。插件仍运行
+在独立进程，应用构建不会链接插件代码，也不会把插件资源打进安装包。
+
+插件 Release 使用 `plugins-v*` tag，与应用 `v*` Release 相互独立；插件 Release 仍不可变，
+并且必须显式非 Latest。`plugins-v1.0.0` 完全由本仓库构建，后续发布沿用相同的版本历史检查：
+插件源码变化后必须提升版本。签名 catalog 只会在重新下载并验证 Release 资源之后，更新到
+专用的 `plugin-catalog` 分支。
+
+在 Windows 上构建时，请确保使用 MSVC 工具链（形如 `stable-x86_64-pc-windows-**msvc**`，
+而非 `stable-x86_64-pc-windows-**gnu**`）。本项目依赖 Live2D Cubism Core，而该库的 Windows 版
+官方仅提供 MSVC 格式的 `.lib`，因此 Windows 上必须使用 MSVC 工具链。可使用 `rustup show` 查看
+当前工具链，其会显示在 `active toolchain` 栏；若不是 MSVC 工具链，请通过 `rustup override set`
+切换为 MSVC 工具链。
 
 在 macOS 上构建还需要 Xcode 自带的 Swift 工具链，因为「输入监控」引导流程链接了一个 Swift 静态
 库（ADR-0078）。SwiftPM 拒绝加载 tools version 高于本机工具链的包清单，而该包声明的是 6.1；

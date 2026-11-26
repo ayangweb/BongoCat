@@ -68,6 +68,7 @@ struct Geometry {
     output: Option<((i32, i32), (u32, u32))>,
     restore_position: Option<(i32, i32)>,
     center: bool,
+    place_beside_primary: bool,
     keep_inside: bool,
 }
 
@@ -121,6 +122,23 @@ impl WindowTarget {
         drop(geometry);
         self.apply_margin();
     }
+    pub(super) fn restore_position(&self, x: i32, y: i32) {
+        if !matches!(self.role, WindowRole::Layer(_)) {
+            return;
+        }
+        let mut geometry = self.geometry.lock().unwrap();
+        if let Some(((origin_x, origin_y), _)) = geometry.output {
+            geometry.margin = (
+                f64::from(x.saturating_sub(origin_x)),
+                f64::from(y.saturating_sub(origin_y)),
+            );
+        } else {
+            geometry.restore_position = Some((x, y));
+        }
+        drop(geometry);
+        self.apply_margin();
+    }
+
     fn move_by(&self, dx: f64, dy: f64) {
         let mut geometry = self.geometry.lock().unwrap();
         geometry.margin.0 += dx;
@@ -260,6 +278,15 @@ impl WaylandState {
                 f64::from(height.saturating_sub(geometry.size.1)) * 0.5,
             );
             geometry.center = false;
+        }
+        if std::mem::take(&mut geometry.place_beside_primary) {
+            let step = f64::from(geometry.size.0) + 16.0;
+            let right = f64::from(width.saturating_sub(geometry.size.0)) - geometry.margin.0;
+            if geometry.margin.0 >= step || geometry.margin.0 >= right {
+                geometry.margin.0 -= step;
+            } else {
+                geometry.margin.0 += step;
+            }
         }
         drop(geometry);
         self.target.apply_margin();
@@ -787,6 +814,7 @@ impl WaylandWindow {
         use_layer: bool,
         bounds: Option<OverlayWindowBounds>,
         keep_inside: bool,
+        place_beside_primary: bool,
     ) -> Result<Self, OverlayError> {
         let connection = Connection::connect_to_env().map_err(err)?;
         let (globals, queue) = registry_queue_init::<WaylandState>(&connection).map_err(err)?;
@@ -829,6 +857,7 @@ impl WaylandWindow {
                 output: None,
                 restore_position: bounds.map(|bounds| (bounds.x, bounds.y)),
                 center: bounds.is_none(),
+                place_beside_primary,
                 keep_inside,
             }),
         });
@@ -900,6 +929,10 @@ impl WaylandWindow {
         }
         Ok((self.state.closed, std::mem::take(&mut self.state.inputs)))
     }
+    pub(super) fn frame_pending(&self) -> bool {
+        self.state.frame_pending
+    }
+
     pub(super) fn presented(&mut self) {
         if !self.state.frame_pending {
             self.target.role.surface().frame(

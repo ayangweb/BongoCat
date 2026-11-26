@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -18,8 +21,23 @@ pub struct CursorViewport {
     pub height: f64,
 }
 
+/// One pointer reading.
+///
+/// The reading carries two positions because `input.mouse.force_move` makes them
+/// differ: it accumulates the position the model follows from the device's
+/// relative motion, which is what keeps the model following the mouse in an
+/// application that captures the pointer. The accumulated position is an estimate
+/// of where the pointer is — good enough to aim a model with, not exact enough to
+/// decide whether the pointer has entered a window — so a reader that asks about
+/// the pointer itself reads [`Self::pointer`] rather than [`Self::position`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CursorSample {
+    /// Where the pointer is.
+    pub pointer: CursorPosition,
+    /// The position the model follows.
+    ///
+    /// Equal to [`Self::pointer`] unless the platform accumulated it from
+    /// relative motion.
     pub position: CursorPosition,
     pub viewport: CursorViewport,
     pub at: MonotonicMillis,
@@ -202,12 +220,31 @@ pub enum CursorSampleError {
 }
 
 impl CursorSample {
+    /// A reading where the model follows the pointer itself.
     pub fn new(
         position: CursorPosition,
         viewport: CursorViewport,
         at: MonotonicMillis,
     ) -> Result<Self, CursorSampleError> {
-        if !position.x.is_finite()
+        Self::following(position, position, viewport, at)
+    }
+
+    /// A reading where the model follows a position other than the pointer's.
+    ///
+    /// This is the shape `input.mouse.force_move` produces: `pointer` is the
+    /// cursor the platform read, `position` is what it accumulated from the
+    /// device's relative motion. Both are validated, because both are consumed:
+    /// the pointer seeds the accumulation and answers the overlay's hover hit
+    /// test, the model position feeds the smoothing and the projection.
+    pub fn following(
+        pointer: CursorPosition,
+        position: CursorPosition,
+        viewport: CursorViewport,
+        at: MonotonicMillis,
+    ) -> Result<Self, CursorSampleError> {
+        if !pointer.x.is_finite()
+            || !pointer.y.is_finite()
+            || !position.x.is_finite()
             || !position.y.is_finite()
             || !viewport.origin.x.is_finite()
             || !viewport.origin.y.is_finite()
@@ -220,6 +257,7 @@ impl CursorSample {
             return Err(CursorSampleError::EmptyViewport);
         }
         Ok(Self {
+            pointer,
             position,
             viewport,
             at,
@@ -351,10 +389,11 @@ struct CursorSlotState {
 pub(crate) struct CursorSlot {
     state: Mutex<CursorSlotState>,
     observer: Mutex<Option<CursorObserver>>,
+    suppress_local: AtomicBool,
 }
 
 impl CursorSlot {
-    fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+    fn publish_from(&self, sample: CursorSample, remote: bool) -> Result<(), CursorPublishError> {
         let mut state = self
             .state
             .lock()
@@ -364,30 +403,39 @@ impl CursorSlot {
                 state.diagnostics.rejected_after_stop.saturating_add(1);
             return Err(CursorPublishError::RuntimeStopped(sample));
         }
-        if state
-            .last_published_at
-            .is_some_and(|previous| sample.at < previous)
-        {
-            state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
-            return Err(CursorPublishError::NonMonotonic(sample));
+        if remote || !self.suppress_local.load(Ordering::Acquire) {
+            if state
+                .last_published_at
+                .is_some_and(|previous| sample.at < previous)
+            {
+                state.diagnostics.non_monotonic = state.diagnostics.non_monotonic.saturating_add(1);
+                return Err(CursorPublishError::NonMonotonic(sample));
+            }
+            state.last_published_at = Some(sample.at);
+            state.diagnostics.published = state.diagnostics.published.saturating_add(1);
+            if state.pending.replace(sample).is_some() {
+                state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+            }
         }
-        state.last_published_at = Some(sample.at);
-        state.diagnostics.published = state.diagnostics.published.saturating_add(1);
-        if state.pending.replace(sample).is_some() {
-            state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
+        drop(state);
+        // Forward local capture independently of whether the local pet displays it.
+        // Remote samples are never forwarded again, preventing feedback loops.
+        if !remote {
+            let observer = self
+                .observer
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            if let Some(observer) = observer {
+                observer(&sample);
+            }
         }
-        // The mirror runs after the slot write and outside the lock: an observer
-        // that blocks would stall the capture, and it must never see a sample
-        // the renderer has not been offered first.
-        let observer = self
-            .observer
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(observer) = observer.as_ref() {
-            observer(&sample);
-        }
-        drop(observer);
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+        self.publish_from(sample, false)
     }
 
     fn set_observer(&self, observer: Option<CursorObserver>) {
@@ -454,7 +502,20 @@ impl CursorProducer {
     }
 
     pub fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
-        self.slot.publish(sample)
+        self.slot.publish_from(sample, false)
+    }
+
+    /// Control whether locally captured pointer positions reach this runtime.
+    /// Local positions still reach the registered network observer.
+    pub fn set_local_suppressed(&self, suppressed: bool) {
+        self.slot
+            .suppress_local
+            .store(suppressed, Ordering::Release);
+    }
+
+    /// Publish a selected remote position without echoing it to the observer.
+    pub fn publish_remote(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
+        self.slot.publish_from(sample, true)
     }
 
     pub fn take(&self) -> Option<CursorSample> {
@@ -494,6 +555,64 @@ mod tests {
     }
 
     #[test]
+    fn a_reading_without_accumulation_reports_the_pointer_as_the_model_position() {
+        let reading = sample(25.0, 3);
+        assert_eq!(reading.pointer, reading.position);
+        assert_eq!(reading.pointer, CursorPosition { x: 25.0, y: 40.0 });
+    }
+
+    /// The two positions answer different questions, so a reading that carries
+    /// both has to keep them apart: the pointer's own position is what the
+    /// overlay hit-tests a window against, the other is what the model follows.
+    #[test]
+    fn a_reading_keeps_the_pointer_position_when_the_model_follows_another() {
+        let viewport = CursorViewport {
+            origin: CursorPosition { x: 0.0, y: 0.0 },
+            width: 1_920.0,
+            height: 1_080.0,
+        };
+        let reading = CursorSample::following(
+            CursorPosition { x: 10.0, y: 20.0 },
+            CursorPosition { x: 30.0, y: 40.0 },
+            viewport,
+            MonotonicMillis::new(7),
+        )
+        .expect("valid sample");
+        assert_eq!(reading.pointer, CursorPosition { x: 10.0, y: 20.0 });
+        assert_eq!(reading.position, CursorPosition { x: 30.0, y: 40.0 });
+        assert_eq!(reading.viewport, viewport);
+        assert_eq!(reading.at, MonotonicMillis::new(7));
+    }
+
+    #[test]
+    fn remote_follow_keeps_local_pointer_out_of_runtime_without_echoing_remote() {
+        let producer = CursorProducer::new();
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&observed);
+        producer.set_observer(Some(Arc::new(move |sample| {
+            captured.lock().unwrap().push(*sample)
+        })));
+
+        producer.set_local_suppressed(true);
+        producer.publish(sample(10.0, 1_000_001)).unwrap();
+        assert_eq!(*observed.lock().unwrap(), vec![sample(10.0, 1_000_001)]);
+        assert_eq!(producer.take(), None);
+
+        producer.publish_remote(sample(70.0, 2)).unwrap();
+        producer.publish(sample(20.0, 1_000_003)).unwrap();
+        assert_eq!(producer.take(), Some(sample(70.0, 2)));
+        assert_eq!(
+            *observed.lock().unwrap(),
+            vec![sample(10.0, 1_000_001), sample(20.0, 1_000_003)]
+        );
+
+        producer.set_local_suppressed(false);
+        producer.publish(sample(30.0, 1_000_004)).unwrap();
+        assert_eq!(producer.take(), Some(sample(30.0, 1_000_004)));
+        assert_eq!(observed.lock().unwrap().len(), 3);
+    }
+
+    #[test]
     fn latest_slot_accounts_for_coalesced_consumed_and_pending_samples() {
         let slot = CursorSlot::default();
         for index in 0..10_000 {
@@ -530,6 +649,25 @@ mod tests {
                 CursorPosition {
                     x: f64::NAN,
                     y: 0.0,
+                },
+                CursorViewport {
+                    origin: CursorPosition { x: 0.0, y: 0.0 },
+                    width: 1.0,
+                    height: 1.0,
+                },
+                MonotonicMillis::new(0),
+            ),
+            Err(CursorSampleError::NonFinite)
+        );
+        // The model's position is validated as well as the pointer's: a reading
+        // where only the accumulated position is broken must not reach the
+        // smoothing or the projection either.
+        assert_eq!(
+            CursorSample::following(
+                CursorPosition { x: 0.0, y: 0.0 },
+                CursorPosition {
+                    x: 0.0,
+                    y: f64::INFINITY,
                 },
                 CursorViewport {
                     origin: CursorPosition { x: 0.0, y: 0.0 },

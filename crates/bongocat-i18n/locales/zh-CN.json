@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "快捷键"
     },
-    "multiplayer": {
-      "title": "联机"
-    },
     "app_system": {
       "title": "应用与系统"
     },
     "about": {
       "title": "关于"
+    },
+    "plugins": {
+      "title": "插件中心",
+      "empty": "暂无可用插件。"
+    },
+    "multiplayer": {
+      "title": "联机"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "设置",
     "quit": "退出 BongoCat"
   },
+  "application_menu": {
+    "file": "文件",
+    "edit": "编辑",
+    "window": "窗口",
+    "services": "服务",
+    "close": "关闭",
+    "minimize": "最小化",
+    "zoom": "缩放",
+    "hide": "隐藏 BongoCat",
+    "hide_others": "隐藏其他",
+    "show_all": "全部显示",
+    "undo": "撤销",
+    "redo": "重做",
+    "cut": "剪切",
+    "copy": "拷贝",
+    "paste": "粘贴",
+    "select_all": "全选"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "允许监听键盘和鼠标？",
-      "description": "BongoCat 需要读取输入设备，才能响应其他应用中的键盘和鼠标操作。点击确定后，系统会请求管理员授权；仅输入监听辅助进程获得权限，设置和模型窗口仍以普通用户运行。选择稍后设置可继续使用，但键鼠响应暂不可用。",
-      "confirm": "确定"
-    },
     "later": "稍后设置",
     "input_monitoring": {
       "title": "需要「输入监控」权限",
@@ -53,22 +70,23 @@
       "title": "建议以管理员权限运行",
       "description": "BongoCat 需要管理员权限，才能在其他应用以管理员权限运行时继续接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
       "open_program_folder": "退出并前往设置"
+    },
+    "linux": {
+      "title": "允许监听键盘和鼠标？",
+      "description": "BongoCat 需要读取输入设备，才能响应其他应用中的键盘和鼠标操作。点击确定后，系统会请求管理员授权；仅输入监听辅助进程获得权限，设置和模型窗口仍以普通用户运行。选择稍后设置可继续使用，但键鼠响应暂不可用。",
+      "confirm": "确定"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "版本信息",
-        "label": "版本",
-        "environment": {
-          "development": "开发版",
-          "release": "正式版"
-        }
+        "label": "版本"
       }
     },
     "software_information": {
       "title": "软件信息",
-      "description": "以 JSON 复制版本、系统与运行状态信息，反馈问题时使用。",
+      "description": "复制版本、系统与运行信息，用于问题反馈。",
       "copy": "复制",
       "copy_success": "软件信息已复制"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "问题反馈",
-      "description": "先复制软件信息，再粘贴到问题反馈中。",
       "action": "反馈问题"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "模型导入完成",
       "failed": "模型导入失败",
+      "selection_dialog": {
+        "title": "选择模型"
+      },
       "mver_dialog": {
         "title": "选择要转换的模式",
         "description": "请选择需要导入的 BongoCat Mver 模式。",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "动作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "tooltip": "重命名",
+        "field": "名称"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快捷键占用"
@@ -309,13 +333,16 @@
       "software_info_copy_failed": "无法复制软件信息",
       "external_link_open_failed": "无法打开链接",
       "log_location_open_failed": "无法打开软件日志文件夹",
-      "login_startup_update_failed": "无法更新登录时启动设置",
+      "login_startup_update_failed": "无法更新开机自启动设置",
       "system_icon_update_failed": "无法更新系统图标。",
       "taskbar_icon_update_failed": "无法更新任务栏图标。",
       "dock_icon_update_failed": "无法更新程序坞图标。",
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
-      "application_shutdown_failed": "BongoCat 未能完全关闭"
+      "application_shutdown_failed": "BongoCat 未能完全关闭",
+      "network_relay_failed": "无法启动服务端。请检查监听地址和端口。",
+      "network_room_failed": "无法加入房间。请检查地址和密钥。",
+      "network_restore_failed": "无法恢复先前的联机会话。请检查连接后重试。"
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "窗口模式"
+      },
+      "window_background_color": {
+        "label": "窗口背景颜色"
+      },
       "behavior": {
         "title": "窗口行为"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "记住每个模型上次使用的表情"
         },
+        "toggle_repeated_expression": {
+          "label": "重复触发同一表情时关闭它"
+        },
+        "allow_motion_overlap": {
+          "label": "叠加播放动作"
+        },
         "random_behavior_mode": {
           "label": "随机播放动作或表情",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "鼠标跟随灵敏度（%）",
-          "description": "100% 为默认速度；数值越小，移动越慢。到边界后丢弃多余位移。"
-        },
         "title": "鼠标",
         "mirror_mouse_tracking_horizontal": {
           "label": "水平翻转鼠标跟随"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "强制移动鼠标",
           "description": "在捕获指针的应用（例如全屏游戏）中也能继续跟随鼠标移动。"
+        },
+        "sensitivity": {
+          "label": "鼠标跟随灵敏度（%）",
+          "description": "100% 为默认速度；数值越小，移动越慢。到边界后丢弃多余位移。"
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "显示任务栏图标"
       },
       "dock_icon": {
-        "label": "显示程序坞图标"
+        "label": "始终显示程序坞图标"
       },
       "auto_update": {
         "label": "自动检查更新",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "登录时启动"
+        "label": "开机自启动"
       },
       "startup": {
         "checking": "正在检查登录项…",
@@ -533,13 +574,73 @@
         "stale": "应用位置已变化；重新开关一次即可修复",
         "requires_approval": "请在系统设置中批准 BongoCat",
         "not_found": "登录项缺失；重新开关一次即可修复",
-        "unsupported_platform": "当前系统不支持登录时启动",
-        "unsupported_os": "当前操作系统不支持登录时启动",
-        "unsupported_build": "开发版本不支持登录时启动"
+        "unsupported_platform": "当前系统不支持开机自启动",
+        "unsupported_os": "当前操作系统不支持开机自启动",
+        "unsupported_build": "开发版本不支持开机自启动"
+      }
+    },
+    "alpha": {
+      "camera": "虚拟摄像头",
+      "driver": "驱动",
+      "enable": "启用 Alpha 输出",
+      "error": {
+        "authorization": "授权失败或已取消，请检查系统授权代理是否运行",
+        "busy": "摄像头操作正在进行",
+        "config": "无法保存输出设置",
+        "conflict": "无法验证摄像头所有权",
+        "driver": "请先安装 v4l2loopback 驱动",
+        "operation": "摄像头操作失败",
+        "permission": "无法设置摄像头权限",
+        "rollback": "安装失败且回滚需要处理",
+        "service": "设置服务不可用",
+        "stale": "设置已变更，请刷新后重试",
+        "stop": "无法停止输出，请重试",
+        "unsupported": "所需工具或服务不可用"
+      },
+      "install": "安装虚拟摄像头",
+      "management": "设备管理",
+      "module": "内核模块",
+      "output": "输出",
+      "refresh": "重新检测",
+      "retry": "重试输出",
+      "title": "Alpha 输出",
+      "uninstall": "卸载虚拟摄像头",
+      "value": {
+        "available": "可用",
+        "checking": "正在检测…",
+        "conflict": "设备所有权冲突",
+        "control_missing": "未安装 v4l2loopback-ctl",
+        "driver_missing": "未安装驱动",
+        "failed": "失败",
+        "format": "格式不受支持",
+        "installed": "已安装",
+        "loaded": "已加载",
+        "module_tools_missing": "内核模块工具不可用",
+        "not_installed": "未安装",
+        "not_loaded": "未加载",
+        "off": "已关闭",
+        "permission": "权限不足",
+        "pkexec_missing": "未安装 pkexec",
+        "recovery": "请重新安装虚拟摄像头",
+        "running": "运行中",
+        "starting": "正在启动",
+        "stopping": "正在停止",
+        "udev_missing": "未安装 udevadm",
+        "unavailable": "设备不可用",
+        "unknown": "未知",
+        "unsupported": "不可用"
       }
     },
     "multiplayer": {
-      "restart_notice": "联机服务在 BongoCat 启动时建立，修改后重启 BongoCat 才会生效。",
+      "editor": {
+        "connect": "连接",
+        "change_connection": "更改连接…",
+        "edit_connection": "设置连接…",
+        "apply_relay": "应用服务端设置",
+        "edit_relay": "配置服务端…",
+        "cancel": "取消",
+        "disconnect": "断开"
+      },
       "device": {
         "title": "本机",
         "id": {
@@ -554,24 +655,19 @@
         "self": {
           "label": "本机（跟随自己的输入）"
         },
-        "remove": "移除",
-        "add": {
-          "label": "添加设备 id",
-          "action": "添加"
-        },
         "peer": {
-          "show": "展示此设备",
           "sharing": "共享中",
-          "not_sharing": "未共享"
+          "not_sharing": "未共享",
+          "offline": "离线",
+          "saved": "已选设备",
+          "unnamed": "未命名设备"
         },
-        "empty": "列表为空是合法状态：一台机器可以只把自己的输入发到房间，而不展示任何东西。"
+        "empty": "从房间设备中选择要展示的猫。"
       },
       "client": {
         "title": "客户端",
-        "enabled": {
-          "label": "加入房间"
-        },
         "source": {
+          "label": "连接方式",
           "options": {
             "follow_local": "跟随本机的联机服务",
             "manual": "手动指定地址"
@@ -614,7 +710,7 @@
       "status": {
         "title": "状态",
         "server": {
-          "label": "联机服务",
+          "label": "服务端",
           "stopped": "未运行"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "房间内其他设备",
           "none": "不在房间内"
         },
-        "bound": {
-          "label": "正在跟随",
-          "none": "暂无"
+        "device_id": {
+          "label": "本机设备 ID",
+          "copy": "复制",
+          "copy_failed": "无法复制本机设备 ID。"
         },
         "latency": {
           "label": "延迟",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "状态与设备选择"
-      },
-      "restart": {
-        "action": "重启"
       }
+    }
+  },
+  "plugins": {
+    "enable": "启用",
+    "disable": "停用",
+    "loading": "正在加载插件…",
+    "discovery_failed": "无法加载插件列表，请重试。",
+    "install": "安装",
+    "update": "更新",
+    "update_all": "更新全部",
+    "update_available": "可更新",
+    "update_all_success": "所有插件均已更新。",
+    "available_version": "可用版本 %{version}",
+    "uninstall": "卸载",
+    "uninstall_confirm": "确定要卸载“%{name}”吗？",
+    "settings": {
+      "open": "设置",
+      "title": "%{name} 设置",
+      "empty": "该插件没有可配置项。"
+    },
+    "version": "版本 %{version}",
+    "errors": {
+      "install_failed": "插件安装失败：%{name}",
+      "update_failed": "插件更新失败：%{name}",
+      "enable_failed": "插件启用失败：%{name}",
+      "disable_failed": "插件停用失败：%{name}",
+      "uninstall_failed": "插件卸载失败：%{name}",
+      "action_failed": "插件操作失败：%{name}",
+      "configure_failed": "插件设置保存失败：%{name}",
+      "update_all_failed": "以下插件更新失败：%{names}",
+      "with_reason": "%{message}（%{reason}）",
+      "service_unavailable": "插件服务不可用",
+      "not_installed": "找不到该插件",
+      "not_running": "插件未运行",
+      "load_failed": "插件加载失败：%{name}",
+      "runtime_failed": "插件运行异常：%{name}",
+      "reported": "插件错误：%{name}（%{reason}）",
+      "preview_failed": "插件预览失败：%{name}"
     }
   },
   "linux_input": {

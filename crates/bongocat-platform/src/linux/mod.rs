@@ -1,4 +1,14 @@
 //! Wayland capabilities. Global placement is intentionally unavailable.
+mod alpha_admin;
+pub use alpha_admin::{
+    AlphaAdminAction, AlphaAdminError, AlphaInstallationStatus, AlphaManagementUnavailable,
+    AlphaSystemStatus, inspect_alpha_system, manage_alpha_camera, run_alpha_helper,
+};
+mod alpha_output;
+pub use alpha_output::{
+    ALPHA_CAMERA_DEVELOPMENT_NAME, ALPHA_CAMERA_NAME, ALPHA_FRAME_BYTES, ALPHA_FRAME_HEIGHT,
+    ALPHA_FRAME_WIDTH, AlphaCameraError, AlphaFrameWrite, LinuxAlphaCamera, alpha_camera_name,
+};
 mod input;
 pub use input::{LinuxInputService, unprivileged_input_is_possible};
 pub fn system_language() -> bongocat_config::Language {

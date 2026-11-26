@@ -20,6 +20,69 @@ pub struct AutomaticUpdateSettings {
     pub interval_hours: u16,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsAlphaOutputStatus {
+    #[default]
+    Disabled,
+    Starting,
+    Running,
+    Stopping,
+    DeviceUnavailable,
+    PermissionDenied,
+    UnsupportedFormat,
+    Failed,
+}
+
+/// A fresh observation of the operating system, requested explicitly by the UI.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsAlphaSystemStatus {
+    pub driver_installed: Option<bool>,
+    pub module_loaded: Option<bool>,
+    pub management_available: bool,
+    pub management_unavailable: Option<SettingsAlphaManagementUnavailable>,
+    pub camera: SettingsAlphaInstallationStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementUnavailable {
+    Authorization,
+    LoopbackControl,
+    Udev,
+    ModuleTools,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementAction {
+    Install,
+    Uninstall,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaManagementError {
+    ServiceUnavailable,
+    SnapshotOutdated,
+    Busy,
+    OutputStopFailed,
+    ConfigPersistFailed,
+    AuthorizationDenied,
+    DriverMissing,
+    UnsupportedSystem,
+    OwnershipConflict,
+    PermissionDenied,
+    RollbackFailed,
+    OperationFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsAlphaInstallationStatus {
+    NotInstalled,
+    Installed,
+    RecoveryRequired,
+    Conflict,
+    Unknown,
+    Unsupported,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -63,6 +126,15 @@ pub struct SettingsSnapshot {
     /// decision a user makes, and which expression each model happens to be
     /// holding is a fact about what they used rather than a setting.
     pub remember_last_expression: bool,
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// A separate switch from the remembered-expression one because the two are
+    /// orthogonal: remembering an expression says where a model starts, and this
+    /// says how a repeat trigger behaves while it is already wearing one. Neither
+    /// expression a model currently shows is shown here, for the same reason the
+    /// remembered ones are not.
+    pub toggle_repeated_expression: bool,
+    pub allow_motion_overlap: bool,
     pub logging: SettingsLogging,
     /// How this machine takes part in a room, as the user configured it.
     pub network: SettingsNetwork,
@@ -73,12 +145,32 @@ pub struct SettingsSnapshot {
     /// room is being joined, and a page that polls the second must not have
     /// to re-read the first.
     pub network_status: SettingsNetworkStatus,
+    pub alpha_output_enabled: bool,
+    pub alpha_output_status: SettingsAlphaOutputStatus,
     pub shortcuts: SettingsShortcuts,
+    /// What each of the active model's motions and expressions is called.
+    ///
+    /// Only the named ones, for the active model only. A behavior with no row here is
+    /// one the user has not renamed, and the window draws its numbered label — so the
+    /// absence of a name is a state the page renders rather than an error.
+    pub model_behavior_names: Vec<SettingsModelBehaviorName>,
     pub startup_item: SettingsStartupItemStatus,
     pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+/// One behavior of the active model, with the name the user gave it.
+///
+/// The window resolves the label from this rather than asking the service for a
+/// rendered string, so the same text appears in every place a row is drawn — the
+/// shortcut row and the random-playback checkbox share it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelBehaviorName {
+    /// The `behavior_id` spelling the configuration persists it under.
+    pub behavior_id: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -199,6 +291,8 @@ impl Default for SettingsGamepadAxisSettings {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsOverlay {
+    pub window_mode: bool,
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold gives the pointer back to the user.
     ///
@@ -232,6 +326,8 @@ pub struct SettingsOverlay {
 impl Default for SettingsOverlay {
     fn default() -> Self {
         Self {
+            window_mode: false,
+            window_background_color: [0, 255, 0],
             click_through: false,
             hold_modifier_to_interact: None,
             always_on_top: true,

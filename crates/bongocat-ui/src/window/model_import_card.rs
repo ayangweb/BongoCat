@@ -174,8 +174,14 @@ impl RenderOnce for ModelImportCard {
                     .with_size(Size::Medium)
                     .text_color(tokens.muted),
             )
-            .child(div().text_color(tokens.text).child(title))
-            .child(div().text_sm().text_color(tokens.muted).child(hint))
+            .child(div().text_color(tokens.text).child(title).text_center())
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(tokens.muted)
+                    .child(hint)
+                    .text_center(),
+            )
             .test_support();
         let card = match focus {
             Some(focus) => card.track_focus(&focus),

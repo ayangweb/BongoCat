@@ -1,9 +1,9 @@
 //! The native overlay window and the state hanging off it.
 //!
-//! The window is layered, transparent to hit-testing and never activated, so it
-//! can sit over whatever the user is doing without taking a click or a focus
-//! ring. Its message handler reaches the state through `GWLP_USERDATA`, which is
-//! why the owner keeps the box alive until after `DestroyWindow`.
+//! Pet mode is transparent to hit-testing and never activated. Window mode
+//! retains user32's caption, border and activation behavior. The message handler
+//! reaches the state through `GWLP_USERDATA`, so the owner keeps the box alive
+//! until after `DestroyWindow`.
 
 use super::*;
 
@@ -26,7 +26,6 @@ pub(crate) const fn taskbar_ex_style(visible: bool) -> WINDOW_EX_STYLE {
 
 pub(crate) struct OverlayWindow {
     pub(crate) hwnd: HWND,
-    pub(crate) instance: HINSTANCE,
     pub(crate) owner_thread: ThreadId,
     pub(crate) width: u32,
     pub(crate) height: u32,
@@ -35,13 +34,24 @@ pub(crate) struct OverlayWindow {
 }
 
 pub(crate) struct OverlayWindowState {
+    pub(crate) window_mode: bool,
+    /// Whether the window is asked to sit in the topmost band. Kept beside the
+    /// HWND rather than read from the session so `show` can re-assert it without
+    /// the options being plumbed through every caller.
+    pub(crate) always_on_top: bool,
+    pub(crate) close_requested: bool,
+    pub(crate) last_bounds: Option<OverlayWindowBounds>,
+    /// Client geometry before the first native sizing step. A caption move
+    /// never sets this, even when crossing a display changes the window DPI.
+    pub(crate) resize_start_bounds: Option<OverlayWindowBounds>,
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
-    /// The logical size `100%` maps to, which is the size the window would be
-    /// created with for the current model. It is converted to the window's
-    /// physical pixels when a drag begins, so a window that moved to a display
-    /// with a different DPI still scales from the right base.
-    pub(crate) resize_base_logical: (u32, u32),
+    /// The current plugin layer's hit-test data. A plugin that draws a control
+    /// claims the click that lands on it; the window keeps every other click.
+    pub(crate) plugin_targets: OverlayPluginTargets,
+    /// Where a click on a plugin's control is reported.
+    pub(crate) plugin_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    pub(crate) sizing: WindowSizing,
     pub(crate) drag: Option<ResizeDrag>,
 }
 
@@ -75,6 +85,9 @@ impl OverlayWindow {
         // the window falls back to the cursor's display instead.
         let bounds =
             bounds.filter(|bounds| options.keep_inside_screen || overlay_bounds_visible(*bounds));
+        let sizing = WindowSizing::new(canvas)
+            .ok_or_else(|| invariant_error("model canvas has an invalid aspect ratio"))?;
+        let bounds = bounds.map(|bounds| sizing.normalize(bounds));
         let module = unsafe { GetModuleHandleW(None)? };
         let instance = HINSTANCE(module.0);
         let class = WNDCLASSW {
@@ -83,16 +96,28 @@ impl OverlayWindow {
             lpszClassName: WINDOW_CLASS,
             ..Default::default()
         };
+        // A window class is a process-wide resource, so this only ever
+        // registers: a class that is already there is the state an earlier
+        // creation left behind, and nothing here removes it. `UnregisterClassW`
+        // only succeeds once no window of the class exists, and a destruction on
+        // another thread can land between this call and `CreateWindowExW`, which
+        // then fails with `ERROR_CLASS_DOES_NOT_EXIST`. The swap path leans on
+        // the same rule: a replacement window is created before the window it
+        // replaces is dropped, so the class has to outlive both.
         if unsafe { RegisterClassW(&class) } == 0 {
             let error = Error::from_thread();
             if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
                 return Err(error);
             }
         }
-        let mut extended = taskbar_ex_style(options.taskbar_icon_visible)
-            | WS_EX_NOACTIVATE
-            | WS_EX_NOREDIRECTIONBITMAP;
-        if options.click_through {
+        let mut extended = if options.window_mode {
+            WS_EX_APPWINDOW
+        } else {
+            taskbar_ex_style(options.taskbar_icon_visible)
+                | WS_EX_NOACTIVATE
+                | WS_EX_NOREDIRECTIONBITMAP
+        };
+        if options.click_through && !options.window_mode {
             // `WS_EX_TRANSPARENT` alone leaves a DirectComposition-backed
             // top-level window on the desktop input path: `WM_NCHITTEST`
             // returns `HTTRANSPARENT`, but a real click still selects this
@@ -101,23 +126,33 @@ impl OverlayWindow {
             extended |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
         }
         let scale = options.scale_percent;
-        let (base_width, base_height) = default_overlay_window_dimensions(canvas);
-        let (logical_width, logical_height) = model_window_dimensions(canvas, scale);
+        let (logical_width, logical_height) = sizing.dimensions_for_scale(96, scale);
         let cursor = current_cursor_position();
         let initial_x = bounds.map_or(cursor.x, |value| value.x);
         let initial_y = bounds.map_or(cursor.y, |value| value.y);
         let mut state = Box::new(OverlayWindowState {
+            window_mode: options.window_mode,
+            always_on_top: options.always_on_top,
+            close_requested: false,
+            last_bounds: None,
+            resize_start_bounds: None,
             context_menu_sender,
             resize_sender,
-            resize_base_logical: (base_width, base_height),
+            plugin_targets: OverlayPluginTargets::default(),
+            plugin_interaction_sender: None,
+            sizing,
             drag: None,
         });
-        let hwnd = match unsafe {
+        let hwnd = unsafe {
             CreateWindowExW(
                 extended,
                 WINDOW_CLASS,
                 w!("BongoCat"),
-                WS_POPUP,
+                if options.window_mode {
+                    WS_OVERLAPPEDWINDOW & !WS_MAXIMIZEBOX
+                } else {
+                    WS_POPUP
+                },
                 initial_x,
                 initial_y,
                 logical_width as i32,
@@ -127,25 +162,23 @@ impl OverlayWindow {
                 Some(instance),
                 Some((&mut *state as *mut OverlayWindowState).cast()),
             )
-        } {
-            Ok(hwnd) => hwnd,
-            Err(error) => {
-                let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-                return Err(error);
-            }
+        }?;
+        let mut window = Self {
+            hwnd,
+            owner_thread: thread::current().id(),
+            width: logical_width,
+            height: logical_height,
+            _state: state,
+            _not_send_or_sync: std::marker::PhantomData,
         };
         let dpi = unsafe { GetDpiForWindow(hwnd) };
         if dpi == 0 {
-            let _ = unsafe { DestroyWindow(hwnd) };
-            let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
             return Err(invariant_error("GetDpiForWindow returned zero"));
         }
-        let width = bounds.map_or(logical_to_physical(logical_width, dpi)?, |value| {
-            value.width
-        });
-        let height = bounds.map_or(logical_to_physical(logical_height, dpi)?, |value| {
-            value.height
-        });
+        let (width, height) = bounds.map_or_else(
+            || sizing.dimensions_for_scale(dpi, scale),
+            |value| (value.width, value.height),
+        );
         let (x, y) = bounds.map_or_else(
             || centered_position(cursor, width, height),
             |value| (value.x, value.y),
@@ -164,6 +197,7 @@ impl OverlayWindow {
         } else {
             bounds
         };
+        let rect = unsafe { window_frame_rect(hwnd, width, height)? };
         unsafe {
             SetWindowPos(
                 hwnd,
@@ -172,22 +206,16 @@ impl OverlayWindow {
                 } else {
                     Some(HWND_NOTOPMOST)
                 },
-                bounds.x,
-                bounds.y,
-                width as i32,
-                height as i32,
+                bounds.x + rect.left,
+                bounds.y + rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
                 SWP_NOACTIVATE,
             )?;
         }
-        Ok(Self {
-            hwnd,
-            instance,
-            owner_thread: thread::current().id(),
-            width,
-            height,
-            _state: state,
-            _not_send_or_sync: std::marker::PhantomData,
-        })
+        window.width = width;
+        window.height = height;
+        Ok(window)
     }
 
     pub(crate) fn show(&self) -> Result<(), OverlayError> {
@@ -197,9 +225,26 @@ impl OverlayWindow {
         }
         // SAFETY: the HWND is live, owned, and accessed only on its creation
         // thread; showing without activation does not transfer ownership.
-        let _ = unsafe { ShowWindow(self.hwnd, SW_SHOWNOACTIVATE) };
+        let _ = unsafe {
+            ShowWindow(
+                self.hwnd,
+                if IsIconic(self.hwnd).as_bool() {
+                    windows::Win32::UI::WindowsAndMessaging::SW_RESTORE
+                } else {
+                    SW_SHOWNOACTIVATE
+                },
+            )
+        };
         if !unsafe { IsWindowVisible(self.hwnd) }.as_bool() {
             return Err(OverlayError::new("Win32 overlay did not become visible"));
+        }
+        // `ShowWindow` brings a window back at the top of the band it belongs to,
+        // but it does not put a window back into the topmost band: a window that
+        // lost the band while it was hidden would come back as an ordinary
+        // window. Re-asserting here covers the show path; the frame tick covers
+        // a demotion that happens while the window stays visible.
+        if self._state.always_on_top {
+            self.ensure_topmost()?;
         }
         Ok(())
     }
@@ -226,17 +271,32 @@ impl OverlayWindow {
 
     pub(crate) fn bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
         self.assert_owner_thread();
-        let mut rect = RECT::default();
-        // SAFETY: the HWND is live and accessed only from its owner thread.
-        unsafe { GetWindowRect(self.hwnd, &mut rect) }
-            .map_err(windows_error("read overlay window position"))?;
-        OverlayWindowBounds::new(
-            rect.left,
-            rect.top,
-            (rect.right - rect.left) as u32,
-            (rect.bottom - rect.top) as u32,
-        )
-        .validate()
+        // SAFETY: the HWND and boxed state belong to this thread. Minimized
+        // rectangles are shell coordinates, never persisted model geometry.
+        if unsafe { IsIconic(self.hwnd) }.as_bool()
+            && let Some(bounds) = self._state.last_bounds
+        {
+            return Ok(bounds);
+        }
+        unsafe { client_window_bounds(self.hwnd) }
+    }
+
+    pub(crate) fn bounds_for_scale(
+        &self,
+        scale_percent: u16,
+    ) -> Result<OverlayWindowBounds, OverlayError> {
+        self.assert_owner_thread();
+        // SAFETY: this HWND is live and read on its owner thread.
+        let dpi = unsafe { GetDpiForWindow(self.hwnd) };
+        if dpi == 0 {
+            return Err(OverlayError::new("GetDpiForWindow returned zero"));
+        }
+        let (width, height) = self._state.sizing.dimensions_for_scale(dpi, scale_percent);
+        Ok(OverlayWindowBounds {
+            width,
+            height,
+            ..self.bounds()?
+        })
     }
 
     /// Move the window to a corrected box without touching its size, z-order or
@@ -247,11 +307,13 @@ impl OverlayWindow {
         // SAFETY: the HWND is live and confined to its owner thread. This only
         // corrects its origin while preserving size, z-order, and activation.
         unsafe {
+            let rect = window_frame_rect(self.hwnd, bounds.width, bounds.height)
+                .map_err(windows_error("measure window frame"))?;
             SetWindowPos(
                 self.hwnd,
                 None,
-                bounds.x,
-                bounds.y,
+                bounds.x + rect.left,
+                bounds.y + rect.top,
                 0,
                 0,
                 SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
@@ -268,7 +330,7 @@ impl OverlayWindow {
     /// surface before its first compositor tick has settled.
     pub(crate) fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        let bounds = bounds.validate()?;
+        let bounds = self._state.sizing.normalize(bounds.validate()?);
         if self.bounds()? == bounds {
             return Ok(());
         }
@@ -276,13 +338,38 @@ impl OverlayWindow {
         // supplies a validated virtual-screen box, and the operation preserves
         // z-order and activation while changing only geometry.
         unsafe {
+            let rect = window_frame_rect(self.hwnd, bounds.width, bounds.height)
+                .map_err(windows_error("measure window frame"))?;
+            if IsIconic(self.hwnd).as_bool() {
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    GetWindowPlacement, SetWindowPlacement, WINDOWPLACEMENT,
+                };
+                let mut placement = WINDOWPLACEMENT {
+                    length: size_of::<WINDOWPLACEMENT>() as u32,
+                    ..Default::default()
+                };
+                GetWindowPlacement(self.hwnd, &mut placement)
+                    .map_err(windows_error("read minimized window placement"))?;
+                // WINDOWPLACEMENT uses work-area coordinates. Preserve the
+                // normal origin; change only its extent while minimized.
+                placement.rcNormalPosition.right =
+                    placement.rcNormalPosition.left + rect.right - rect.left;
+                placement.rcNormalPosition.bottom =
+                    placement.rcNormalPosition.top + rect.bottom - rect.top;
+                SetWindowPlacement(self.hwnd, &placement)
+                    .map_err(windows_error("resize minimized model window"))?;
+                self._state.last_bounds = Some(bounds);
+                self.width = bounds.width;
+                self.height = bounds.height;
+                return Ok(());
+            }
             SetWindowPos(
                 self.hwnd,
                 None,
-                bounds.x,
-                bounds.y,
-                bounds.width as i32,
-                bounds.height as i32,
+                bounds.x + rect.left,
+                bounds.y + rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
                 SWP_NOACTIVATE | SWP_NOZORDER,
             )
             .map_err(windows_error("resize the existing overlay window"))?;
@@ -292,18 +379,64 @@ impl OverlayWindow {
         Ok(())
     }
 
-    pub(crate) fn set_always_on_top(&self, always_on_top: bool) -> Result<(), OverlayError> {
+    pub(crate) fn set_always_on_top(&mut self, always_on_top: bool) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        // SAFETY: the HWND is live and confined to its owner thread. This is
-        // the only in-place z-order transition for the overlay.
+        self.apply_z_order(if always_on_top {
+            HWND_TOPMOST
+        } else {
+            HWND_NOTOPMOST
+        })?;
+        self._state.always_on_top = always_on_top;
+        Ok(())
+    }
+
+    /// Whether the window is currently a member of the topmost band.
+    pub(crate) fn is_topmost(&self) -> bool {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread, and
+        // `GWL_EXSTYLE` only reads this window's own extended style bits.
+        let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } as u32);
+        style.contains(WS_EX_TOPMOST)
+    }
+
+    /// Whether the window is asked to sit in the topmost band.
+    pub(crate) fn is_always_on_top(&self) -> bool {
+        self._state.always_on_top
+    }
+
+    /// Restore both topmost membership and ordering above the foreground app.
+    pub(crate) fn ensure_topmost(&self) -> Result<(), OverlayError> {
+        // SAFETY: GetForegroundWindow only reads the desktop's current foreground HWND.
+        self.ensure_topmost_above(unsafe { GetForegroundWindow() })
+    }
+
+    pub(super) fn ensure_topmost_above(&self, foreground: HWND) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        if !self.is_always_on_top() {
+            return Ok(());
+        }
+        // A fullscreen browser can enter the topmost band without clearing our
+        // WS_EX_TOPMOST bit. Band membership alone says nothing about their order.
+        if !self.is_topmost() || window_is_above(foreground, self.hwnd) {
+            self.apply_z_order(HWND_TOPMOST)?;
+        }
+        Ok(())
+    }
+
+    /// Move the window to the top or back out of the topmost band.
+    ///
+    /// Geometry and activation are suppressed: this is the only z-order
+    /// transition the product makes, and it must never move, resize or focus the
+    /// overlay as a side effect.
+    fn apply_z_order(&self, insert_after: HWND) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread. The
+        // position arguments are all suppressed, so the call only changes the
+        // window's place in the Z order.
         unsafe {
             SetWindowPos(
                 self.hwnd,
-                if always_on_top {
-                    Some(HWND_TOPMOST)
-                } else {
-                    Some(HWND_NOTOPMOST)
-                },
+                Some(insert_after),
                 0,
                 0,
                 0,
@@ -332,6 +465,7 @@ impl OverlayWindow {
     /// same way the click-through path is read back by its own caller.
     pub(crate) fn set_taskbar_icon_visible(&self, visible: bool) -> Result<(), OverlayError> {
         self.assert_owner_thread();
+        let visible = visible || self._state.window_mode;
         if self.taskbar_icon_is_visible() == visible {
             return Ok(());
         }
@@ -370,6 +504,7 @@ impl OverlayWindow {
 
     pub(crate) fn set_click_through(&self, click_through: bool) -> Result<(), OverlayError> {
         self.assert_owner_thread();
+        let click_through = click_through && !self._state.window_mode;
         // SAFETY: the HWND is live and confined to its owner thread. The
         // extended style controls whether the desktop input path can select this
         // window; `SWP_FRAMECHANGED` refreshes the cached non-client state
@@ -398,15 +533,84 @@ impl OverlayWindow {
     }
 }
 
+pub(super) fn window_is_above(candidate: HWND, model: HWND) -> bool {
+    if candidate.is_invalid() || candidate == model {
+        return false;
+    }
+    // Ordinary foreground windows cannot cover a topmost model. This also
+    // avoids walking the desktop order on the usual, unchanged frame.
+    // SAFETY: the external HWND is only queried, never dereferenced or retained.
+    let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(candidate, GWL_EXSTYLE) } as u32);
+    if !style.contains(WS_EX_TOPMOST) {
+        return false;
+    }
+    let mut order = (candidate, model, false);
+    // SAFETY: EnumWindows invokes the callback synchronously on this thread;
+    // the stack context remains valid until it returns. Early stop is intentional.
+    let _ = unsafe {
+        EnumWindows(
+            Some(compare_window_order),
+            LPARAM(std::ptr::from_mut(&mut order) as isize),
+        )
+    };
+    order.2
+}
+
+unsafe extern "system" fn compare_window_order(hwnd: HWND, context: LPARAM) -> BOOL {
+    // SAFETY: only window_is_above passes this live, exclusive stack context.
+    let order = unsafe { &mut *(context.0 as *mut (HWND, HWND, bool)) };
+    if hwnd == order.0 {
+        order.2 = true;
+        BOOL(0)
+    } else {
+        BOOL(i32::from(hwnd != order.1))
+    }
+}
+
+/// Compute the outer rectangle for client pixels using the HWND's current DPI.
+pub(crate) unsafe fn window_frame_rect(hwnd: HWND, width: u32, height: u32) -> WindowsResult<RECT> {
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: width as i32,
+        bottom: height as i32,
+    };
+    // SAFETY: callers own the live HWND on this thread; rect is writable storage.
+    unsafe {
+        AdjustWindowRectExForDpi(
+            &mut rect,
+            WINDOW_STYLE(GetWindowLongPtrW(hwnd, GWL_STYLE) as u32),
+            false,
+            WINDOW_EX_STYLE(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32),
+            GetDpiForWindow(hwnd),
+        )?;
+    }
+    Ok(rect)
+}
+
+pub(crate) unsafe fn client_window_bounds(hwnd: HWND) -> Result<OverlayWindowBounds, OverlayError> {
+    let mut rect = RECT::default();
+    let mut origin = POINT::default();
+    // SAFETY: callers own the HWND on its thread; both outputs are stack storage.
+    unsafe {
+        GetClientRect(hwnd, &mut rect).map_err(windows_error("read model client size"))?;
+        ClientToScreen(hwnd, &mut origin)
+            .ok()
+            .map_err(windows_error("read model client origin"))?;
+    }
+    OverlayWindowBounds::new(origin.x, origin.y, rect.right as u32, rect.bottom as u32).validate()
+}
+
 impl Drop for OverlayWindow {
     fn drop(&mut self) {
         self.assert_owner_thread();
         // SAFETY: Renderer has already dropped, so no composition target still
-        // uses this HWND. Class unregistration follows window destruction.
+        // uses this HWND. The class is deliberately left registered: it belongs
+        // to the process rather than to this window, and removing it here could
+        // take it away from a window another thread is about to create.
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
             let _ = DestroyWindow(self.hwnd);
-            let _ = UnregisterClassW(WINDOW_CLASS, Some(self.instance));
         }
     }
 }

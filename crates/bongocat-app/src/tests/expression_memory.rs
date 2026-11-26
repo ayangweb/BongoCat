@@ -345,3 +345,138 @@ fn remembered(application: &Application) -> Vec<(&str, &str)> {
         .map(|record| (record.model.id.as_str(), record.expression.as_str()))
         .collect()
 }
+
+/// Turning a repeated trigger into an off request is one configuration switch, and
+/// it reaches the runtime as model settings rather than as a decision the
+/// application makes per request.
+///
+/// The runtime is the only place that knows which expression is in effect, and
+/// the configuration is the only place the choice belongs, so this test is about
+/// the two of them staying in step: the command moves the runtime's own answer and
+/// the persisted document together, and the remembered choices are untouched.
+#[test]
+fn the_expression_toggle_is_one_switch_that_reaches_the_runtime_and_the_document() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let (mut application, _pump, _token) = start_with_pumped_overlay(&layout);
+
+    assert!(!application.config().model.toggle_repeated_expression);
+    assert!(
+        !application
+            .runtime_client()
+            .snapshot()
+            .model_settings
+            .toggle_repeated_expression
+    );
+
+    application
+        .set_toggle_repeated_expression(true)
+        .expect("enable the toggle");
+    assert!(application.config().model.toggle_repeated_expression);
+    let deadline = Instant::now() + RUNTIME_TIMEOUT;
+    while !application
+        .runtime_client()
+        .snapshot()
+        .model_settings
+        .toggle_repeated_expression
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the runtime never received the toggle"
+        );
+        std::thread::yield_now();
+    }
+
+    // Turning the toggle on says nothing about where a model starts, and a repeat
+    // that turns an expression off records nothing, so the remembered set is
+    // exactly what it was.
+    application
+        .set_expression("live2d_expression0.exp3.json")
+        .expect("choose an expression");
+    assert_eq!(
+        settled_expression(&application, true).as_deref(),
+        Some("live2d_expression0.exp3.json")
+    );
+    application.persist_user_expression_memory();
+    let remembered_before = remembered(&application)
+        .into_iter()
+        .map(|(model, expression)| (model.to_owned(), expression.to_owned()))
+        .collect::<Vec<_>>();
+
+    application
+        .set_expression("live2d_expression0.exp3.json")
+        .expect("trigger the same expression again");
+    assert_eq!(
+        settled_expression(&application, false),
+        None,
+        "the second trigger turned the expression off"
+    );
+    application.persist_user_expression_memory();
+    let remembered_after = remembered(&application)
+        .into_iter()
+        .map(|(model, expression)| (model.to_owned(), expression.to_owned()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        remembered_after, remembered_before,
+        "turning an expression off is not a new remembered choice"
+    );
+
+    application
+        .set_toggle_repeated_expression(false)
+        .expect("disable the toggle");
+    application
+        .set_expression("live2d_expression0.exp3.json")
+        .expect("choose an expression again");
+    assert_eq!(
+        settled_expression(&application, true).as_deref(),
+        Some("live2d_expression0.exp3.json")
+    );
+    application
+        .set_expression("live2d_expression0.exp3.json")
+        .expect("and trigger it again with the toggle off");
+    assert_eq!(
+        settled_expression(&application, true).as_deref(),
+        Some("live2d_expression0.exp3.json"),
+        "with the toggle off a repeat is the same face applied again"
+    );
+}
+
+#[test]
+fn motion_overlap_setting_is_persisted_and_restored_at_startup() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let (mut application, pump, _token) = start_with_pumped_overlay(&layout);
+    assert!(!application.config().model.allow_motion_overlap);
+    application
+        .set_allow_motion_overlap(true)
+        .expect("enable overlap");
+    let deadline = Instant::now() + RUNTIME_TIMEOUT;
+    while !application
+        .runtime_client()
+        .snapshot()
+        .model_settings
+        .allow_motion_overlap
+    {
+        assert!(Instant::now() < deadline, "runtime setting delivery");
+        std::thread::yield_now();
+    }
+    application.shutdown().expect("shutdown");
+    drop(pump);
+    let (mut restarted, _pump, _token) = start_with_pumped_overlay(&layout);
+    assert!(restarted.config().model.allow_motion_overlap);
+    let deadline = Instant::now() + RUNTIME_TIMEOUT;
+    while !restarted
+        .runtime_client()
+        .snapshot()
+        .model_settings
+        .allow_motion_overlap
+    {
+        assert!(Instant::now() < deadline, "runtime startup setting");
+        std::thread::yield_now();
+    }
+    restarted
+        .set_allow_motion_overlap(false)
+        .expect("disable overlap");
+    assert!(!restarted.config().model.allow_motion_overlap);
+    restarted.shutdown().expect("shutdown");
+}

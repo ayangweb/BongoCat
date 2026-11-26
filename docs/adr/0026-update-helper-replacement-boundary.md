@@ -55,9 +55,9 @@ ADR-0021 至 ADR-0025 已将 manifest、artifact URL、下载和 staging 限制�
 - 平台 contract tests 覆盖拒绝裸输入、root/staging link substitution、path traversal、cross-environment、
   cross-target、invalid signature、concurrent helper、parent alive、prepare failure、atomic commit failure、
   launch/health failure rollback 与成功后 cleanup。
-- Windows 10 1903+ 和 Windows 11 以非管理员 profile 验证真实 Authenticode、lock、upgrade、rollback、
-  uninstall 后无残留和 Development/Production 数据保留；macOS 12+ 验证 signed/notarized bundle、
-  quarantine、rollback 和 data preservation。
+- Windows 10 1903+ 和 Windows 11 以非管理员 profile 验证 lock、upgrade、rollback、
+  uninstall 后无残留和 Development/Production 数据保留；macOS 12+ 验证 ad-hoc signed bundle、
+  quarantine、rollback 和 data preservation。Developer ID 公证与 Authenticode 不在产品范围内。
 - 断电/kill fault injection 在每个 prepare/rename/acknowledgement 点重启，断言只会启动完整已验证的
   current 或 rollback product，且 never deletes user data。
 

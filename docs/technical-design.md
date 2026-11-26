@@ -1,7 +1,7 @@
 # Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-25
+最后更新：2026-10-15
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -25,6 +25,21 @@ Rust 2024 edition application
 - Windows 只发布 `x86_64-pc-windows-msvc`，不构建或发布 x86 与原生 ARM64；Windows on ARM 通过系统 x64 仿真运行该构建。
 - GPUI 只负责常规设置 UI，不承担模型渲染。
 - 模型窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
+- Windows 模型窗口支持透明桌宠与普通窗口模式（ADR-0089）。普通窗口使用系统标题栏、等比例
+  resize 边框、最小化/关闭按钮和不透明 D3D11 HWND swap chain，支持窗口捕获。背景为用户选择的
+  RGB 纯色，默认绿色；模型自带背景和绘制层次保持不变。模式与背景通过既有 revision-checked
+  overlay command 持久化，缺失新字段的 v1 数据仍按桌宠默认启动，macOS 不应用这两项。
+  普通窗口暂停点击穿透、悬停/空闲隐藏、不透明度及圆角裁剪，不改写桌宠偏好。关闭隐藏模型窗口，
+  不提前销毁 renderer 的 HWND；客户区几何用于 renderer 和持久化，最小化不写入 shell 的占位坐标。
+  Windows 两种呈现共用客户区尺寸规则，保留未取整的模型画布宽高。数字及手势缩放按当前 DPI、
+  100% 时 350 逻辑像素的基准宽度计算绝对尺寸；恢复、模式和模型切换保留客户区宽度，再按
+  画布推导高度。尺寸上下限统一作用于比例，不分别截断两轴；系统边框在最后计算。原生尺寸
+  变更及 DPI 建议矩形同样经过该规则，避免系统标题栏最小宽度再单独改动一轴。renderer 跟随
+  实测客户区尺寸，最小化期间更新恢复几何；边框拖动回写的百分比再次应用时不叠加缩放。
+  只有实际改变客户区尺寸的系统 resize 操作回写缩放；移动窗口（包括跨屏 DPI 调整）、未改变
+  尺寸或取消的 resize 不回写缩放，不把恢复的窗口几何误当作新缩放比例。
+  模型切换在原 HWND 上 prepare/validate/commit，失败保留当前可捕获模型；改变颜色、缩放和置顶
+  同样不替换捕获目标。模式切换需要重建对应呈现资源。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
 - Windows 键鼠输入优先评估成熟输入库；若没有方案能同时满足事件边缘完整性、系统状态校正、
   Raw Input 设备语义和已确认的生命周期复位不变量，则直接使用 `windows-rs` 实现最小适配层，
@@ -36,6 +51,126 @@ Rust 2024 edition application
   驱动、mapping 与 backend 生命周期修复进入 fork（ADR-0066）。
 - 官方 Cubism Core 是预编译厂商二进制，是“应用代码纯 Rust”的唯一 FFI 例外；BongoCat 业务逻辑不得进入 SDK bridge。
 - Linux 不进入首发范围，但共享业务 crate 不得依赖 Win32/AppKit 类型，不得故意封死后续 backend。
+
+## 1.1 插件系统
+
+- 插件专属业务与系统适配由插件自身持有，不依赖应用平台 crate；宿主只提供通用通信、输入活动统计、存储和展示能力。
+- 插件是**独立 Rust 进程**，以版本化 JSON 协议（`bongocat-plugin-sdk`）与主程序通信；
+  插件不进入主程序进程，也不共享 Rust ABI，因此插件与主程序的编译器和链接布局互不影响。
+- 插件以 ZIP 包分发，包内含 `plugin.json` 清单与入口可执行文件，开发与发布使用同一形状。
+  安装按 `<plugin_dir>/packages/<id>/<version>/` 落盘并以 `current` 指针原子切换，插件数据
+  独立存放在 `<plugin_dir>/data/<id>/`：卸载只删除可执行文件并保留数据。
+- `bongocat-plugin-manager` 负责包发现（`plugin.json` 清单）、ZIP 解包校验（路径安全、解压
+  体积与条目上限）、安装/卸载/重置生命周期（discover → enable → configure/tick → disable →
+  shutdown）、协议帧大小上限、请求/响应超时和单个进程的故障隔离。
+- `bongocat-plugin-service` 是插件在应用内唯一的 owner：设置窗口只是它的一个客户端，关闭设置
+  窗口不影响插件继续运行、继续 tick 和继续更新模型窗口。
+- 插件自持业务规则、默认值、校验和持久化状态；主程序只通过 `HostMessage` 发送 start / tick /
+  action / configure / reset / pause / resume / stop，并消费插件发布的 `PluginOutput`。
+- 插件用有界、声明式的 `UiNode` 树描述模型窗口内容与设置面板。协议只有一种当前形状：
+  `UiNode::Button` 必然携带 `icon` 与 `loading`，`UiNode::Select` 必然携带 `preview` 且每个选项
+  必然携带 `group`，`PluginOutput::errors` 与清单的 `localizations` 必然存在；主程序不补默认值、
+  不做旧帧兼容。插件中心身份图标固定为
+  清单声明的本地 PNG，由目录单独投影 `icon_url`：Development 指向构建产物中的本地文件，
+  Production 指向 GitHub Release 中与插件版本同名的独立 PNG 资源；两者都复用目录的代理顺序。
+  Production 图标由插件服务按插件版本异步预取到当前环境的插件缓存，原子写入并在后续启动直接
+  使用本地路径；预取失败保留远程地址。卡片不使用字体或 Emoji 回退，也不依赖插件是否已安装。
+  加载期间显示与图标同尺寸的主题骨架，无法加载时显示静态中性占位，不推断或伪造插件身份。
+  主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
+  模型窗口 HUD 将相邻动作按钮横向分组，复用组件尺寸约定，主操作为柔白底深色文字、次操作为炭灰底白字，文字水平垂直居中，保留边框且不绘制按钮图标；
+  平台 adapter 将可交互时的指针转换为 device 坐标，共享 overlay 状态仅在 Hover 目标变化时更新纹理，
+  离开后恢复原图，不改变点击目标或发送业务动作。
+- 插件中心复用模型库页的响应式网格：同一套“窗口宽度 → 列数”规则、同一个滚动网格与行模板，
+  只是卡片列宽下限按插件卡片的内容取更高值；两处目录对“一行放几列”保持一致。
+- 插件中心使用统一卡片：图标、名称、版本和设置入口在顶部，描述与配置在中部，底部左侧使用
+  GPUI Kit `Switch` 启用/禁用，右侧集中展示带 Tooltip 的图标操作按钮。每个操作按钮都使用
+  与自身含义匹配的图标：包生命周期由主程序映射，插件发布的按钮由插件在 `UiNode::Button`
+  上声明 `ActionIcon`，未声明的按钮保留中性图标；主程序不从插件 ID、action ID 或译文标签
+  推断业务语义。按钮标签（含设置面板中的按钮）仍作为 Tooltip。窄卡片中的操作区允许换行。
+  页头只保留主按钮“更新全部”，不提供手动刷新入口，不再显示说明容器；有可用更新的卡片在
+  已安装版本旁显示更新徽标，没有可更新插件时页头不显示“更新全部”。“更新全部”串行复用单个
+  插件的安装/更新命令，失败项不阻塞其余插件并以通知报告，可再次重试；底部操作区作为一个
+  整体换行，整枚图标按钮不会越过卡片边界。手动安装/更新按插件独立跟踪，不同插件可并行下载；
+  同一插件的生命周期操作在其安装任务结束前保持禁用，其他插件不受影响。目录发现任务与安装任务
+  分离，卡片已经可见时目录刷新不会禁用其他插件的安装按钮。颜色、圆角和控件尺寸来自现有主题与
+  组件默认值。
+- 正在执行的操作由控件自身表达：按钮切换为 Loading 并禁用，插件侧持续进行的工作通过
+  `UiNode::Button::loading` 由插件上报，不再发布进度占位文本；
+  不能旋转的 `Switch` 在命令进行中保持惰性。窗口侧为每个已发送命令记录在途状态，回复到达即
+  清除，因此一个命令只影响发起它的那个控件。
+- 每个已安装且启用的插件在卡片头部有独立的设置入口，以 Modal 打开该插件自己的配置面板；面板按
+  插件发布的顺序渲染 Toggle、Integer、Select、Button、IconText 与文本节点，控件直接写回插件的 typed
+  command，插件被卸载、关闭或故障时面板随之关闭。`UiNode::Select` 连同自己的选项列表一起
+  发布，选中值必属于该列表；选项可携带插件本地化的分组标题，主程序仅在全部选项都声明了分组时
+  复用 GPUI Kit 的 Group delegate 展示分组，否则保持平面列表，不为未声明分组的选项补造标题；
+  下拉在面板存续期间只刷新不重建，避免关闭用户已展开的菜单。各插件
+  的入口位置与交互完全一致。Select 可用 `preview: true` 声明悬停试听，通过非持久化的
+  `Preview { key, value }` 请求插件；普通下拉仍只在确认时写配置。悬停请求仅保留最新待处理选项，
+  离开选项或关闭面板后丢弃尚未发送的请求，避免快速移动时积压、乱序。
+  音效插件不再提供独立试听按钮；新试听替换旧声音并复用输出设备，试听播放期间抑制正常输入
+  音效但继续更新输入基线，播放结束后恢复，不重放期间的输入；暂停或静音时不打开音频设备。
+  “跟随”试听设备当前音效，没有弹起录音的选项保持静音，试听不修改配置或正常输入的冷却时间。
+- 插件运行时错误通过 `PluginOutput.errors` 发布稳定 ID 与插件本地化文案；设置窗口将其、插件加载故障、中心操作失败和模型窗口交互失败统一转换为全局 `Notification`，并按插件与错误 ID 去重。`UiNode::Text` 只表示普通状态，不得作为错误占位或页面错误条直接展示。
+- 插件名称、描述与界面文案由插件自身拥有：清单通过 `localizations` 提供按语言标签的
+  name／description（英文同样在该映射内，是唯一的文案来源），`localized_views_v1` capability
+  声明插件会本地化自己发布的视图，主程序用应用配置解析后的语言经 `HostMessage::Locale` 告知
+  插件，启动时在打开窗口前初始化，语言修改成功持久化后同步，不依赖设置窗口渲染；之后启用或
+  重启的插件在启动时收到当前语言。插件中心自身的框架文案仍取自 `bongocat-i18n` 目录；未声明
+  capability 的插件不接收该消息。
+- 插件统一仅支持简体中文（`zh-CN`）与英文，自动跟随应用语言，不提供独立语言配置；其他应用
+  语言统一回退英文。清单没有完整中文名称或描述时，整组文案和发布的视图均回退英文，不逐字段
+  拼接中英文；语言条目缺少 name 或 description，或带有未知字段，属于无效清单，主程序不做补全。
+  不改变主程序支持的语言范围。
+- 模型窗口的插件内容由平台 overlay 合成为独立 HUD 图层（macOS Metal、Windows D3D11），与模型
+  画面同帧绘制；图层携带命中区域，点击经平台窗口消息路由回插件。只有非 Loading 的 Button
+  与 Toggle 可交互，分别发送 Action 与布尔配置修改；Integer、Select 在该窗口只作展示。
+- 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
+  HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
+- 插件 SDK、官方插件源码、ZIP 打包、签名工具和插件发布工作流都是本仓库的 workspace 成员；
+  插件仍以独立可执行进程运行，主应用的安装包不包含插件源码或插件资源。Development 的
+  `just dev` / `just dev-smoke` 由 `tools/dev_plugins.py` 直接构建当前主机平台插件到
+  `target/plugin-dev`，再以 `BONGOCAT_PLUGIN_DEV_DIRECTORY` 注入应用。
+  Development 启动后由产品自身的安装目录发现可用插件，不自动安装或重新安装已卸载的插件。
+  生产环境从 `plugin-catalog` 分支的签名 `plugins.json` 发现列表；两个环境复用插件中心的
+  安装、更新、启用、禁用和卸载路径。
+  清单按插件 ID 选择最新兼容版本，展示已安装/可用版本；网络与目录 IO 不阻塞 tick/action owner。
+  番茄时钟、按键音效、输入法状态均声明 `app_versions: ">=2.3.1"`，不限制应用的最高版本。
+  Production 不读取本地目录。插件 Release 使用 `plugins-v*` tag，并显式保持非 Latest；
+  各平台 ZIP 位于对应不可变 Release，签名 catalog 在 Release 重新下载校验通过后写入
+  `plugin-catalog` 分支。未发布签名资源时显示可重试错误，不回退到未签名数据。
+- 首个验证插件是番茄时钟（#996）：它在模型窗口显示独立倒计时区域，并与插件的开始、暂停、重置
+  保持同步。按键音效（#90，英文名 Key Sounds）也作为独立插件维护音频、音量、
+  限流和设备生命周期；鼠标音效在新建、重置配置或缺少对应字段时默认开启，保留已保存的关闭选择；runtime
+  提供去重后的输入活动计数（键盘按下／弹起、鼠标按下／弹起四个设备总数，以及空格、主键盘／小键盘
+  回车、退格、Tab、左右 Shift、左 Control 的按下／弹起子集），service 经 `input_activity_v1`
+  capability 发送合并的单调计数，不传递字母、符号、文本、指针位置或鼠标按钮身份。
+  该插件把音效资源编译进自身可执行文件，离线可用，并分别按键盘、鼠标解析音效选择；
+  按下与弹起共用设备级音效包，自定义音效与按动作拆分后续再扩展。
+  输入法状态（#849，Input Source）独立读取平台输入源，支持始终显示图标与名称或仅在切换后
+  显示 1–10 秒；新建、重置或缺少显示方式时默认始终显示，保留已保存的显示方式。设置弹框不展示
+  当前输入法预览，只提供显示方式、按需显示的时长及不可用／暂停状态；图标与名称仅在模型窗口展示。
+  macOS 使用 TIS 通知，优先采用系统输入法菜单所用的图标，TIS 图标
+  URL 仅作输入法自带图标的后备；Windows 由 HKL 判定语言、由会话活动输入法配置判定输入法：
+  每次读取新建并随即释放 TSF 配置管理器后读取（长期持有会被冻结在创建时的状态，这正是
+  以往必须重启才能更新显示的原因），名称与图标取自该配置自身注册，切换在下一次读取内即
+  生效；首版只显示输入法本身，不显示同一输入法内的中／英模式；纯键盘布局按布局注册表
+  命名且不套用会话输入法，其图标位置采用系统同样的三字母语言缩写（如 `ENG`），不自造徽标。
+  平台未提供图标时显示名称徽标。不读取文本、不切换输入法、不增加输入权限。
+  macOS 由 TIS 通知驱动、以 sequence 0 主动推送；Windows 没有能到达后台进程的同类通知
+  （同窗口内切换输入法既不触发前台钩子，也不回调后台线程的 TSF 激活 sink），因此仍在宿主
+  tick 内读取，切换在下一个 tick 内生效。
+  SDK 的有界 `IconText` 节点经 `icon_text_v1` capability 声明，由共用 HUD 在模型窗口绘制，
+  并复用设置窗口既有组件配置；图标槽高度固定、宽度由内容决定（位图按方形，文字徽标按自身宽度
+  撑开，避免三字母语言缩写压到名称上）；未声明的新节点在进程边界拒绝。
+  其余候选 Issue（#905、#74、#945、#927）保留。插件配置、状态与启用标记按环境原子持久化；更新
+  替换 registry 的实际入口，失败恢复旧版本。边界、取舍与限制见 ADR-0090、ADR-0091、
+  ADR-0092、ADR-0093、ADR-0094、ADR-0095、ADR-0096。
+- 插件最近一次有效输出是内存配置与状态的单一来源。启用须完成握手、Start、语言协商与持久化后
+  才发布 Enabled；显式安装（包括卸载后重装）成功后自动走该启用流程，仅更新已安装插件时保留禁用选择。
+  自动启用失败保留已安装包，复用全局错误通知并允许手动重试启用。
+  配置落盘失败停止进程并保留上次有效配置。正常配置／动作拒绝不破坏协议会话，
+  传输、序号或声明能力的响应失败则隔离该插件。服务关闭入口并清理排队回复后停止全部进程，
+  停止或持久化失败须向应用报告，不将强杀视为正常退出。
 
 ## 2. “纯 Rust”的定义
 
@@ -101,13 +236,13 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.1"` 并提交 `Cargo.lock`；GPUI Kit
+- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.3"` 并提交 `Cargo.lock`；GPUI Kit
   是唯一直接 GPUI 依赖，其 suite 内五个 package 都从同一 registry 版本解析。禁止另行声明或替换
   `gpui`、platform、component 和 assets。
 - v0.7.0 是首个同时发布 `SettingGroup::variant()` 与 `Popover::arrow()` 的 release，此前为拿到
   这两项能力而固定的 `longbridge/gpui-kit` git revision 已删除，`deny.toml` 不再放行该仓库。
-  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.8` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
-  GPUI crate，并把这套家族精确 pin 在 `=0.3.8`。
+  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.9` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
+  GPUI crate，并把这套家族精确 pin 在 `=0.3.9`。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
@@ -139,10 +274,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `appearance_changed` 中更新；也不复用 gpui 的外观名映射，因为它不识别
   `AccessibilityHighContrastDarkAqua`，会把开启「提高对比度」的暗色系统判成浅色。主题失败一律
   降级为该表面保持系统外观，不报错、不改配置、不阻止启动。
-- `appearance.language` 只接受 `system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN`、`pt-BR` 和 `ko-KR` 八个当前 v1 值，默认 `system`。
+- `appearance.language` 只接受 `system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN`、`pt-BR`、`ko-KR`、`fr-FR` 和 `ru-RU` 十个当前 v1 值，默认 `system`。
   平台 adapter 在启动时读取系统首选 locale，并按 primary subtag 归类（RFC 4647 language-subtag
   fallback）：`ar`、`ar-EG`、`ar-SA` 等阿拉伯语 locale 归为 `ar-SA`，`vi` 与 `vi-VN` 归为 `vi-VN`，
-  `pt` 与 `pt-PT` 归为 `pt-BR`，`ko` 归为 `ko-KR`，简繁之外的英语 locale 归为 `en-US`。`zh` 是
+  `pt` 与 `pt-PT` 归为 `pt-BR`，`ko` 归为 `ko-KR`，`fr`、`fr-CA` 等法语 locale 归为 `fr-FR`，
+  `ru`、`ru-KZ` 等俄语 locale 归为 `ru-RU`，简繁之外的英语 locale 归为 `en-US`。`zh` 是
   primary subtag 唯一无法判定的情形：简繁是不同书写体系而非地区变体，因此 `zh-Hant` 与 `TW`/`HK`/`MO`
   归为 `zh-TW`，其余 `zh` 标签归为 `zh-CN`。
   其它 locale 也回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed
@@ -201,6 +337,15 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   拒绝的机会。BongoCat 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
   `open_settings`、overlay 显隐以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
+- `model.behavior_names` 是每个模型每个行为一行的自定义显示名，`behavior_id` 与快捷键绑定、随机播放
+  勾选共用同一种拼法。设置窗口把它解析成 `SettingsModelBehaviorName`（只含已命名的行、只含当前模型），
+  `shortcut_rows` 优先用它作为行标签，未命名的行保持「动作 N / 表情 N」。空白名字不落盘，清空字段等于
+  删除这一行；删除模型时一并清掉它的名字。窗口侧的限长与配置侧一致
+  （`MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS`），因此窗口不会送出配置会拒绝的值。改名在行内完成（ADR-0085
+  §4）：行名称后面有一个编辑图标（提示就是「重命名」一词，且是唯一入口），点击它把名称就地换成文本框；
+  字段自身不带控件与说明文案——Enter 保存、Esc 放弃、焦点被别处拿走视为保存，字段仍是原标签时不发送
+  请求。一次只有一个字段打开，打开另一行的编辑会先提交已打开的那份编辑。录制/播放/清除三个控件的位置与
+  tab 序号保持不变，改名面不新增 tab stop。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
@@ -217,8 +362,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   无需重启即可用自己的组合键，非活动模型的绑定也不再占用全局热键。
 - `system.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
-  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘
-  owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、一个 popup 菜单根、菜单项 receiver 和强类型
+  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.26.1` 托盘
+  owner 与直接依赖的 `muda 0.21.2` 菜单 owner：`TrayIcon`、一个 popup 菜单根、菜单项 receiver 和强类型
   事件队列在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留
   注册并设置隐藏），重新显示不创建第二套业务状态或菜单 owner。托盘和 overlay 右键复用同一棵菜单树，
   由 `muda` 从 overlay 的真实 HWND/`NSView` 弹出，不借用托盘隐藏窗口。
@@ -229,18 +374,22 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   它在任务栏里的按钮没有用户可操作的对应窗口，而设置窗口才是可用的任务栏入口，因此默认
   不额外占用一个任务栏位置。设置窗口始终保留 GPUI 创建时带的任务栏按钮与原生标题栏：
   给它套上 `WS_EX_TOOLWINDOW` 会连标题栏一起换成工具窗口的短标题栏，因此产品不写它的
-  扩展样式。该偏好只切换模型窗口的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW`。
+  扩展样式。该偏好在桌宠模式切换模型窗口的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW`；普通窗口模式
+  固定使用 `WS_EX_APPWINDOW`，以保留普通标题栏和可恢复的任务栏入口，原偏好不被重写。
   settings worker 通过独立的有界 request/reply bridge 请求主线程在 overlay 会话上应用并回读，
   平台成功后才由 Application owner 按 expected revision 原子提交；配置提交失败时恢复旧值。
   启动必须把当前 v1 值写进 overlay 会话选项，模型切换重建 HWND 时沿用会话记录的应用值，
   平台失败只返回稳定匿名 settings error。
-- `system.show_dock_icon` 是 macOS 程序坞图标的对应项，默认 `false`，因为 overlay 会话把进程
-  启动为 `NSApplicationActivationPolicyAccessory`，产品本来就是没有 Dock 图标的菜单栏应用。
-  它是进程激活策略而非窗口样式，因此是独立字段，不复用 `show_taskbar_icon`：打开切到
-  `Regular`，关闭切回 `Accessory`。该策略由 overlay 在会话启动时写入，所以启动恢复必须排在
-  overlay 之后；应用与设置窗口是否存在无关。修改同样先在主线程改策略并回读 `activationPolicy`，
-  平台成功后才由 Application owner 原子提交，配置失败把策略恢复为旧值，只返回稳定匿名
-  settings error。
+- `system.show_dock_icon` 控制 macOS 仅剩猫窗口时是否显示程序坞图标，默认 `false`，
+  独立于 Windows 的 `show_taskbar_icon`。设置或更新窗口打开期间（包括最小化）保持 `Regular`
+  并显示 Dock 图标；全部关闭后按后台偏好使用 `Regular` 或 `Accessory`（ADR-0054）。
+  Application 主线程复用 GPUI 的窗口列表计算实际模式，打开普通窗口前启用 Dock，关闭回调中
+  重新计算；开窗失败恢复后台偏好。切换偏好不关闭、隐藏或重建已有窗口，不枚举 AppKit 窗口
+  或自行恢复焦点。配置仍先在主线程应用实际模式并回读，再原子提交；配置失败恢复旧偏好，
+  返回稳定匿名 settings error。启动应用后台偏好排在 overlay 初始化之后。
+- macOS 顶部应用菜单由应用层使用 GPUI Kit 公开 API 安装（ADR-0098），菜单与窗口快捷键
+  共用 action；`⌘W` 关闭当前产品窗口，`⌘Q` 通过已有保存与 shutdown 流程退出，`⌘,` 打开或
+  聚焦设置。最小化、缩放和隐藏使用框架原生操作，编辑复用组件 action；菜单文案跟随产品语言。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
   coordinator 持有。设置和更新窗口的普通 close 都销毁各自的 GPUI 窗口；设置窗口下次打开时创建新的
   `Entity`，更新窗口也按原有行为重新创建。两个平台共用 GPUI close 路径，平台差异不改变窗口生命周期。
@@ -452,6 +601,16 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   规则），因此按键重复和连按既不会重启 clip 也不会重放 motion 音效。预览播放同样只播放一个
   循环并保持最终姿态，但每次请求都重新开始。显式停止的非零 fade 即使在 overlay 隐藏、没有
   下一帧时，也会按注入单调时钟在 fade duration 结束后视为 settled，避免过期 motion 阻塞随机行为。
+- `model.allow_motion_overlap` 默认关闭，旧 v1 文档缺少字段时按 `false` 读取。
+  打开后不同 motion identity 独立保留 clip、单调开始时间、完成状态、stop fade 与 UserData 游标；
+  共享参数按接纳启动的先后顺序求值，后启动层用资源自己的淡入淡出权重覆盖前层；重播匹配
+  identity 会移到末尾，幂等重复和 stop 不改变顺序。顺序来自插入次序而不是时间戳，因此同一
+  时钟采样内的启动也有确定次序，旧层终态不会永久遮住其他动作组的新播放。
+  优先级只仲裁匹配 identity，重复产品触发保持幂等，预览只重启匹配层。
+  关闭开关立即只保留最近启动的存活层；成功模型 commit 和 shutdown 清除全部层。
+  snapshot 的 `active_motions` 显示完整集合，`active_motion` 派生为最近启动的存活层；
+  UserData 保留来源 identity。随机动作仍让位于任何未结束的手动动作，音效沿用单路有序
+  worker（ADR-0088）。
 - `motion_stop` 只作用于匹配的当前动作，包括已完成并保持最终姿态的 motion。非零
   `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
@@ -472,7 +631,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   runtime 内部 seed，测试可以通过固定 seed 和单调时间得到同一序列。
 - 用户主动触发的 expression command 除了更新当前 `active_expression`，还写入 runtime snapshot 的
   `user_expression_memory`：该次选择时的模型身份、表情名与 command sequence。随机行为走
-  renderer 而不是 command 队列，因此不会产生这条记录。该记录描述「用户选过什么」而不是
+  renderer 而不是 command 队列，因此不会产生这条记录。
+- `model.toggle_repeated_expression` 打开时，`SetExpression` 请求的表达式等于当前
+  `active_expression` 时该命令变成「关闭」而不是「重新应用」：runtime 让所有表达式图层开始淡出、
+  不压入新图层，`active_expression` 置空，并且**不**写 `user_expression_memory`。关闭动作因此不会
+  进入 `model.last_expressions`，记住的仍然是用户最后选择穿上的那张脸。判定放在 runtime 而不是
+  Application，因为两个触发源（设置窗口的播放按钮与快捷键）都收敛为这一条 command，只有 runtime
+  知道当前生效的是哪个表情；模型切换会先清空 `active_expression`，被延迟到 commit 之后执行的
+  「恢复上次表情」因此永远不会被读成重复触发。该记录描述「用户选过什么」而不是
   「屏幕上是什么」，所以它不随模型切换清除——切换会清掉 `active_expression`，而做出这次选择的
   模型仍需要把记录写进配置。Application 按模型身份把它并入
   `model.last_expressions`；模型成为当前模型时，若 `model.remember_last_expression` 打开且该模型
@@ -594,8 +760,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   仍未采集的是 GPU adapter 名称与渲染后端：它需要 Metal/DXGI 枚举（新的 `objc2-metal` 依赖或新的
   `windows` feature）与无法在本机验证的 unsafe FFI，不属于本字段的最小闭环；渲染问题先靠
   `runtime_error_code` 与 `cubism_core_version` 定位，adapter 名称是下一个独立条目。
-  About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
-  问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
+  About 的描述只在标题和按钮说不清时才出现：产品信息行显示产品版本，不带 build environment
+  （Development/Production 是同一份二进制、不同数据根，只对更新通道有意义，该值仍留在 snapshot
+  与复制的软件信息报告里），软件信息行说明复制内容；项目主页、问题反馈与日志目录三行都不显示
+  描述（标题与按钮已经说清各自做什么）。About 的操作按钮
   以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行
   保持组件库默认按钮，使颜色本身始终携带含义。
   About 不再展示法律与隐私正文。页面与分组标题同时作为设置搜索关键词，
@@ -639,11 +807,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.1 Windows
 
 - 应用：GPUI/Win32 主事件循环，单实例使用 named mutex + 唤醒消息。
-- Overlay：Win32 透明无边框 popup；无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑
-  宽度，高度按 Cubism Core 返回的当前模型 Canvas 宽高比自适应，两者再应用缩放
-  设置；已保存 bounds 优先，需要资源重建的设置/模型切换时重建窗口，普通 scale/opacity
-  更新在现有窗口上完成；非 click-through 模式的
-  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。右键拖动缩放窗口：位移越过
+- Overlay：透明桌宠用 Win32 无边框 popup，普通窗口使用系统标题栏与 resize 边框（ADR-0089）。
+  无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑宽度，再应用当前 DPI 与缩放；高度按
+  Cubism Core 返回的模型 Canvas 宽高比推导。恢复保存位置时保留客户区宽度并校正高度。
+  只有呈现模式切换重建窗口资源；桌宠模式切换模型仍重建窗口，普通窗口切换模型保留 HWND。
+  scale/opacity、圆角和屏幕约束设置在现有窗口上更新。桌宠非 click-through 模式的
+  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。桌宠右键拖动缩放窗口：位移越过
   `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`（钳制在 `25–400`），窗口左上角
   不动，尺寸逐帧经 `IDXGISwapChain1::ResizeBuffers` 与就地重建的 render target、staging
   纹理、mask target 生效（不重建窗口、不重载模型纹理），松手后缩放写回配置（ADR-0057）。
@@ -654,20 +823,31 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   才移回显示器内，期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多
   `500ms` 复用一次放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时
   不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
-- Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
+  `always_on_top` 不是一次性的 `SetWindowPos`：topmost 波段成员资格由 user32 维护，而
+  `SetWindowPos` 明确规定「topmost 窗口被排到任何非 topmost 窗口之后即不再是 topmost」，且该
+  转换没有任何通知。因此窗口在创建/配置变化时进入波段后，`show` 与每帧 tick 都会校验
+  `WS_EX_TOPMOST` 位及其与前台 topmost 窗口的实际 Z 顺序；丢失成员资格或前台窗口排到模型之前时，
+  以 `SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE` 重新断言（ADR-0096）。普通前台窗口只需读取样式，
+  topmost 前台窗口通过同步 `EnumWindows` 检查顺序，不逐帧无条件抬升，也不压过本来就在模型上方的
+  菜单或提示。不移动、不缩放、不抢焦点，也不与用户已关闭的开关对抗（开关值随窗口状态
+  记录，tick 读同一份）。独占全屏（exclusive fullscreen）应用会接管显示输出，任何普通窗口都无法
+  覆盖，这是 Windows 的限制，不属于该守卫的范围。
+- Renderer：D3D11 + DXGI；桌宠使用 DirectComposition/DWM 与预乘 alpha，普通窗口使用
+  不透明 HWND blt swap chain，同时支持 OBS BitBlt 与 Windows Graphics Capture。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
 - 产品图标：`bongocat-app` 在构建期把 BongoCat 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
-- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有一个由托盘和
+- 托盘：`tray-icon 0.26.1` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.21.2` 拥有一个由托盘和
   overlay 右键共用的 popup 根。Windows 状态图标从 BongoCat 自有
   `resources/icons/tray-windows.png` 解码；托盘隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner
   管理，overlay 弹出使用自身 HWND，不借用托盘隐藏窗口。共用菜单根包含设置入口、模型窗口操作分组（显隐、
   穿透、置顶、鼠标移入隐藏）、可用的更新入口和退出。
-- 启动项：统一由 `auto-launch 0.6.0` 提供双平台后端。Windows 写当前用户 HKCU Run 并同步
-  `StartupApproved\Run` 启用标记；macOS 写 `~/Library/LaunchAgents/{app_name}.plist`
+- 启动项：Windows 使用当前用户的交互式登录计划任务，显式启用时按当前权限设置运行级别；
+  已提权进程注册 HighestAvailable，未提权进程注册 LeastPrivilege（ADR-0095）。macOS 由
+  `auto-launch 0.6.0` 写 `~/Library/LaunchAgents/{app_name}.plist`
   （`RunAtLoad`）。Production 使用该后端；命令固定为当前 executable 加 `--run-seconds 0`，
-  默认不要求管理员权限或 TCC 授权（ADR-0043）。该能力只属于已发布的产品：开发构建的可执行文件是
+  默认不要求管理员权限或 TCC 授权；已设置管理员运行的应用须以管理员身份启用启动项（ADR-0095）。该能力只属于已发布的产品：开发构建的可执行文件是
   构建产物而非已安装应用，所以 `bongocat-app` 按构建环境判定，开发构建直接汇报
   `Unsupported(BuildEnvironment)`、不触碰平台，设置里的启动项整行按统一禁用样式置灰，并保留可见的 `unsupported_build` 文案（ADR-0051）。
 - 启动权限：产品启动时以自身进程令牌的 `TokenElevation` 判断是否已提权，未提权时用 `rfd` 的
@@ -690,9 +870,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   （钳制在 `25–400`），窗口顶边不动（AppKit frame 原点在左下角，因此修正 origin.y），尺寸
   逐帧经 `setFrame:display:` 与重设的 drawable size 生效，mask 纹理随 drawable 尺寸重建，
   松手后缩放写回配置（ADR-0057）。
-  `always_on_top` 开启时使用高于程序坞的 AppKit main-menu window level，关闭时恢复 normal
-  window level。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放当前层级，
-  不能由其他路径覆盖。
+  `always_on_top` 开启时使用高于 macOS 菜单栏的 AppKit status window level（`NSStatusWindowLevel`，
+  25），关闭时恢复 normal window level。菜单栏自身在 `NSMainMenuWindowLevel`（24）并压住同层级的应用
+  窗口，因此处于该层级的模型窗口被拖进菜单栏区域后那部分不可见（issue #1155）；25 同时仍高于程序坞
+  （20），并低于 AppKit 给 `NSMenu` 弹出菜单的 `NSPopUpMenuWindowLevel`（101），所以托盘菜单与模型
+  窗口右键菜单依然显示在模型窗口之上。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放
+  当前层级，不能由其他路径覆盖。
   `keep_inside_screen` 开启时，窗口必须完整落在所有 `NSScreen` 的 `frame`（含菜单栏与程序坞
   占用条）并集内，因此允许覆盖系统区域，负坐标保持有效；跨显示器摆放只要不越过桌面边界就不纠正。
   需要纠正时选择与窗口交叠面积最大的 screen，完全无交叠时选择中心距离最近的 screen，再收敛原点。
@@ -704,13 +887,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、gilrs/IOHID 手柄。
-- 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
-  `muda 0.20.0` owner 持有一个由托盘和 overlay 右键共用的 popup 根；状态图标使用 BongoCat 自有
+- 菜单栏：`tray-icon 0.26.1` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
+  `muda 0.21.2` owner 持有一个由托盘和 overlay 右键共用的 popup 根；状态图标使用 BongoCat 自有
   `resources/icons/tray-macos.png` 并作为 template image。overlay 右键通过 content `NSView` 在同一主线程
   调用同一棵菜单树，不借用托盘状态项。登录启动在 macOS 13+ Production `.app` 使用
   `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，不回退到
   废弃 API 或自行写 LaunchAgent。
-- 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
+- 发布：ad-hoc 签名、未公证分发限制和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
 
@@ -775,7 +958,17 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 `lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
 `StickLeftDown`/`StickRightDown`，摇杆本身另有可见性参数并按下述规则带动爪子（ADR-0082）。
 
-**按键层画几张图是显示选择，不是输入状态**（见 ADR-0079）。`RenderSnapshot::active_keys` 是一个有序
+**按键层画在哪个四边形上由按键图自己的尺寸决定，不是恒定等于画布四边形**（见 ADR-0037 修订）。
+`ModelBounds::from_canvas` 给出模型画布在模型空间的四边形，背景就画在它上面；按键图则先经过
+`bongocat-render` 的 `legacy_key_overlay_bounds`：BongoCatMver 把按键图画在窗口原点、一图素对一窗口
+像素，而模型画布居中画在同一个窗口里，因此按键图比画布左移 `(窗口宽 − 按键图宽) / 2` 图素。窗口宽取
+该图自身较大的一边——按键图就是画布在窗口里的尺寸，窗口不会比它窄，作者不按画布尺寸设窗口时用的是
+包含它的正方形——所以按键图宽 ≥ 高时偏移为 0，画布四边形原样返回，出厂预置模型与所有宽按键图模型
+都不动；只有比宽更窄的按键图（例如 issue #1129 的 986×1000 对 1000×1000 窗口）才左移。
+这条规则在双平台渲染器里对每张按键图各建一个四边形缓冲，背景仍用画布四边形，因此旧包与新包、
+`resources` 里任何分辨率与宽高比的按键图都落在同一套几何里，不需要重写已转换的模型资源。
+
+
 列表，双平台渲染器都按这个顺序绘制且都没有深度附件或深度模板，因此**列表里最后一项就是最上层**；
 z 序完全由列表顺序决定，渲染器没有额外状态。`model.show_all_pressed_keys` 决定这份列表的内容：
 
@@ -913,29 +1106,57 @@ DirectComposition 对最终 surface 的显示转换不同，因此同一组 enco
 圆角比垂直圆角更大；`0` 保持直角，`50` 时四条弧线相接、内容被裁剪为窗口的内切椭圆。renderer
 在片元着色器中按 drawable 像素位置求该椭圆的 coverage，并把它乘进每次绘制的 alpha，因此圆角
 只改变窗口边缘的合成结果，不改变 `RenderSnapshot`、模型资源、绘制顺序或 blend 模式。该值只
-作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变屏幕范围约束
-仍需要重建原生窗口资源；缩放通过现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的
-presentation alpha，二者都不应因为设置变化替换 HWND/NSPanel。
+作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。Windows 圆角与屏幕范围约束
+在现有窗口上更新，普通窗口模式暂停圆角裁剪；macOS 改变这两项仍重建原生窗口资源。缩放通过
+现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的 presentation alpha，二者都不应
+因为设置变化替换 HWND/NSPanel。
 
-指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
-开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
-窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
-`opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
-runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
-穿透强制为开，因此不可见的 overlay 不会吞掉本该落到下层窗口的点击。
+指针悬停动作是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.pointer_hover_action` 决定指针
+进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后发生什么：
+
+- `off` 不做任何事，指针链路不被读取；
+- `hide` 把窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
+  `opacity_percent`，并把穿透恢复为 `overlay.click_through`；
+- `reposition_random` 把窗口**临时挪开**到当前所在显示器上的一个随机位置，保持可见，既不淡出也不
+  改变指针路由；指针离开它原来所在的那块矩形之后，窗口搬回原处。
+
+三个动作都不隐藏或销毁窗口，runtime 的 overlay visibility 不受影响，frame source 继续按
+`overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间穿透强制为开，因此不可见的 overlay 不会
+吞掉本该落到下层窗口的点击。
 
 淡入淡出复刻旧版 CSS `transition-opacity-300` 的 `300 ms`，但按「从过渡起点起算的绝对经过时间」
 求值，而不是按帧累加：同样的时间点在不同帧率下得到同一个 alpha，60 FPS 与 240 FPS 的采样结果
 一致。首版按线性插值，不复刻旧版 CSS 的 `transition-timing-function`：该曲线来自样式框架默认值、
 未在旧版代码中显式声明，因此不视为已冻结的行为。命中测试用指针采样与窗口矩形的半开区间比较
 （`x >= left && x < left + width`，纵向同理），因此相邻显示器共享的边界像素只会落在其中一个窗口内。
+命中测试读采样里**指针自身的位置**，而不是模型跟随的位置：`input.mouse.force_move` 打开时后者由
+相对位移累加而来（见 ADR-0081），是对指针位置的估计而非指针位置本身，用它做命中测试会让同一个
+手势因为鼠标走到窗口的路径不同而得到不同结果。两个位置都由平台适配器在同一条采样里发布。
 平台采样与窗口矩形的坐标空间不同时必须在 owner 内换算，不允许把平台坐标泄漏给 runtime 或 renderer。
 圆角窗口的透明角落仍算在窗口矩形内，与旧版一致。
 
+换位是**位移而不是搬家**：挪开时记住窗口原来的矩形，之后只要指针不再位于那块矩形内就把窗口搬回去。
+判据是指针要离开**原矩形**、而不是要离开挪开后的窗口——挪开的用意本来就是「指针留在原地，窗口让开」，
+所以挪开后的窗口那里通常没有指针；盯住原矩形等于在问「用户是不是已经去别处了」。指针追着模型跑到
+新位置同样算离开原矩形，此时窗口先搬回原处（位移必须先释放，不会连续挪第二次）。
+
+目标位置与返回时机都由平台无关的 `reposition` 模块计算，平台 owner 只负责读窗口矩形、枚举显示器和
+应用新原点。三条不变量保证它不会变成循环、不会把模型推出桌面、也不会把模型留在用户没放的地方：
+触发是边沿式的（一次进入只触发一次，指针不动就不会重复挪动）；同一时刻只有一个原矩形，位移未释放
+前不会再次挪动；目标始终落在窗口当前所在显示器内且尺寸不变，因此放置约束永远不需要把它拉回来。
+位移一定会被释放——指针离开原矩形、动作被改成 `off` 或 `hide`、或指针链路失去可信度，都会让窗口
+搬回原处。随机取位优先选择不含指针的位置，并排除窗口当前所在的位置；显示器与窗口同尺寸时无处可去，
+保持原地，且不会因此留下一个待释放的位移。
+
+换位只有随机取位一种，没有「移到屏幕另一侧」：镜像对「居中」是不动点，接近中心时位移也趋近 0，
+而窗口有几百像素宽，指针落在窗口靠中间的位置时新矩形照样盖着它——恰好在最需要它的时候失效。要修
+就得逐级兜底到「跳到屏幕边缘」，那时它既不比随机可预测、又比随机突兀。均匀取位没有这个盲区。
+
 指针采样缺失、或平台输入服务不在 `Running` 状态时一律视为「不在窗口内」。这条降级规则保证指针
-链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
-`opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
-延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
+链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态；对换位而言它同时意味着
+「没有可信指针 = 指针已不在原矩形」，因此一个已经挪开的窗口会被搬回原处，而不是因为采样断掉就永久
+停在别处。隐藏与 `opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的
+presentation alpha；动作与延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
 
 「按住修饰键以恢复交互」是这两个临时状态之上的一个开关，而不是第三个状态机。
 `overlay.hold_modifier_to_interact` 设置后，平台 owner 在每次 frame tick 内把它与 runtime snapshot
@@ -987,7 +1208,7 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 
 ### 11.3 Motion 音效
 
-- `bongocat-audio` 使用精确锁定的 `rodio 0.22.2`，只启用 output playback 与 FLAC；
+- `bongocat-audio` 使用精确锁定的 `rodio 0.23.0`，只启用 output playback 与 FLAC；
   rodio/CPAL 类型不进入 runtime、model、UI 或 renderer 公共接口。
 - runtime 只在 motion priority 与资源解析均成功后，通过固定容量有序队列非阻塞发布
   强类型 `Prepare`/`ActivatePrepared`/`Play`/`Stop`。解码、文件 I/O 和设备创建全部由独立 worker 执行。
@@ -1054,7 +1275,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `[1, 3600]` 秒且默认 `30`。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
   `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
   `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
-  Application 的会话状态而不是配置字段（ADR-0071）。`model.remember_last_expression` 与
+  Application 的会话状态而不是配置字段（ADR-0071）。`model.toggle_repeated_expression` 直接包含当前 v1 且默认 `false`，带 `#[serde(default)]`：
+旧文档没有这个键时读出 `false`。`model.remember_last_expression` 与
   `model.last_expressions` 直接包含当前 v1：门禁默认 `false`，列表每个元素是一个
   `{ model: ModelIdentity, expression }` 记录且同一模型最多一条，列表默认为 `[]`。
   记录与门禁分离：记录只由用户主动触发的 expression command 产生，随机行为播放的
@@ -1101,6 +1323,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
   居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 window state 回退显示且不被覆盖。
+- Linux 的 Wayland layer-shell 模型窗口按设备 ID 将位置保存到本机。切换展示设备时恢复该
+  设备的位置。普通 Wayland 窗口的位置由合成器管理。
 - window state 通过环境内独立的 `window-state.writer.lock` 和原子替换提交，提交后重读 typed window state，失败恢复
   替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
   合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；
@@ -1110,6 +1334,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 模型来源只有一种：用户通过文件夹选择器或窗口拖放提供的文件夹，就地读取后复制进 store 自己的
   staging。压缩包来源与它的解压边界已随实现一并移除（ADR-0036 已撤回，见该 ADR 的撤回说明）；要恢复
   时先与维护者确认。
+- 嵌套模型文件夹由 settings worker 调用 model store 只读发现：复用包的深度与条目预算，
+  拒绝链接、路径逃逸和包含目标 store 的来源，按相对路径排序。识别模型根后停止向资源目录
+  继续发现；普通包复用包验证与输入模式分类，Mver 源保留整组模式。单个嵌套模型自动进入
+  原导入流程；多个模型复用 GPUI Kit Dialog/Checkbox 展示所选文件夹名称与相对路径，默认
+  全选、空选禁止确认。选中来源逐个重新检测，按需选择模式，再执行已有导入与封面截取，
+  当前模型结束后才继续下一项。失败通知后继续独立来源；取消导入或关闭任一选择弹框清空
+  剩余队列。队列只存 UI 临时草稿，不进入持久化配置（ADR-0087）。
 - 导入在提交前把包内 `resources/left-keys` 与 `resources/right-keys` 下的旧键位名归一化到产品
   词汇表：`Alt.png` → `AltLeft.png`、`AltGr.png` → `AltRight.png`（ADR-0038）。这一步只作用在
   `ModelStore` 自己的 staging 上，因此用户选中的源目录始终是只读输入；改名不改变文件数与字节数，
@@ -1189,7 +1420,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
 - 模型导入 command 携带标题与文件选择来源（文件夹选择器选中的目录，或设置窗口拖入的单个目录）；
-  标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，
+  标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.28.0`，
   精确 pin）生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
   显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题和模式写入 `model.imported_models`
   元数据：Mver 写入实际选中的 source mode；普通包在 staging 通过 `left-keys`/`right-keys` 资源
@@ -1281,8 +1512,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   macOS bundle 名全部是编译期常量，任何用户配置、CLI 或运行时输入都不能改变它们。Development
   构建的 channel 不允许联网或安装，`check` 与 `install` 在发出任何请求前即失败关闭；Production
   构建从公开发行渠道更新。更新 channel 按环境隔离是 `AGENTS.md` §10 的约束，独立于各 ADR。
-- 签名公钥缺失时失败关闭：`RELEASE_SIGNING_KEY` 已内嵌发布公钥（key ID
-  `DF5E2C9D255DD85E`）；缺失、空串或纯空白时 runtime 在发出任何请求前即返回
+- 签名公钥缺失时失败关闭：应用公钥以 `release-trust/app.pub` 为版本化事实来源，并由
+  `RELEASE_SIGNING_KEY` 在编译期嵌入（key ID `DF5E2C9D255DD85E`）；插件公钥独立位于
+  `release-trust/plugin.pub`，由 `PLUGIN_RELEASE_SIGNING_KEY` 编译期嵌入。运行时绝不从
+  可写配置路径读取公钥。应用公钥缺失、空串或纯空白时 runtime 在发出任何请求前即返回
   `update_signature_key_missing`，绝不静默接受未签名载荷。`UpdateRuntime::is_available()` 仅在
   production channel 与有效公钥同时具备时为真，系统菜单据此决定是否在托盘根中创建「检查更新」入口；该
   门禁产出的是稳定、无路径的错误码，而不是库错误。
@@ -1376,7 +1609,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 传输有 30 分钟上限：transport 自身无超时，不设界会让 worker 永久阻塞；取值覆盖整条载荷传输。
   下载**不支持取消**——库没有 abort 钩子，真取消只能自研下载与验签，而自研验证层已被 ADR-0029/0034
   删除，因此不提供取消按钮而不是提供一个假的。
-- 真实签名公钥注入、真实发布链路验证、操作系统包签名验证与失败启动恢复仍未完成；在这些证据齐备前
+- 真实更新签名公钥注入、真实发布链路验证与失败启动恢复仍未完成；在这些证据齐备前
   不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的能力损失（归档完整性校验、
   per-platform 资产匹配、公钥轮换窗）与待验证项；ADR-0035 记录了 worker、窗口、发布说明与
   "安装后协调 shutdown 而非安装前"这一处需要维护者复核的取舍。
@@ -1523,7 +1756,7 @@ Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用
 
 ### ADR-011：渐进实现与发布门禁分离
 
-允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、签名和稳定性证据保持 stable 发布门禁。
+允许正式 Rust workspace 在外部证据补齐期间持续开发；Cubism 授权与分发、实机矩阵、更新签名和稳定性证据保持 stable 发布门禁。macOS Developer ID 签名、公证与 Windows Authenticode 不属于发布门禁。
 
 ### ADR-012：有序 Motion 音频服务
 
@@ -1536,8 +1769,8 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 
 ### ADR-043：启动项后端统一 auto-launch
 
-双平台启动项后端统一为 `auto-launch 0.6.0`：macOS 12+ 全版本 LaunchAgent plist、Windows
-HKCU Run（CurrentUser），环境隔离通过不同 `app_name` 保持；后端只产生 Enabled/Disabled，
+macOS 12+ 使用 `auto-launch 0.6.0` LaunchAgent plist；Windows 启动项由 ADR-0095 的
+当前用户交互式登录计划任务取代 HKCU Run，环境隔离保持；后端只产生 Enabled/Disabled，
 `Stale`/`RequiresApproval`/`NotFound` 保留为契约变体。Windows stale 检测退役。
 
 ### ADR-051：开发构建不提供登录时启动
@@ -1598,7 +1831,7 @@ Windows 由安装器 `/R` 负责。明确不做下载取消。**记录一处与 
 
 ### ADR-0031：托盘第三方库边界
 
-macOS/Windows 托盘使用 `tray-icon 0.25.0`，菜单与右键弹出使用直接依赖的 `muda 0.20.0`；平台
+macOS/Windows 托盘使用 `tray-icon 0.26.1`，菜单与右键弹出使用直接依赖的 `muda 0.21.2`；平台
 adapter 负责加载 PNG、映射强类型 action、调用 hide/show，并从 overlay session 的真实
 HWND/`NSView` 弹出与托盘共用的菜单树。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows
 固定 GUID 与双平台唯一 owner 由 ADR-0031 约束。
@@ -1668,3 +1901,15 @@ About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈
 ### Phase 6：稳定性与发布
 
 完成性能基线、异常恢复、8 小时 soak、安装/升级/回滚和发布清单。达到门槛后完成发布切换。
+
+### Notification-driven plugin output
+
+The `push_output_v1` capability permits bounded, validated sequence-zero output
+updates without a host request. The process reader wakes the service owner to
+collect changed views and compose the HUD. macOS Input Source runs its native
+notification loop on the plugin main thread, queries TIS on startup/resume and
+source-change notifications only, and uses host ticks only for display expiry.
+Windows has no notification with that reach — a switch inside the window the user
+is already in notifies neither a `WinEvent` foreground hook nor a background
+thread's Text Services sink — so Windows Input Source keeps reading on the host
+tick. Other plugins retain their existing cadence.

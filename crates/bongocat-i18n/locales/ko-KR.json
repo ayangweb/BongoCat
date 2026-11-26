@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "단축키"
     },
-    "multiplayer": {
-      "title": "멀티플레이"
-    },
     "app_system": {
       "title": "앱 및 시스템"
     },
     "about": {
       "title": "정보"
+    },
+    "plugins": {
+      "title": "플러그인 센터",
+      "empty": "사용 가능한 플러그인이 없습니다."
+    },
+    "multiplayer": {
+      "title": "멀티플레이"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "설정",
     "quit": "BongoCat 종료"
   },
+  "application_menu": {
+    "file": "파일",
+    "edit": "편집",
+    "window": "윈도우",
+    "services": "서비스",
+    "close": "닫기",
+    "minimize": "최소화",
+    "zoom": "확대/축소",
+    "hide": "BongoCat 가리기",
+    "hide_others": "기타 가리기",
+    "show_all": "모두 보기",
+    "undo": "실행 취소",
+    "redo": "실행 복귀",
+    "cut": "오려두기",
+    "copy": "복사하기",
+    "paste": "붙여넣기",
+    "select_all": "모두 선택"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "키보드와 마우스 감시를 허용할까요?",
-      "description": "다른 앱에서 키보드와 마우스 동작에 반응하려면 BongoCat이 입력 장치에 접근해야 합니다. 확인을 누르면 시스템에서 관리자 인증을 요청합니다. 입력 도우미만 관리자 권한을 사용하며 설정과 모델 창은 일반 사용자로 실행됩니다. 나중에 설정을 선택하면 키보드·마우스 반응 없이 계속 사용할 수 있습니다.",
-      "confirm": "확인"
-    },
     "later": "나중에 설정",
     "input_monitoring": {
       "title": "입력 모니터링 권한 필요",
@@ -53,22 +70,23 @@
       "title": "관리자 권한으로 실행을 권장합니다",
       "description": "다른 앱이 관리자 권한으로 실행 중일 때에도 BongoCat이 키보드와 마우스 입력을 계속 받으려면 관리자 권한이 필요합니다.\n\n설정 방법: BongoCat을 마우스 오른쪽 버튼으로 클릭 → 속성 → 호환성 → \"이 프로그램을 관리자 권한으로 실행\"을 켭니다.",
       "open_program_folder": "종료 후 설정 열기"
+    },
+    "linux": {
+      "title": "키보드와 마우스 감시를 허용할까요?",
+      "description": "다른 앱에서 키보드와 마우스 동작에 반응하려면 BongoCat이 입력 장치에 접근해야 합니다. 확인을 누르면 시스템에서 관리자 인증을 요청합니다. 입력 도우미만 관리자 권한을 사용하며 설정과 모델 창은 일반 사용자로 실행됩니다. 나중에 설정을 선택하면 키보드·마우스 반응 없이 계속 사용할 수 있습니다.",
+      "confirm": "확인"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "버전 정보",
-        "label": "버전",
-        "environment": {
-          "development": "개발 빌드",
-          "release": "릴리스 빌드"
-        }
+        "label": "버전"
       }
     },
     "software_information": {
       "title": "소프트웨어 정보",
-      "description": "버전, 시스템, 런타임 정보를 JSON으로 복사해 버그 제보에 사용하세요.",
+      "description": "버전, 시스템, 런타임 정보를 복사해 문제 제보에 사용하세요.",
       "copy": "복사",
       "copy_success": "소프트웨어 정보를 복사했습니다"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "문제 제보",
-      "description": "소프트웨어 정보를 먼저 복사한 뒤 보고서에 붙여 넣어 주세요.",
       "action": "문제 제보하기"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "모델 가져오기가 완료되었습니다",
       "failed": "모델을 가져오지 못했습니다",
+      "selection_dialog": {
+        "title": "모델 선택"
+      },
       "mver_dialog": {
         "title": "변환할 모드 선택",
         "description": "가져올 BongoCat Mver 모드를 선택하세요.",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "모션 %{index}",
-      "expression": "표현식 %{index}"
+      "expression": "표현식 %{index}",
+      "rename": {
+        "tooltip": "이름 바꾸기",
+        "field": "이름"
+      }
     },
     "errors": {
       "conflict": "이미 다른 단축키에 할당되어 있습니다: %{shortcut}"
@@ -309,13 +333,16 @@
       "software_info_copy_failed": "소프트웨어 정보를 복사할 수 없습니다",
       "external_link_open_failed": "링크를 열 수 없습니다",
       "log_location_open_failed": "애플리케이션 로그 폴더를 열 수 없습니다",
-      "login_startup_update_failed": "로그인 시 실행 설정을 변경할 수 없습니다",
+      "login_startup_update_failed": "자동 시작 설정을 변경할 수 없습니다",
       "system_icon_update_failed": "시스템 아이콘을 변경할 수 없습니다.",
       "taskbar_icon_update_failed": "작업 표시줄 아이콘을 변경할 수 없습니다.",
       "dock_icon_update_failed": "Dock 아이콘을 변경할 수 없습니다.",
       "window_hide_failed": "설정 창을 숨길 수 없습니다",
       "window_layout_save_failed": "창 배치를 저장할 수 없습니다",
-      "application_shutdown_failed": "BongoCat을 완전히 종료할 수 없습니다"
+      "application_shutdown_failed": "BongoCat을 완전히 종료할 수 없습니다",
+      "network_relay_failed": "방 서버를 시작할 수 없습니다. 수신 주소와 포트를 확인하세요.",
+      "network_room_failed": "방에 참가할 수 없습니다. 주소와 키를 확인하세요.",
+      "network_restore_failed": "이전 연결을 복구할 수 없습니다. 연결을 확인한 뒤 다시 시도하세요."
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "창 모드"
+      },
+      "window_background_color": {
+        "label": "창 배경색"
+      },
       "behavior": {
         "title": "창 동작"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "각 모델의 마지막 표현식 기억"
         },
+        "toggle_repeated_expression": {
+          "label": "같은 표정을 다시 누르면 끄기"
+        },
+        "allow_motion_overlap": {
+          "label": "동작 동시 재생"
+        },
         "random_behavior_mode": {
           "label": "모션이나 표현식을 무작위로 재생",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "마우스 추적 감도 (%)",
-          "description": "100%가 기본 속도입니다. 값이 낮을수록 느리게 움직이며, 경계에 도달한 뒤의 초과 이동은 버립니다."
-        },
         "title": "마우스",
         "mirror_mouse_tracking_horizontal": {
           "label": "마우스 추적 좌우 반전"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "마우스 강제 이동",
           "description": "포인터를 캡처하는 앱(예: 전체 화면 게임)에서도 마우스를 계속 따라갑니다."
+        },
+        "sensitivity": {
+          "label": "마우스 추적 감도 (%)",
+          "description": "100%가 기본 속도입니다. 값이 낮을수록 느리게 움직이며, 경계에 도달한 뒤의 초과 이동은 버립니다."
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "작업 표시줄 아이콘 표시"
       },
       "dock_icon": {
-        "label": "Dock 아이콘 표시"
+        "label": "항상 Dock 아이콘 표시"
       },
       "auto_update": {
         "label": "자동으로 업데이트 확인",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "로그인 시 실행"
+        "label": "자동 시작"
       },
       "startup": {
         "checking": "로그인 항목을 확인하는 중…",
@@ -533,13 +574,73 @@
         "stale": "저장된 앱 위치가 변경되었습니다. 스위치를 껐다 켜서 복구하세요",
         "requires_approval": "시스템 설정에서 BongoCat을 승인하세요",
         "not_found": "로그인 항목이 없습니다. 스위치를 껐다 켜서 복구하세요",
-        "unsupported_platform": "이 시스템에서는 로그인 시 실행을 사용할 수 없습니다",
-        "unsupported_os": "이 운영체제에서는 로그인 시 실행을 사용할 수 없습니다",
-        "unsupported_build": "개발 빌드에서는 로그인 시 실행을 사용할 수 없습니다"
+        "unsupported_platform": "이 시스템에서는 자동 시작을 사용할 수 없습니다",
+        "unsupported_os": "이 운영체제에서는 자동 시작을 사용할 수 없습니다",
+        "unsupported_build": "개발 빌드에서는 자동 시작을 사용할 수 없습니다"
+      }
+    },
+    "alpha": {
+      "camera": "가상 카메라",
+      "driver": "드라이버",
+      "enable": "알파 출력 사용",
+      "error": {
+        "authorization": "인증이 실패했거나 취소되었습니다. 인증 에이전트가 실행 중인지 확인하세요",
+        "busy": "카메라 작업이 진행 중입니다",
+        "config": "출력 설정을 저장하지 못했습니다",
+        "conflict": "카메라 소유권을 확인할 수 없습니다",
+        "driver": "먼저 v4l2loopback 드라이버를 설치하세요",
+        "operation": "카메라 작업이 실패했습니다",
+        "permission": "카메라 권한을 설정할 수 없습니다",
+        "rollback": "설치가 실패했으며 롤백 확인이 필요합니다",
+        "service": "설정 서비스를 사용할 수 없음",
+        "stale": "설정이 변경되었습니다. 새로 고친 후 다시 시도하세요",
+        "stop": "출력을 중지하지 못했습니다. 다시 시도하세요",
+        "unsupported": "필요한 도구 또는 서비스를 사용할 수 없습니다"
+      },
+      "install": "가상 카메라 설치",
+      "management": "장치 관리",
+      "module": "커널 모듈",
+      "output": "출력",
+      "refresh": "다시 확인",
+      "retry": "출력 다시 시도",
+      "title": "알파 출력",
+      "uninstall": "가상 카메라 제거",
+      "value": {
+        "available": "사용 가능",
+        "checking": "확인 중…",
+        "conflict": "소유권 충돌",
+        "control_missing": "v4l2loopback-ctl이 설치되지 않음",
+        "driver_missing": "드라이버가 설치되지 않음",
+        "failed": "실패",
+        "format": "지원하지 않는 형식",
+        "installed": "설치됨",
+        "loaded": "로드됨",
+        "module_tools_missing": "모듈 도구를 사용할 수 없음",
+        "not_installed": "설치되지 않음",
+        "not_loaded": "로드되지 않음",
+        "off": "꺼짐",
+        "permission": "권한 거부됨",
+        "pkexec_missing": "pkexec가 설치되지 않음",
+        "recovery": "가상 카메라를 다시 설치하세요",
+        "running": "실행 중",
+        "starting": "시작 중",
+        "stopping": "중지 중",
+        "udev_missing": "udevadm이 설치되지 않음",
+        "unavailable": "장치를 사용할 수 없음",
+        "unknown": "알 수 없음",
+        "unsupported": "사용 불가"
       }
     },
     "multiplayer": {
-      "restart_notice": "연결 서비스는 BongoCat이 시작될 때 만들어집니다. 이 페이지에서 바꾼 설정은 BongoCat을 다시 시작해야 적용됩니다.",
+      "editor": {
+        "connect": "연결",
+        "change_connection": "연결 변경…",
+        "edit_connection": "연결 설정…",
+        "apply_relay": "서버 설정 적용",
+        "edit_relay": "서버 설정…",
+        "cancel": "취소",
+        "disconnect": "연결 끊기"
+      },
       "device": {
         "title": "이 컴퓨터",
         "id": {
@@ -554,24 +655,19 @@
         "self": {
           "label": "이 컴퓨터 (내 입력 따라가기)"
         },
-        "remove": "삭제",
-        "add": {
-          "label": "장치 ID 추가",
-          "action": "추가"
-        },
         "peer": {
-          "show": "이 기기 표시",
           "sharing": "공유 중",
-          "not_sharing": "공유 안 함"
+          "not_sharing": "공유 안 함",
+          "offline": "오프라인",
+          "saved": "선택한 기기",
+          "unnamed": "이름 없는 기기"
         },
-        "empty": "목록이 비어 있어도 됩니다. 컴퓨터는 아무것도 표시하지 않고 자신의 입력만 방으로 보낼 수 있습니다."
+        "empty": "방에서 표시할 기기를 선택하세요."
       },
       "client": {
         "title": "방 참여",
-        "enabled": {
-          "label": "방에 참여"
-        },
         "source": {
+          "label": "연결 방식",
           "options": {
             "follow_local": "이 컴퓨터의 연결 서비스 따르기",
             "manual": "주소 직접 입력"
@@ -588,7 +684,7 @@
         }
       },
       "server": {
-        "title": "연결 서비스",
+        "title": "방 서버",
         "enabled": {
           "label": "이 컴퓨터에서 연결 서비스 실행"
         },
@@ -614,7 +710,7 @@
       "status": {
         "title": "상태",
         "server": {
-          "label": "연결 서비스",
+          "label": "방 서버",
           "stopped": "실행 중 아님"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "방 안의 다른 기기",
           "none": "방에 없음"
         },
-        "bound": {
-          "label": "따라가는 중",
-          "none": "아직 없음"
+        "device_id": {
+          "label": "이 기기의 ID",
+          "copy": "복사",
+          "copy_failed": "이 기기의 ID를 복사할 수 없습니다."
         },
         "latency": {
           "label": "지연 시간",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "상태 및 기기"
-      },
-      "restart": {
-        "action": "다시 시작"
       }
+    }
+  },
+  "plugins": {
+    "enable": "활성화",
+    "disable": "비활성화",
+    "loading": "플러그인 불러오는 중…",
+    "discovery_failed": "플러그인 목록을 불러올 수 없습니다. 다시 시도하세요.",
+    "install": "설치",
+    "update": "업데이트",
+    "update_all": "모두 업데이트",
+    "update_available": "업데이트 가능",
+    "update_all_success": "모든 플러그인이 최신 상태입니다.",
+    "available_version": "사용 가능한 버전 %{version}",
+    "uninstall": "제거",
+    "uninstall_confirm": "%{name} 플러그인을 제거하시겠습니까?",
+    "settings": {
+      "open": "설정",
+      "title": "%{name} 설정",
+      "empty": "이 플러그인에는 설정이 없습니다."
+    },
+    "version": "버전 %{version}",
+    "errors": {
+      "install_failed": "플러그인 설치 실패: %{name}",
+      "update_failed": "플러그인 업데이트 실패: %{name}",
+      "enable_failed": "플러그인을 활성화할 수 없습니다: %{name}",
+      "disable_failed": "플러그인을 비활성화할 수 없습니다: %{name}",
+      "uninstall_failed": "플러그인 제거 실패: %{name}",
+      "action_failed": "플러그인 작업 실패: %{name}",
+      "configure_failed": "플러그인 설정을 저장할 수 없습니다: %{name}",
+      "update_all_failed": "다음 플러그인을 업데이트할 수 없습니다: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "플러그인 서비스를 사용할 수 없습니다",
+      "not_installed": "플러그인을 찾을 수 없습니다",
+      "not_running": "플러그인이 실행 중이 아닙니다",
+      "load_failed": "플러그인 불러오기 실패: %{name}",
+      "runtime_failed": "플러그인이 예기치 않게 중지되었습니다: %{name}",
+      "reported": "플러그인 오류: %{name} — %{reason}",
+      "preview_failed": "플러그인 미리 보기 실패: %{name}"
     }
   },
   "linux_input": {

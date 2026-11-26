@@ -32,10 +32,11 @@ pub use input::{GamepadInputConfig, InputConfig, MouseInputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
-    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
-    MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelConfig,
-    ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
-    RandomBehaviorMode,
+    MAXIMUM_MODEL_BEHAVIOR_NAMES, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
+    MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
+    MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelBehaviorName,
+    ModelConfig, ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource,
+    RandomBehaviorConfig, RandomBehaviorMode,
 };
 pub use network::{
     DEFAULT_NETWORK_PORT, MAXIMUM_NETWORK_DEVICE_ID_BYTES, MAXIMUM_NETWORK_DEVICE_NAME_BYTES,
@@ -48,6 +49,16 @@ pub use overlay::{
 };
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
+
+/// Persistent preference for the optional transparent video output.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AlphaOutputConfig {
+    /// Missing in configurations written before Alpha output was introduced.
+    #[serde(default)]
+    pub enabled: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
@@ -68,6 +79,9 @@ pub struct NativeConfig {
     /// than required.
     #[serde(default)]
     pub network: NetworkConfig,
+    /// Disabled by default for configurations created before Alpha output.
+    #[serde(default)]
+    pub alpha_output: AlphaOutputConfig,
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
@@ -82,6 +96,8 @@ impl Default for NativeConfig {
                 language: Language::default(),
             },
             overlay: OverlayConfig {
+                window_mode: false,
+                window_background_color: overlay::default_window_background_color(),
                 click_through: false,
                 hold_modifier_to_interact: None,
                 always_on_top: true,
@@ -119,9 +135,13 @@ impl Default for NativeConfig {
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
+                toggle_repeated_expression: false,
+                allow_motion_overlap: false,
                 last_expressions: Vec::new(),
+                behavior_names: Vec::new(),
             },
             network: NetworkConfig::default(),
+            alpha_output: AlphaOutputConfig::default(),
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
                 show_taskbar_icon: false,
@@ -235,6 +255,7 @@ impl NativeConfig {
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         validate_model_expression_memories(&self.model.last_expressions)?;
+        validate_model_behavior_names(&self.model.behavior_names)?;
         if self
             .shortcuts
             .command_bindings

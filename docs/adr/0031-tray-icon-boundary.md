@@ -3,6 +3,30 @@
 状态：已接受（2026-09-13）；2026-09-14 补充 Windows `set_tooltip` 上游缺陷与 tooltip 创建期不变量；2026-09-25 接受托盘与 overlay 右键菜单复用（ADR-0068）
 
 > 后续修订（2026-09-23）：ADR-0033 已退役 Windows 原生 ARM64；本文提到的 Windows x64/ARM64 cross-check 只是历史证据，当前 Windows 发布 target 只有 x64。
+>
+> 后续修订（2026-10-12）：`tray-icon` 由 `=0.25.0` 升级到 crates.io 精确 pin `=0.26.1`，
+> `muda` 由 `=0.20.0` 升级到 `=0.21.2`。两者仍关闭默认 features、仍只在 macOS/Windows target
+> 声明，并仍解析到同一份 `muda` package；本 ADR 的替换边界与安全不变量不变。
+>
+> - v0.26 弃用了 `TrayIconBuilder::with_icon_as_template(bool)`（`#[deprecated(since = "0.26.0")]`），
+>   改为 macOS 专属的 `with_icon_templated(icon)`，它在一次调用里同时设置图标并标记 template。
+>   adapter 相应改为在 macOS 上调用 `with_icon_templated`、其它平台调用 `with_icon`；template
+>   语义与原先「先 `with_icon` 再 `with_icon_as_template(true)`」一致。
+> - 源码复核确认「Windows `set_tooltip` 对以固定 GUID 注册的图标必然失败」的上游缺陷在 `0.26.1`
+>   **仍未修复**：`set_tooltip` 仍只设 `NIF_TIP` 后直接 `NIM_MODIFY`，而 `set_icon`、
+>   `set_tray_visible`、`register_tray_icon` 与 `remove_tray_icon` 都经 `apply_guid` 补
+>   `NIF_GUID`。因此本文「`SystemMenuPresentation::tooltip` 是创建期输入」的不变量继续成立，
+>   实现未改动，Windows 实机验收仍是发布门禁。
+> - v0.26 把 macOS 图标高度从硬编码的 18pt 改成 `MAX_ICON_HEIGHT = 22.0` 上限，且
+>   `RgbaIcon::to_nsimage` 只缩小不放大；`TrayIconBuilder` 与 `Icon` 都没有尺寸 API，像素数
+>   直接当点数用，因此任何大于 22px 的画布都会被画成 22pt。项目原来的 256×256 蒙版占满画布，
+>   菜单栏图标随之从 18pt 变成 22pt。为保持更新前的视觉尺寸，`tray-macos.png` 重绘为
+>   「图形按 18/22 缩到 210×210 并居中、四周透明留白」的 256×256 画布，渲染回 18.05pt。
+>   代价是状态栏占位仍为 22pt 宽，图形左右各多约 2pt 空隙；PNG 容器契约（256×256、
+>   8-bit RGBA、非隔行、deflate）不变。
+> - 本文「调研结论」与「安全与生命周期不变量」中仍写有 `0.25.0`/`0.20.0` 的段落均为
+>   2026-09-13/2026-09-14 的升级前复核记录，保留原样；除上述 `set_tooltip` 缺陷外，本次未在
+>   Windows 实机复核 `set_visible` 等 shell 行为，这些不变量在 `0.26.1` 上仍待实机确认。
 
 ## 背景
 
@@ -41,12 +65,13 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   已逐字节核验为 256×256、8-bit RGBA、非隔行 PNG，SHA-256 为
   `65f3a1e71f60417916c0511945131c7341edbd46d037fa9e703014e6155434dd`。macOS 现有
   `tray-macos.png` 也固定为 256×256、8-bit RGBA、非隔行，SHA-256 为
-  `1e39a05cc356501518291acea439c06a7f7e944ad3a227f29387875f3604af9a`。
+  `9342c5f8138b03e492434133041264147b759e2309f1ed3b7fab2e0e51b5a99d`（2026-10-12 重绘，
+  见文首「后续修订」）。
 
 ## 决策
 
 - macOS 与 Windows 状态图标统一由 `bongocat-platform` 私有 `system_menu_native` adapter 管理：
-  `tray-icon 0.25.0` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.20.0` 是共用 popup 根
+  `tray-icon 0.26.1` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.21.2` 是共用 popup 根
   和菜单事件的 owner；旧 `system_menu_macos.rs`、`system_menu_windows.rs` 与 `tray-windows.ico` 退役。
 - adapter 是 `SystemMenu` 的唯一 owner，长期持有 `TrayIcon`、一个托盘/模型窗口共用菜单根、模型窗口
   子菜单、全部可变菜单项和 `muda` 菜单事件 receiver。`set_visible(false)` 只改变平台表示（macOS 移除
@@ -65,7 +90,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 - 第三方 `tray_icon`/`muda` 类型、platform handle、错误和回调不得进入 `bongocat-runtime`、
   `bongocat-ui` 或公共协议；adapter 只暴露项目自有的 `SystemMenu`、`SystemMenuAction`、
   `SystemMenuError` 和 `SystemMenuPresentation`。
-- 新依赖精确固定为 `tray-icon = "=0.25.0"` 与 `muda = "=0.20.0"`，两者都关闭默认 features，
+- 新依赖精确固定为 `tray-icon = "=0.26.1"` 与 `muda = "=0.21.2"`，两者都关闭默认 features，
   只在 macOS/Windows target 声明。直接 `muda` 必须与 `tray-icon` 实际依赖的版本解析为同一
   package，避免菜单类型来自两个版本；升级时以 `cargo tree` 复核。
 - PNG 格式契约由 `bongocat-app` build script 与 `product_icon_contract` 测试固定：PNG 签名、

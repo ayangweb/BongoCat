@@ -12,6 +12,11 @@
       "expected": "accept"
     },
     {
+      "id": "dual-overlay",
+      "file": "dual-overlay.json",
+      "expected": "accept"
+    },
+    {
       "id": "future-schema",
       "file": "invalid-future-schema.json",
       "expected": "reject"

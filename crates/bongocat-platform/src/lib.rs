@@ -63,6 +63,10 @@ pub use startup_item::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
 };
 mod startup_item_native;
+#[cfg(target_os = "windows")]
+mod startup_item_windows;
+#[cfg(any(target_os = "windows", test))]
+mod startup_task;
 
 mod startup_permission;
 pub use startup_permission::{
@@ -84,8 +88,8 @@ mod macos;
 pub use macos::{
     MacInputService, current_display_bounds, display_bounds_for_window, dock_icon_is_visible,
     global_window_origin, hide_native_window, input_monitoring_permission, local_window_origin,
-    request_input_monitoring_permission, set_dock_icon_visible, show_native_window,
-    system_language, window_content_top_inset,
+    native_window_is_visible, request_input_monitoring_permission, set_dock_icon_visible,
+    show_native_window, system_language, window_content_top_inset,
 };
 #[cfg(target_os = "windows")]
 mod gilrs_gamepad;
@@ -153,6 +157,10 @@ pub fn set_startup_item_enabled(
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
-    LinuxInputService, LinuxSystemTray, set_linux_pointer_sensitivity, system_language,
+    ALPHA_CAMERA_DEVELOPMENT_NAME, ALPHA_CAMERA_NAME, ALPHA_FRAME_BYTES, ALPHA_FRAME_HEIGHT,
+    ALPHA_FRAME_WIDTH, AlphaAdminAction, AlphaAdminError, AlphaCameraError, AlphaFrameWrite,
+    AlphaInstallationStatus, AlphaManagementUnavailable, AlphaSystemStatus, LinuxAlphaCamera,
+    LinuxInputService, LinuxSystemTray, alpha_camera_name, inspect_alpha_system,
+    manage_alpha_camera, run_alpha_helper, set_linux_pointer_sensitivity, system_language,
     unprivileged_input_is_possible,
 };

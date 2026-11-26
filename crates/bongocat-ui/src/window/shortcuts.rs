@@ -21,10 +21,19 @@ impl SettingsView {
         shortcuts: &SettingsShortcuts,
         active_model: Option<&SettingsModelKey>,
         entries: &[SettingsModelEntry],
+        behavior_names: &[SettingsModelBehaviorName],
         commands_blocked: bool,
         cx: &mut Context<Self>,
     ) {
-        let rows = shortcut_rows(shortcuts, active_model, entries);
+        let rows = shortcut_rows(shortcuts, active_model, entries, behavior_names);
+        // The rows themselves, so a click on a label can open the rename for the row it
+        // is actually showing rather than rebuilding one from the target alone. It is
+        // rebuilt whole on every sync, so a row whose model changed names a behavior
+        // that is no longer on screen.
+        self.shortcut_rows = rows
+            .iter()
+            .map(|row| (row.target.clone(), row.clone()))
+            .collect();
         let targets = rows
             .iter()
             .map(|row| row.target.clone())

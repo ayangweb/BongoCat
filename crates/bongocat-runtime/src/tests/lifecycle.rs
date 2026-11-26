@@ -24,6 +24,8 @@ fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
     assert_eq!(changed.command_transport.queue_full, 0);
 
     let settings = OverlaySettings {
+        window_mode: true,
+        window_background_color: [12, 34, 56],
         click_through: false,
         hold_modifier_to_interact: Some(ModifierKey::RightShift),
         always_on_top: false,
@@ -340,6 +342,8 @@ fn model_settings_command_is_revisioned_and_published() {
         ignore_keyboard: false,
         ignore_gamepad: false,
         show_all_pressed_keys: false,
+        toggle_repeated_expression: false,
+        allow_motion_overlap: false,
         ignore_pointer: true,
     };
     let sequence = client

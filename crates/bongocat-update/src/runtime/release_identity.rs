@@ -12,6 +12,24 @@ pub const RELEASE_REPOSITORY_OWNER: &str = "ayangweb";
 
 pub const RELEASE_REPOSITORY_NAME: &str = "BongoCat";
 
+/// The mutable branch that holds only the current signed plugin catalog.
+///
+/// Plugin packages stay in immutable `plugins-v*` Releases; this one fixed
+/// document is what tells an installed application which versions to offer.
+/// Keeping it off `releases/latest` means an application release can never
+/// displace plugin discovery.
+pub const PLUGIN_CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/ayangweb/BongoCat/plugin-catalog/plugins.json";
+
+/// The plugin-owned Minisign public key, base64 of the complete public-key box.
+///
+/// This key is deliberately separate from [`RELEASE_SIGNING_KEY`](super::RELEASE_SIGNING_KEY):
+/// a compromise of an application update key must not also authorize plugin code.
+///
+/// The checked-in `release-trust/plugin.pub` file is the source of truth; the
+/// application embeds it at compile time rather than reading a mutable runtime path.
+pub const PLUGIN_RELEASE_SIGNING_KEY: &str = include_str!("../../../../release-trust/plugin.pub");
+
 /// Name of the release manifest asset an update run requests.
 ///
 /// One shared manifest for the whole release, carrying a `<os>-<arch>` entry per

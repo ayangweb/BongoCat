@@ -252,6 +252,7 @@ impl RuntimeOwner {
                 motion_audio.diagnostics(),
             )),
             changed: Condvar::new(),
+            activity: Default::default(),
         });
         let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
         let command_transport = Arc::new(CommandTransportCounters::default());

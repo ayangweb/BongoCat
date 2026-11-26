@@ -16,10 +16,9 @@ pub struct SystemConfig {
     /// `false`. Windows only: macOS never reads this field as a Dock icon, and
     /// the settings window keeps its own taskbar button either way.
     pub show_taskbar_icon: bool,
-    /// Whether the macOS process shows a Dock icon. This is the process
-    /// activation policy, not a window style, so it is macOS only and it is the
-    /// one field of the group whose default is `false`: the product launches as
-    /// a menu bar accessory app, exactly as it did before the field existed.
+    /// Whether the macOS Dock icon stays visible while only the cat overlay is
+    /// running, default `false`. Settings and update windows always show the Dock
+    /// icon, including when minimized. This preference does not close windows.
     pub show_dock_icon: bool,
     pub show_status_icon: bool,
 }

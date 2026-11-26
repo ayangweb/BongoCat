@@ -5,6 +5,14 @@
 取代：无（取代 `P6-KEEP-OVERLAY-IN-WORK-AREA` 确立的工作区约束行为，该行为未单独留下 ADR）
 
 > 后续修订（2026-09-23）：ADR-0054 后项目不再维护 AccessKit 标签同步；字段改名的当前收口是中英文案、共享 schema、fixture 与可见控件。
+>
+> 后续修订（2026-10-13）：下面「`always_on_top` 开启时 overlay 可以覆盖 macOS 菜单栏」当时并不成立。
+> `NSMainMenuWindowLevel`（24）与菜单栏自身同层，同层级由菜单栏压住应用窗口，因此窗口被拖进菜单栏
+> 区域后那部分不可见（issue #1155 报告的「无法移动到屏幕最顶」）。`always_on_top` 的层级改为
+> `NSStatusWindowLevel`（25）。实测依据（`CGWindowListCopyWindowInfo` 与直接调用
+> `NSWindow.constrainFrameRect(_:to:)`）：菜单栏在 24、程序坞在 20、AppKit 的 `NSMenu` 弹出菜单在 101；
+> `constrainFrameRect` 只在层级低于 24 时把窗口顶边压到 `visibleFrame` 顶部，层级 ≥ 24 时原样返回，
+> 所以当时挡住窗口的是层级本身，而不是拖拽约束。
 
 ## Context
 

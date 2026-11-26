@@ -295,7 +295,7 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
         },
     )];
 
-    let rows = shortcut_rows(&SettingsShortcuts::default(), Some(&model), &entries);
+    let rows = shortcut_rows(&SettingsShortcuts::default(), Some(&model), &entries, &[]);
     assert!(
         rows[..5].iter().all(|row| row.playable.is_none()),
         "the application command rows must offer no play control"
@@ -315,44 +315,6 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
             name: "happy".to_owned(),
         })
     );
-}
-
-/// The shortcuts page's own content for one scope, the way the settings item's
-/// render closure builds it.
-///
-/// The page is rendered through the same `content(...)` the settings item calls,
-/// so the controls under test are the ones the product draws. The wrapper exists
-/// to give the harness a frame of its own: everything below it is the page.
-struct ShortcutsPageHarness {
-    view: Entity<SettingsView>,
-    snapshot: Option<SettingsSnapshot>,
-    scope: ShortcutScope,
-    gate: SettingGate,
-}
-
-impl Render for ShortcutsPageHarness {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let snapshot = self.snapshot.clone();
-        let scope = self.scope;
-        let gate = self.gate;
-        let tokens = Tokens::from_theme(cx);
-        div().id("shortcuts-harness").test_support().child(
-            self.view
-                .clone()
-                .update(cx, move |view, cx| {
-                    shortcuts_page::content(
-                        view,
-                        window,
-                        cx,
-                        snapshot.as_ref(),
-                        scope,
-                        gate,
-                        tokens,
-                    )
-                })
-                .into_any_element(),
-        )
-    }
 }
 
 /// Pressing either control inside a row's frame does its own job and does not
@@ -410,7 +372,14 @@ fn the_controls_inside_a_shortcut_row_act_without_recording(cx: &mut TestAppCont
         });
         view.update(cx, |view, cx| {
             view.snapshot = Some(snapshot.clone());
-            view.sync_shortcut_row_focus(&snapshot.shortcuts, active.as_ref(), &entries, false, cx);
+            view.sync_shortcut_row_focus(
+                &snapshot.shortcuts,
+                active.as_ref(),
+                &entries,
+                &snapshot.model_behavior_names,
+                false,
+                cx,
+            );
         });
         capture.borrow_mut().replace(view.clone());
         Root::new(
@@ -559,7 +528,14 @@ fn a_shortcut_rows_frame_is_sized_by_its_chord_and_holds_its_controls(cx: &mut T
         });
         view.update(cx, |view, cx| {
             view.snapshot = Some(snapshot.clone());
-            view.sync_shortcut_row_focus(&snapshot.shortcuts, active.as_ref(), &entries, false, cx);
+            view.sync_shortcut_row_focus(
+                &snapshot.shortcuts,
+                active.as_ref(),
+                &entries,
+                &snapshot.model_behavior_names,
+                false,
+                cx,
+            );
         });
         Root::new(
             cx.new(|_| ShortcutsPageHarness {

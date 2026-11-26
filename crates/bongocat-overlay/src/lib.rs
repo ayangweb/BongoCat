@@ -39,6 +39,7 @@ use bongocat_input::{
 };
 use bongocat_platform::PlatformInputError;
 use bongocat_render::BlendMode;
+#[cfg(any(not(target_os = "windows"), test))]
 use bongocat_render::CanvasInfo;
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
 use bongocat_runtime::{
@@ -96,6 +97,7 @@ mod dimensions;
 mod error;
 #[cfg(any(not(target_os = "linux"), test))]
 mod frame;
+mod plugin_layer;
 #[cfg(any(not(target_os = "linux"), test))]
 mod presentation;
 mod preview;
@@ -127,6 +129,10 @@ pub(crate) use timing::FrameTimingCollector;
 pub use bounds::{OverlaySessionOptions, OverlayWindowBounds};
 pub use cover::{ModelCoverCaptureSession, capture_model_cover};
 pub use error::OverlayError;
+pub use plugin_layer::{
+    OverlayPluginInteraction, OverlayPluginLayer, OverlayPluginTargets, PluginLayerChange,
+    plugin_interaction_at,
+};
 pub use preview::{run_interactive_model_preview, run_model_preview, run_model_switch_preview};
 pub use product_session::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, ProductOverlaySession,
@@ -136,6 +142,8 @@ pub use timing::{FrameTimingSummary, PreviewReport};
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::AlphaOutputStatus;
 /// Mirrors local input events to a channel the assembly layer owns.
 ///
 /// Re-exported because the producer has to be wrapped before the session takes

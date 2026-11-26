@@ -107,6 +107,7 @@ impl NativeOverlay {
             NSBackingStoreType::Buffered,
             false,
         );
+        panel.setTitle(&objc2_foundation::NSString::from_str("BongoCat"));
         panel.setOpaque(false);
         panel.setHasShadow(false);
         panel.setAnimationBehavior(NSWindowAnimationBehavior::None);
@@ -565,6 +566,13 @@ impl NativeOverlay {
             let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
                 continue;
             };
+            // The key image's own quad, not the canvas quad: a legacy key image
+            // is authored in BongoCatMver's window frame and carries that
+            // window's horizontal margin (see `legacy_key_overlay_bounds`).
+            let Some(overlay_vertex_buffer) = self.model.key_overlay_buffers.get(&overlay.asset_id)
+            else {
+                continue;
+            };
             encoder.set_cull_mode(MTLCullMode::None);
             let uniforms = Uniforms {
                 scale_offset,
@@ -576,7 +584,7 @@ impl NativeOverlay {
                 padding: [0.0; 3],
             };
             encoder.set_render_pipeline_state(&self.pipelines.normal);
-            encoder.set_vertex_buffer(0, Some(&self.model.background_vertex_buffer), 0);
+            encoder.set_vertex_buffer(0, Some(overlay_vertex_buffer), 0);
             encoder.set_vertex_bytes(
                 1,
                 size_of::<Uniforms>() as u64,
@@ -589,6 +597,30 @@ impl NativeOverlay {
             );
             encoder.set_fragment_texture(0, Some(texture));
             encoder.set_fragment_texture(1, Some(&self.model.empty_mask));
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                6,
+                MTLIndexType::UInt16,
+                &self.model.background_index_buffer,
+                0,
+            );
+        }
+        // The plugin layer is the topmost one: a plugin's panel is the user's
+        // own foreground element and must never end up behind the cat.
+        if let Some(layer) = &self.model.plugin_layer {
+            let pixel_uniforms = PixelUniforms {
+                scale_offset: layer.transform,
+            };
+            encoder.set_cull_mode(MTLCullMode::None);
+            encoder.set_render_pipeline_state(&self.pipelines.layer);
+            encoder.set_vertex_buffer(0, Some(&layer.vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<PixelUniforms>() as u64,
+                std::ptr::from_ref(&pixel_uniforms).cast(),
+            );
+            encoder.set_fragment_texture(0, Some(&layer.texture));
             encoder.set_fragment_sampler_state(0, Some(&self.sampler));
             encoder.draw_indexed_primitives(
                 MTLPrimitiveType::Triangle,

@@ -114,7 +114,11 @@ pub(crate) fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::E
     }
     let mut archive = ZipArchive::new(std::fs::File::open(&preview)?)?;
     let mut entries = (0..archive.len())
-        .map(|index| archive.by_index(index).map(|entry| entry.name().to_owned()))
+        .map(|index| {
+            archive
+                .by_index(index)
+                .and_then(|entry| entry.name().map(|name| name.into_owned()))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     entries.sort_unstable();
     if entries

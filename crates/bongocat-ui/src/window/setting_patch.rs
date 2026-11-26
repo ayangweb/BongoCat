@@ -437,53 +437,21 @@ impl SettingsView {
 }
 
 impl SettingsView {
-    pub(crate) fn schedule_network_settings_flush(&mut self, cx: &mut Context<Self>) {
-        self.network_settings_timer_generation =
-            self.network_settings_timer_generation.saturating_add(1);
-        let generation = self.network_settings_timer_generation;
-        let executor = cx.background_executor().clone();
-        cx.spawn(async move |this, cx| {
-            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
-            let _ = this.update(cx, |view, cx| {
-                if view.network_settings_timer_generation != generation || view.pending.is_some() {
-                    return;
-                }
-                let Some(settings) = view.network_settings_debouncer.ready(Instant::now()) else {
-                    return;
-                };
-                let Some(expected_config_revision) = view
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.config_revision)
-                else {
-                    return;
-                };
-                view.start_request(
-                    PendingOperation::NetworkSettings,
-                    Some(SettingValue::NetworkSettings {
-                        expected_config_revision,
-                        settings,
-                    }),
-                    cx,
-                );
-            });
-        })
-        .detach();
-    }
-}
-
-impl SettingsView {
     pub(crate) fn flush_pending_setting_patches(&mut self, cx: &mut Context<Self>) {
         if self.pending.is_some() {
             return;
         }
         let now = Instant::now();
+        #[cfg(target_os = "windows")]
+        if self.flush_window_background_color(cx, now, true) {
+            return;
+        }
         let Some(snapshot) = self.snapshot.clone() else {
             self.flush_pending_requested = false;
             let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
             if should_quit {
-                (self.request_quit)(cx);
+                self.complete_exit_after_flush(cx);
             }
             return;
         };
@@ -492,7 +460,7 @@ impl SettingsView {
             let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
             if should_quit {
-                (self.request_quit)(cx);
+                self.complete_exit_after_flush(cx);
             }
             return;
         };
@@ -617,21 +585,12 @@ impl SettingsView {
                 }),
                 cx,
             );
-        } else if let Some(settings) = self.network_settings_debouncer.flush(now) {
-            self.start_request(
-                PendingOperation::NetworkSettings,
-                Some(SettingValue::NetworkSettings {
-                    expected_config_revision,
-                    settings,
-                }),
-                cx,
-            );
         } else {
             self.flush_pending_requested = false;
             let should_quit = self.quit_after_flush;
             self.quit_after_flush = false;
             if should_quit {
-                (self.request_quit)(cx);
+                self.complete_exit_after_flush(cx);
             }
         }
     }
@@ -645,6 +604,10 @@ impl SettingsView {
 }
 
 impl SettingsView {
+    fn complete_exit_after_flush(&mut self, cx: &mut Context<Self>) {
+        (self.request_quit)(cx);
+    }
+
     pub(super) fn request_quit_after_flush(&mut self, cx: &mut Context<Self>) {
         self.flush_pending_requested = true;
         self.quit_after_flush = true;

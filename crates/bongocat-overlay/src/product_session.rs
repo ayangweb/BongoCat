@@ -7,6 +7,7 @@
 //! become granted by asking again.
 
 use super::*;
+use bongocat_plugin_hud::{HudConsumer, HudViewportReporter};
 
 impl HasWindowHandle for ProductOverlaySession {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -76,6 +77,19 @@ pub struct OverlayResizeOutcome {
 pub struct OverlayInteractionSinks {
     pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The newest composed plugin layer, taken once per tick and drawn as the
+    /// topmost layer. `None` disables plugin UI, which is what a build or a test
+    /// with no plugin host looks like.
+    pub hud_consumer: Option<HudConsumer>,
+    /// Where a click that lands on a plugin's control is reported.
+    pub hud_interaction_sender: Option<SyncSender<OverlayPluginInteraction>>,
+    /// Where the window reports its own size and backing scale.
+    ///
+    /// A composed layer has to match the window it is drawn into, so the native
+    /// session publishes the numbers it just took and the plugin service composes
+    /// against the newest report. `None` disables plugin UI for the same reason
+    /// the layer channel does.
+    pub hud_viewport_reporter: Option<HudViewportReporter>,
 }
 
 impl ProductOverlaySession {
@@ -97,6 +111,9 @@ impl ProductOverlaySession {
             OverlayInteractionSinks {
                 context_menu_sender: None,
                 resize_sender: None,
+                hud_consumer: None,
+                hud_interaction_sender: None,
+                hud_viewport_reporter: None,
             },
         )
     }
@@ -187,6 +204,11 @@ impl ProductOverlaySession {
         self.inner.model_generation()
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn window_mode_is_active(&self) -> bool {
+        self.inner.overlay.window._state.window_mode
+    }
+
     /// Windows only: apply the configured taskbar button to the model window.
     ///
     /// macOS has no per-window equivalent: the Dock belongs to the process
@@ -234,9 +256,64 @@ impl ProductOverlaySession {
 
 #[cfg(target_os = "linux")]
 impl ProductOverlaySession {
+    pub fn tick_linux_window(
+        &mut self,
+        settings: bongocat_runtime::OverlaySettings,
+        local_modifiers: bongocat_input::PressedModifiers,
+        input_available: bool,
+    ) -> Result<OverlayTickOutcome, OverlayError> {
+        self.inner
+            .tick_with_window_behavior(Some((settings, local_modifiers, input_available)))
+    }
+
+    pub fn set_linux_display_selected(&mut self, selected: bool) {
+        self.inner.set_display_selected(selected);
+    }
+
+    pub fn restore_linux_position(&self, x: i32, y: i32) {
+        self.inner.restore_position(x, y);
+    }
+
+    pub fn start_linux_peer(
+        &self,
+        runtime: RuntimeClient,
+        consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        saved_bounds: Option<OverlayWindowBounds>,
+    ) -> Result<Self, OverlayError> {
+        self.inner
+            .start_peer(runtime, consumer, options, saved_bounds)
+            .map(|inner| Self { inner })
+    }
+
+    pub fn sync_linux_alpha_scene<'a>(
+        &self,
+        primary_selected: bool,
+        peers: impl IntoIterator<Item = (&'a mut Self, bool)>,
+    ) {
+        self.inner.sync_alpha_scene(
+            primary_selected,
+            peers
+                .into_iter()
+                .map(|(peer, selected)| (&mut peer.inner, selected)),
+        );
+    }
+
     pub fn linux_close_requested(&self) -> bool {
         self.inner.close_requested()
     }
+    pub fn set_linux_alpha_output_enabled(
+        &mut self,
+        enabled: bool,
+        environment: bongocat_config::BuildEnvironment,
+    ) {
+        self.inner.set_alpha_output_enabled(enabled, environment);
+    }
+
+    pub fn linux_alpha_output_status(&mut self) -> crate::AlphaOutputStatus {
+        self.inner.alpha_output_status()
+    }
+
     pub fn linux_always_on_top_available(&self) -> bool {
         self.inner.always_on_top_available()
     }

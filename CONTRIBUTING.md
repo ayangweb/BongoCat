@@ -1,6 +1,6 @@
 # Contributing to BongoCat
 
-[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+English | [简体中文](CONTRIBUTING.zh-CN.md)
 
 Thank you for helping improve BongoCat. Please keep contributions focused, understandable, and
 supported by repeatable verification.
@@ -30,6 +30,31 @@ just check
 just build
 just schema
 ```
+
+Official plugin sources, the SDK and plugin release tooling are workspace
+members. `just dev` and `just dev-smoke` build the host-platform plugin packages
+from `plugins/` under `target/plugin-dev`; use `just plugin-tests` for the
+workspace tests that exercise real plugin binaries.
+
+### Plugin changes and releases
+
+Change plugin behavior, UI, the SDK or the process protocol in this repository
+and include the corresponding host integration tests. A plugin still runs in a
+separate process, so an application build does not link plugin code or bundle
+plugin resources.
+
+Plugin releases use `plugins-v*` tags and are independent of application `v*`
+releases. They remain immutable and are explicitly published as non-Latest.
+`plugins-v1.0.0` is built entirely from this repository. Every later release
+uses the same history checks and requires a version bump when the plugin source
+changes. The signed catalog is published to the dedicated `plugin-catalog`
+branch only after the release assets have been downloaded and verified again.
+
+When building on Windows, ensure you use the MSVC toolchain (of the form
+`stable-x86_64-pc-windows-**msvc**`, not `stable-x86_64-pc-windows-**gnu**`). This project depends
+on Live2D Cubism Core, whose Windows distribution is only available in MSVC format (`.lib`), so MSVC
+is mandatory on Windows. Use `rustup show` to check the active toolchain. If it is not MSVC, switch
+to it with `rustup override set`.
 
 Building on macOS also needs an Xcode Swift toolchain, because the guided Input Monitoring flow
 links a Swift static library (ADR-0078). SwiftPM refuses to load a package whose manifest declares a

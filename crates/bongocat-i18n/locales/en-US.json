@@ -22,14 +22,18 @@
     "shortcuts": {
       "title": "Shortcuts"
     },
-    "multiplayer": {
-      "title": "Multiplayer"
-    },
     "app_system": {
       "title": "App & system"
     },
     "about": {
       "title": "About"
+    },
+    "plugins": {
+      "title": "Plugin Center",
+      "empty": "No plugins available."
+    },
+    "multiplayer": {
+      "title": "Multiplayer"
     }
   },
   "system_menu": {
@@ -37,12 +41,25 @@
     "open_settings": "Settings",
     "quit": "Quit BongoCat"
   },
+  "application_menu": {
+    "file": "File",
+    "edit": "Edit",
+    "window": "Window",
+    "services": "Services",
+    "close": "Close",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "hide": "Hide BongoCat",
+    "hide_others": "Hide Others",
+    "show_all": "Show All",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select All"
+  },
   "startup_permission": {
-    "linux": {
-      "title": "Allow keyboard and mouse monitoring?",
-      "description": "BongoCat needs access to input devices to respond to keyboard and mouse activity in other apps. After you confirm, the system will request administrator authorization. Only the input helper receives elevated access; Settings and the model window continue to run as your user. Choose Set up later to continue without keyboard and mouse reactions.",
-      "confirm": "OK"
-    },
     "later": "Set Up Later",
     "input_monitoring": {
       "title": "Input Monitoring Permission Required",
@@ -53,22 +70,23 @@
       "title": "Recommend running with administrator access",
       "description": "BongoCat needs administrator access to keep receiving keyboard and mouse input when another app is running with administrator privileges.\n\nTo set it up: right-click BongoCat → Properties → Compatibility → turn on \"Run this program as an administrator\".",
       "open_program_folder": "Exit and open Settings"
+    },
+    "linux": {
+      "title": "Allow keyboard and mouse monitoring?",
+      "description": "BongoCat needs access to input devices to respond to keyboard and mouse activity in other apps. After you confirm, the system will request administrator authorization. Only the input helper receives elevated access; Settings and the model window continue to run as your user. Choose Set up later to continue without keyboard and mouse reactions.",
+      "confirm": "OK"
     }
   },
   "about": {
     "product_information": {
       "version": {
         "title": "Version Information",
-        "label": "Version",
-        "environment": {
-          "development": "Development build",
-          "release": "Release build"
-        }
+        "label": "Version"
       }
     },
     "software_information": {
       "title": "Software information",
-      "description": "Copy the version, system, and runtime details as JSON for a bug report.",
+      "description": "Copy the version, system, and runtime information for bug reports.",
       "copy": "Copy",
       "copy_success": "Software information copied"
     },
@@ -78,7 +96,6 @@
     },
     "feedback": {
       "title": "Problem feedback",
-      "description": "Copy the software information first, then paste it into the report.",
       "action": "Report an issue"
     },
     "logs": {
@@ -127,6 +144,9 @@
     "import": {
       "success": "Model import completed",
       "failed": "Model import failed",
+      "selection_dialog": {
+        "title": "Select models"
+      },
       "mver_dialog": {
         "title": "Choose modes to convert",
         "description": "Select the BongoCat Mver modes to import.",
@@ -266,7 +286,11 @@
     },
     "behavior_names": {
       "motion": "Motion %{index}",
-      "expression": "Expression %{index}"
+      "expression": "Expression %{index}",
+      "rename": {
+        "tooltip": "Rename",
+        "field": "Name"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} is already assigned to another shortcut"
@@ -309,13 +333,16 @@
       "software_info_copy_failed": "Software information could not be copied",
       "external_link_open_failed": "The link could not be opened",
       "log_location_open_failed": "The application log folder could not be opened",
-      "login_startup_update_failed": "The login startup setting could not be updated",
+      "login_startup_update_failed": "The run at startup setting could not be updated",
       "system_icon_update_failed": "Could not update the system icon.",
       "taskbar_icon_update_failed": "Could not update the taskbar icon.",
       "dock_icon_update_failed": "Could not update the Dock icon.",
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
-      "application_shutdown_failed": "BongoCat could not close completely"
+      "application_shutdown_failed": "BongoCat could not close completely",
+      "network_relay_failed": "Could not start the room server. Check the listening address and port.",
+      "network_room_failed": "Could not join the room. Check the address and key.",
+      "network_restore_failed": "Could not restore the previous network session. Check the connection and try again."
     }
   },
   "settings": {
@@ -338,11 +365,19 @@
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
           "portuguese": "Português",
-          "korean": "한국어"
+          "korean": "한국어",
+          "french": "Français",
+          "russian": "Русский"
         }
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Window mode"
+      },
+      "window_background_color": {
+        "label": "Window background color"
+      },
       "behavior": {
         "title": "Window behavior"
       },
@@ -408,6 +443,12 @@
         "remember_last_expression": {
           "label": "Remember the last expression of each model"
         },
+        "toggle_repeated_expression": {
+          "label": "Turn off an expression when triggered again"
+        },
+        "allow_motion_overlap": {
+          "label": "Allow overlapping motions"
+        },
         "random_behavior_mode": {
           "label": "Randomly play motions or expressions",
           "options": {
@@ -424,10 +465,6 @@
     },
     "input_interaction": {
       "mouse": {
-        "sensitivity": {
-          "label": "Mouse tracking sensitivity (%)",
-          "description": "100% is the default speed. Lower values move more slowly; excess travel at the boundary is discarded."
-        },
         "title": "Mouse",
         "mirror_mouse_tracking_horizontal": {
           "label": "Flip mouse tracking horizontally"
@@ -441,6 +478,10 @@
         "force_move": {
           "label": "Force mouse movement",
           "description": "Keep following the mouse in applications that capture the pointer, such as full-screen games."
+        },
+        "sensitivity": {
+          "label": "Mouse tracking sensitivity (%)",
+          "description": "100% is the default speed. Lower values move more slowly; excess travel at the boundary is discarded."
         }
       },
       "keyboard": {
@@ -516,7 +557,7 @@
         "label": "Show taskbar icon"
       },
       "dock_icon": {
-        "label": "Show Dock icon"
+        "label": "Always show Dock icon"
       },
       "auto_update": {
         "label": "Check for updates automatically",
@@ -525,7 +566,7 @@
         }
       },
       "open_at_login": {
-        "label": "Open at login"
+        "label": "Run at startup"
       },
       "startup": {
         "checking": "Checking the login item…",
@@ -533,13 +574,73 @@
         "stale": "The saved app location changed; turn the switch off and on to repair",
         "requires_approval": "Approve BongoCat in System Settings",
         "not_found": "The login item is missing; turn the switch off and on to repair",
-        "unsupported_platform": "Login startup is unavailable on this system",
-        "unsupported_os": "Login startup is unavailable on this operating system",
-        "unsupported_build": "Login startup is unavailable in development builds"
+        "unsupported_platform": "Running at startup is unavailable on this system",
+        "unsupported_os": "Running at startup is unavailable on this operating system",
+        "unsupported_build": "Running at startup is unavailable in development builds"
+      }
+    },
+    "alpha": {
+      "camera": "Virtual camera",
+      "driver": "Driver",
+      "enable": "Enable Alpha output",
+      "error": {
+        "authorization": "Authorization failed or was cancelled; check your authentication agent",
+        "busy": "A camera operation is already running",
+        "config": "Could not save output setting",
+        "conflict": "Camera ownership could not be verified",
+        "driver": "Install the v4l2loopback driver first",
+        "operation": "Camera operation failed",
+        "permission": "Camera permission could not be applied",
+        "rollback": "Installation failed and rollback needs attention",
+        "service": "Settings service unavailable",
+        "stale": "Settings changed; refresh and retry",
+        "stop": "Could not stop output; retry",
+        "unsupported": "Required tools or services unavailable"
+      },
+      "install": "Install virtual camera",
+      "management": "Device management",
+      "module": "Kernel module",
+      "output": "Output",
+      "refresh": "Refresh",
+      "retry": "Retry output",
+      "title": "Alpha output",
+      "uninstall": "Uninstall virtual camera",
+      "value": {
+        "available": "Available",
+        "checking": "Checking…",
+        "conflict": "Ownership conflict",
+        "control_missing": "v4l2loopback-ctl not installed",
+        "driver_missing": "Driver not installed",
+        "failed": "Failed",
+        "format": "Unsupported format",
+        "installed": "Installed",
+        "loaded": "Loaded",
+        "module_tools_missing": "Module tools unavailable",
+        "not_installed": "Not installed",
+        "not_loaded": "Not loaded",
+        "off": "Off",
+        "permission": "Permission denied",
+        "pkexec_missing": "pkexec not installed",
+        "recovery": "Reinstall virtual camera",
+        "running": "Running",
+        "starting": "Starting",
+        "stopping": "Stopping",
+        "udev_missing": "udevadm not installed",
+        "unavailable": "Device unavailable",
+        "unknown": "Unknown",
+        "unsupported": "Unavailable"
       }
     },
     "multiplayer": {
-      "restart_notice": "The relay and the room are opened while BongoCat starts. Restart BongoCat for a change on this page to take effect.",
+      "editor": {
+        "connect": "Connect",
+        "change_connection": "Change connection…",
+        "edit_connection": "Set up connection…",
+        "apply_relay": "Apply server settings",
+        "edit_relay": "Configure server…",
+        "cancel": "Cancel",
+        "disconnect": "Disconnect"
+      },
       "device": {
         "title": "This machine",
         "id": {
@@ -554,26 +655,21 @@
         "self": {
           "label": "This machine (follow my own input)"
         },
-        "remove": "Remove",
-        "add": {
-          "label": "Add a device id",
-          "action": "Add"
-        },
         "peer": {
-          "show": "Show this device",
           "sharing": "sharing",
-          "not_sharing": "not sharing"
+          "not_sharing": "not sharing",
+          "offline": "offline",
+          "saved": "Saved device",
+          "unnamed": "Unnamed device"
         },
-        "empty": "An empty list is fine: a machine can send its input to a room without drawing any of it."
+        "empty": "Choose which room devices to display."
       },
       "client": {
         "title": "Join a room",
-        "enabled": {
-          "label": "Join a room"
-        },
         "source": {
+          "label": "Connection method",
           "options": {
-            "follow_local": "Follow the relay on this machine",
+            "follow_local": "Use the room server on this machine",
             "manual": "Type an address myself"
           }
         },
@@ -588,9 +684,9 @@
         }
       },
       "server": {
-        "title": "Serve a relay",
+        "title": "Room server",
         "enabled": {
-          "label": "Run a relay on this machine"
+          "label": "Run a room server on this machine"
         },
         "listen": {
           "label": "Listen on",
@@ -614,7 +710,7 @@
       "status": {
         "title": "Status",
         "server": {
-          "label": "Relay",
+          "label": "Room server",
           "stopped": "Not running"
         },
         "client": {
@@ -631,9 +727,10 @@
           "label": "Other machines in the room",
           "none": "Not in a room"
         },
-        "bound": {
-          "label": "Following",
-          "none": "Nothing yet"
+        "device_id": {
+          "label": "Local device ID",
+          "copy": "Copy",
+          "copy_failed": "Could not copy the local device ID."
         },
         "latency": {
           "label": "Latency",
@@ -642,10 +739,45 @@
       },
       "status_and_devices": {
         "title": "Status & devices"
-      },
-      "restart": {
-        "action": "Restart"
       }
+    }
+  },
+  "plugins": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "loading": "Loading plugins…",
+    "discovery_failed": "Could not load the plugin list. Try again.",
+    "install": "Install",
+    "update": "Update",
+    "update_all": "Update all",
+    "update_available": "Update available",
+    "update_all_success": "All plugins are up to date.",
+    "available_version": "Available version %{version}",
+    "uninstall": "Uninstall",
+    "uninstall_confirm": "Are you sure you want to uninstall %{name}?",
+    "settings": {
+      "open": "Settings",
+      "title": "%{name} settings",
+      "empty": "This plugin has no settings."
+    },
+    "version": "Version %{version}",
+    "errors": {
+      "install_failed": "Plugin installation failed: %{name}",
+      "update_failed": "Plugin update failed: %{name}",
+      "enable_failed": "Could not enable plugin: %{name}",
+      "disable_failed": "Could not disable plugin: %{name}",
+      "uninstall_failed": "Plugin uninstallation failed: %{name}",
+      "action_failed": "Plugin action failed: %{name}",
+      "configure_failed": "Could not save plugin settings: %{name}",
+      "update_all_failed": "Could not update these plugins: %{names}",
+      "with_reason": "%{message} (%{reason})",
+      "service_unavailable": "The plugin service is unavailable",
+      "not_installed": "The plugin was not found",
+      "not_running": "The plugin is not running",
+      "load_failed": "Plugin loading failed: %{name}",
+      "runtime_failed": "Plugin stopped unexpectedly: %{name}",
+      "reported": "Plugin error: %{name} — %{reason}",
+      "preview_failed": "Plugin preview failed: %{name}"
     }
   },
   "linux_input": {

@@ -59,6 +59,27 @@ pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_
 #[cfg(test)]
 pub(crate) use tests::repository_preset_root;
 
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy)]
+pub struct NetworkRuntimeSelection {
+    pub has_room: bool,
+    pub publishes_input: bool,
+}
+
+#[cfg(target_os = "linux")]
+pub struct NetworkDisplayUpdate {
+    pub local_device: String,
+    pub devices: Vec<String>,
+    pub runtime: Option<NetworkRuntimeSelection>,
+}
+
+#[cfg(target_os = "linux")]
+type NetworkApply = dyn Fn(
+        &bongocat_config::NetworkConfig,
+    ) -> Result<NetworkRuntimeSelection, bongocat_ui_protocol::SettingsError>
+    + Send
+    + Sync;
+
 /// Work the settings worker hands to the thread that owns the product's windows.
 ///
 /// Two things the application has to do can only happen on that thread: showing the
@@ -70,16 +91,130 @@ pub(crate) use tests::repository_preset_root;
 #[derive(Clone, Default)]
 pub struct ApplicationMainThreadSignals {
     open_settings: Arc<AtomicBool>,
+    #[cfg(target_os = "linux")]
+    network_display: Arc<Mutex<Option<NetworkDisplayUpdate>>>,
+    #[cfg(target_os = "linux")]
+    network_apply: Option<Arc<NetworkApply>>,
+    alpha_output: Arc<Mutex<Option<AlphaOutputRequest>>>,
     cover_captures: Arc<Mutex<VecDeque<CoverCaptureRequest>>>,
 }
 
+/// A completion token belongs to one particular stop request. It is signalled
+/// only by the overlay owner after the output worker has joined.
+#[derive(Clone, Default)]
+pub struct AlphaOutputStop(Arc<AtomicBool>);
+
+impl AlphaOutputStop {
+    pub fn is_complete(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    pub fn complete(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+pub struct AlphaOutputRequest {
+    enabled: bool,
+    stop: Option<AlphaOutputStop>,
+}
+
+impl AlphaOutputRequest {
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn into_stop(self) -> Option<AlphaOutputStop> {
+        self.stop
+    }
+}
+
 impl ApplicationMainThreadSignals {
+    #[cfg(target_os = "linux")]
+    pub fn with_network_apply(
+        mut self,
+        apply: impl Fn(
+            &bongocat_config::NetworkConfig,
+        ) -> Result<NetworkRuntimeSelection, bongocat_ui_protocol::SettingsError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.network_apply = Some(Arc::new(apply));
+        self
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn apply_network(
+        &self,
+        config: &bongocat_config::NetworkConfig,
+    ) -> Result<Option<NetworkRuntimeSelection>, bongocat_ui_protocol::SettingsError> {
+        self.network_apply
+            .as_ref()
+            .map(|apply| apply(config))
+            .transpose()
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn request_network_display(
+        &self,
+        local_device: String,
+        display: Vec<String>,
+        runtime: Option<NetworkRuntimeSelection>,
+    ) {
+        *self
+            .network_display
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(NetworkDisplayUpdate {
+            local_device,
+            devices: display,
+            runtime,
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn take_network_display(&self) -> Option<NetworkDisplayUpdate> {
+        self.network_display
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
     pub fn request_open_settings(&self) {
         self.open_settings.store(true, Ordering::Release);
     }
 
     pub fn take_open_settings_request(&self) -> bool {
         self.open_settings.swap(false, Ordering::AcqRel)
+    }
+
+    pub fn request_alpha_output(&self, enabled: bool) {
+        *self
+            .alpha_output
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(AlphaOutputRequest {
+            enabled,
+            stop: None,
+        });
+    }
+
+    pub fn request_alpha_output_stop(&self) -> AlphaOutputStop {
+        let stop = AlphaOutputStop::default();
+        *self
+            .alpha_output
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(AlphaOutputRequest {
+            enabled: false,
+            stop: Some(stop.clone()),
+        });
+        stop
+    }
+
+    pub fn take_alpha_output_request(&self) -> Option<AlphaOutputRequest> {
+        self.alpha_output
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 
     /// Queue `model` to be rendered into its own cover by the GPUI thread.

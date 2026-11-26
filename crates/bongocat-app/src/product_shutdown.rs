@@ -107,6 +107,7 @@ pub(crate) struct ProductShutdown {
     pub(crate) overlay: ProductOverlaySession,
     pub(crate) settings_service: bongocat_app::ApplicationSettingsService,
     pub(crate) update_service: Option<bongocat_app::ApplicationUpdateService>,
+    pub(crate) plugin_service: Option<bongocat_plugin_service::PluginService>,
 }
 
 impl ProductShutdown {
@@ -119,15 +120,54 @@ impl ProductShutdown {
         {
             record_failure(&failures, error.to_string());
         }
-        finish_product_services(
-            self.overlay,
-            self.settings_service,
-            &self.coordinator.frame_source_shutdown,
-            self.coordinator.expect_visible_frame,
-            true,
-            &failures,
-        )
-        .await;
+        if !self.coordinator.frame_source_shutdown.wait_for_stop().await {
+            record_failure(
+                &failures,
+                "product frame source did not stop before runtime shutdown",
+            );
+        }
+        // The plugin pump stops before the runtime does: it hands actions to the
+        // runtime, and an action sent after the runtime began shutting down is a
+        // command nobody will apply. Its join is also what guarantees no plugin
+        // process outlives the window it drew into.
+        if let Some(plugin_service) = self.plugin_service
+            && let Err(error) = plugin_service.shutdown()
+        {
+            record_failure(&failures, error.to_string());
+        }
+        let settings_client = self.settings_service.client();
+        if let Ok(bounds) = self.overlay.window_bounds() {
+            for _ in 0..20 {
+                if settings_client
+                    .update_overlay_window_placement(
+                        bounds.x,
+                        bounds.y,
+                        bounds.width,
+                        bounds.height,
+                    )
+                    .is_ok()
+                {
+                    break;
+                }
+                async_io::Timer::after(Duration::from_millis(10)).await;
+            }
+        }
+        if let Err(error) = settings_client.shutdown().await {
+            record_failure(&failures, error.to_string());
+        }
+        if let Err(error) = self.settings_service.join() {
+            record_failure(&failures, error.to_string());
+        }
+        match self.overlay.finish_after_runtime_shutdown() {
+            Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
+                record_failure(&failures, "product overlay presented no frames");
+            }
+            Ok(report) if !report.placement_fully_visible => {
+                record_failure(&failures, "product overlay left the display bounds");
+            }
+            Ok(_) => {}
+            Err(error) => record_failure(&failures, error.to_string()),
+        }
         failures
     }
 }
@@ -172,11 +212,13 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         .take()
         .expect("settings service owner is present");
     let update_service = coordinator.update_service.take();
+    let plugin_service = coordinator.plugin_service.take();
     ProductShutdown {
         coordinator,
         overlay,
         settings_service,
         update_service,
+        plugin_service,
     }
 }
 

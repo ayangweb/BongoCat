@@ -76,13 +76,9 @@ fn development_builds_never_reach_the_network() {
 
 #[test]
 fn the_release_signing_key_is_provisioned() {
-    assert_eq!(
-        RELEASE_SIGNING_KEY,
-        Some(
-            "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERGNUUyQzlEMjU1REQ4NUUKUldSZTJGMGxuU3hlMzIyMHdwUldMNTRvRStMb1hJZlI3T2w0TEdFRlI3YXhsa3k0NldGUW5EN20K"
-        )
-    );
-    assert!(configured_signing_key(RELEASE_SIGNING_KEY).is_some());
+    let key = RELEASE_SIGNING_KEY.expect("the release public key file is embedded");
+    assert_eq!(key, key.trim());
+    assert!(configured_signing_key(Some(key)).is_some());
 }
 
 #[test]

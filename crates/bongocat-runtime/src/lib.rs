@@ -9,6 +9,8 @@
 
 #![forbid(unsafe_code)]
 
+mod activity;
+pub use activity::{ActivityControl, ActivityEvent, ActivitySubscription};
 mod client;
 mod input_state;
 mod owner;
@@ -189,6 +191,8 @@ pub const fn idle_hide_delay_ms(seconds: u32) -> u32 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
+    pub window_mode: bool,
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold gives the pointer back to the user.
     ///
@@ -232,6 +236,8 @@ pub struct OverlaySettings {
 impl Default for OverlaySettings {
     fn default() -> Self {
         Self {
+            window_mode: false,
+            window_background_color: [0, 255, 0],
             click_through: false,
             hold_modifier_to_interact: None,
             always_on_top: true,
@@ -277,6 +283,16 @@ pub struct ModelSettings {
     /// The paw parameters do not depend on this: a hand is down while any key
     /// bound to it is held either way.
     pub show_all_pressed_keys: bool,
+    /// Whether a command for the expression already in effect turns it off.
+    ///
+    /// The runtime owns this decision because it is the only place that knows
+    /// which expression is in effect: both trigger sources converge on
+    /// [`RuntimeCommand::SetExpression`], the settings window's preview button
+    /// and a shortcut alike. The idle scheduler deliberately does not go through
+    /// that command, so an automatic pick never toggles the user's own face off.
+    pub toggle_repeated_expression: bool,
+    /// Whether distinct motion identities retain independently timed layers.
+    pub allow_motion_overlap: bool,
     pub ignore_pointer: bool,
 }
 
@@ -444,11 +460,33 @@ pub struct PendingModelSnapshot {
     pub model: ModelSnapshot,
 }
 
+/// Runtime-visible state of a separate video output.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum VideoOutputStatus {
+    #[default]
+    Disabled,
+    Starting,
+    Running,
+    Stopping,
+    DeviceUnavailable,
+    PermissionDenied,
+    UnsupportedFormat,
+    Failed,
+}
+
+impl VideoOutputStatus {
+    pub const fn needs_frames(self) -> bool {
+        matches!(self, Self::Starting | Self::Running)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
     /// Drive one deterministic runtime evaluation using the injected clock.
     Tick,
     SetOverlayVisible(bool),
+    /// Publish the real state of the separate video consumer.
+    SetVideoOutputStatus(VideoOutputStatus),
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
     SetRandomBehaviorSettings(RandomBehaviorSettings),
@@ -503,6 +541,7 @@ impl ShortcutAction {
 pub struct FrameScheduling {
     pub maximum_fps: u16,
     pub overlay_visible: bool,
+    pub video_output_active: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -510,6 +549,8 @@ pub struct RuntimeSnapshot {
     pub revision: u64,
     pub state: RuntimeState,
     pub overlay_visible: bool,
+    pub video_output_active: bool,
+    pub video_output_status: VideoOutputStatus,
     pub overlay_settings: OverlaySettings,
     pub maximum_fps: u16,
     pub random_behavior_settings: RandomBehaviorSettings,
@@ -529,7 +570,10 @@ pub struct RuntimeSnapshot {
     /// the same id as a build-shipped model.
     pub active_model_origin: Option<ModelOrigin>,
     pub pending_model: Option<PendingModelSnapshot>,
+    /// Most recently started surviving motion, derived from `active_motions`.
     pub active_motion: Option<ActiveMotionSnapshot>,
+    /// All motion layers, in start order.
+    pub active_motions: Vec<ActiveMotionSnapshot>,
     pub active_expression: Option<ActiveExpressionSnapshot>,
     /// The last expression a command asked for, whether or not it is still the
     /// one in effect. See [`UserExpressionMemory`].
@@ -558,6 +602,8 @@ impl RuntimeSnapshot {
             revision: 0,
             state: RuntimeState::Starting,
             overlay_visible,
+            video_output_active: false,
+            video_output_status: VideoOutputStatus::Disabled,
             overlay_settings: OverlaySettings::default(),
             maximum_fps: DEFAULT_MAXIMUM_FPS,
             random_behavior_settings: RandomBehaviorSettings::default(),
@@ -570,6 +616,7 @@ impl RuntimeSnapshot {
             active_model_origin: None,
             pending_model: None,
             active_motion: None,
+            active_motions: Vec::new(),
             active_expression: None,
             user_expression_memory: None,
             motion_events: MotionEventDiagnostics::default(),

@@ -193,7 +193,7 @@ impl SettingsView {
         }
         let complete = pending.is_empty();
         if complete {
-            self.model_import.reset();
+            self.model_import.finish_current();
         } else {
             self.pending_model_reveal = pending;
             self.model_import.state = ModelImportState::Capturing;

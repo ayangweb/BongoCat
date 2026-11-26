@@ -29,8 +29,18 @@ pub(super) fn run_service(
     signals: Option<ApplicationMainThreadSignals>,
 ) {
     let mut clock = SettingsSnapshotClock::new(application.config_revision());
+    let mut alpha_worker: Option<thread::JoinHandle<()>> = None;
+    let alpha_cancel = Arc::new(AtomicBool::new(false));
     loop {
+        if alpha_worker
+            .as_ref()
+            .is_some_and(thread::JoinHandle::is_finished)
+            && let Some(finished) = alpha_worker.take()
+        {
+            let _ = finished.join();
+        }
         let Ok(command) = endpoint.recv_blocking() else {
+            finish_alpha_management(&alpha_cancel, &mut alpha_worker);
             if persist_window_state(&mut application, &window_state).is_err() {
                 application.record_log_once(
                     ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
@@ -65,6 +75,7 @@ pub(super) fn run_service(
                 }
             }
             SettingsCommand::OverlayWindowPlacementChanged {
+                device,
                 x,
                 y,
                 width,
@@ -72,7 +83,7 @@ pub(super) fn run_service(
             } => match OverlayWindowPlacement::new(x, y, width, height) {
                 Ok(placement) => {
                     if application
-                        .persist_overlay_window_placement(placement)
+                        .persist_overlay_window_placement(placement, device.as_deref())
                         .is_err()
                     {
                         application.record_log_once(
@@ -128,6 +139,70 @@ pub(super) fn run_service(
                 let _ =
                     observe_snapshot_state(&application, &mut clock, startup_item.state(), false);
                 let _ = reply.respond(clock.revision);
+            }
+            SettingsCommand::ReadAlphaSystemStatus { reply } => {
+                let _ = reply.respond(Ok(alpha_system_status()));
+            }
+            SettingsCommand::ManageAlphaCamera {
+                expected_config_revision,
+                action,
+                reply,
+            } => {
+                if alpha_worker.is_some() {
+                    let _ = reply.respond(Err(SettingsAlphaManagementError::Busy));
+                    continue;
+                }
+                if check_revision(&application, expected_config_revision).is_err() {
+                    let _ = reply.respond(Err(SettingsAlphaManagementError::SnapshotOutdated));
+                    continue;
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let _ = (action, signals.as_ref());
+                    let _ = reply.respond(Err(SettingsAlphaManagementError::UnsupportedSystem));
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    let stop = if action == SettingsAlphaManagementAction::Uninstall {
+                        let Some(signals) = signals.as_ref() else {
+                            let _ =
+                                reply.respond(Err(SettingsAlphaManagementError::OutputStopFailed));
+                            continue;
+                        };
+                        if application.config().alpha_output.enabled
+                            && application.set_alpha_output_enabled(false).is_err()
+                        {
+                            let _ = reply
+                                .respond(Err(SettingsAlphaManagementError::ConfigPersistFailed));
+                            continue;
+                        }
+                        Some(signals.request_alpha_output_stop())
+                    } else {
+                        None
+                    };
+                    let cancel = Arc::clone(&alpha_cancel);
+                    alpha_worker = Some(thread::spawn(move || {
+                        let result = wait_for_alpha_stop(stop.as_ref(), &cancel)
+                            .and_then(|()| {
+                                let action = match action {
+                                    SettingsAlphaManagementAction::Install => {
+                                        bongocat_platform::AlphaAdminAction::Install
+                                    }
+                                    SettingsAlphaManagementAction::Uninstall => {
+                                        bongocat_platform::AlphaAdminAction::Uninstall
+                                    }
+                                };
+                                bongocat_platform::manage_alpha_camera(
+                                    BUILD_ENVIRONMENT,
+                                    action,
+                                    &cancel,
+                                )
+                                .map_err(map_alpha_admin_error)
+                            })
+                            .map(|()| alpha_system_status());
+                        let _ = reply.respond(result);
+                    }));
+                }
             }
             SettingsCommand::ReadAutomaticUpdateSettings { reply } => {
                 let application_config = &application.config().updates;
@@ -313,6 +388,8 @@ pub(super) fn run_service(
                 reply,
             } => {
                 let runtime_settings = OverlaySettings {
+                    window_mode: settings.window_mode,
+                    window_background_color: settings.window_background_color,
                     click_through: settings.click_through,
                     hold_modifier_to_interact: settings.hold_modifier_to_interact,
                     always_on_top: settings.always_on_top,
@@ -429,6 +506,33 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetModelBehaviorName {
+                expected_config_revision,
+                model,
+                behavior_id,
+                name,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_model_behavior_name(
+                                config_identity_from_settings(&model),
+                                behavior_id,
+                                name,
+                            )
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("behavior_name"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,
@@ -441,6 +545,16 @@ pub(super) fn run_service(
                     ignore_keyboard: settings.ignore_keyboard,
                     ignore_gamepad: settings.ignore_gamepad,
                     show_all_pressed_keys: settings.show_all_pressed_keys,
+                    // Not part of the page's grouped settings and therefore not
+                    // part of the command: it has its own switch and its own
+                    // revision-checked command, so this projection carries the
+                    // stored value across rather than resetting it whenever an
+                    // unrelated model setting moves.
+                    allow_motion_overlap: application.config().model.allow_motion_overlap,
+                    toggle_repeated_expression: application
+                        .config()
+                        .model
+                        .toggle_repeated_expression,
                     ignore_pointer: settings.ignore_pointer,
                 };
                 let result = check_revision(&application, expected_config_revision)
@@ -560,6 +674,50 @@ pub(super) fn run_service(
                 }
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetToggleRepeatedExpression {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_toggle_repeated_expression(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation(
+                                "toggle_repeated_expression",
+                            ))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetAllowMotionOverlap {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_allow_motion_overlap(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("allow_motion_overlap"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetNetworkSettings {
                 expected_config_revision,
                 settings,
@@ -567,6 +725,35 @@ pub(super) fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
+                        #[cfg(target_os = "linux")]
+                        if let Some(signals) = &signals {
+                            let mut settings = settings;
+                            if settings.server.enabled && settings.server.token.is_none() {
+                                settings.server.token = Some(bongocat_net::generate_token());
+                            }
+                            let mut candidate = application.config().clone();
+                            candidate.network =
+                                crate::config_projection::network_config_from_settings(
+                                    settings.clone(),
+                                );
+                            candidate
+                                .validate()
+                                .map_err(|error| map_application_error(error.into()))?;
+                            let previous = application.config().network.clone();
+                            let available = signals.apply_network(&candidate.network)?;
+                            if let Err(error) = application.set_network_settings(settings) {
+                                if available.is_some() {
+                                    signals.apply_network(&previous)?;
+                                }
+                                return Err(map_application_error(error));
+                            }
+                            signals.request_network_display(
+                                candidate.network.device.id,
+                                candidate.network.client.display,
+                                available,
+                            );
+                            return Ok(());
+                        }
                         application
                             .set_network_settings(settings)
                             .map_err(map_application_error)
@@ -579,6 +766,31 @@ pub(super) fn run_service(
                             .with_context(ApplicationLogContext::Reason(error.code().as_str())),
                     );
                 }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetAlphaOutputEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                if alpha_worker.is_some() {
+                    let _ = reply.respond(Err(SettingsError::new(
+                        SettingsErrorCode::RuntimeUnavailable,
+                    )));
+                    continue;
+                }
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_alpha_output_enabled(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|()| {
+                        if let Some(signals) = &signals {
+                            signals.request_alpha_output(enabled);
+                        }
+                        snapshot(&application, &mut clock, false, startup_item.state())
+                    });
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetShortcuts {
@@ -803,6 +1015,7 @@ pub(super) fn run_service(
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
+                finish_alpha_management(&alpha_cancel, &mut alpha_worker);
                 let before_shutdown =
                     snapshot(&application, &mut clock, false, startup_item.state());
                 let state_result = persist_window_state(&mut application, &window_state);
@@ -867,5 +1080,87 @@ pub(super) fn persist_window_state(
     match application.persist_settings_window_placement(placement) {
         Err(ApplicationError::WindowState(WindowStateError::UnsupportedSchema(_))) => Ok(()),
         result => result,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn alpha_system_status() -> SettingsAlphaSystemStatus {
+    use bongocat_platform::AlphaInstallationStatus as Source;
+    let source = bongocat_platform::inspect_alpha_system(BUILD_ENVIRONMENT);
+    SettingsAlphaSystemStatus {
+        driver_installed: source.driver_installed,
+        module_loaded: Some(source.module_loaded),
+        management_available: source.management_available,
+        management_unavailable: source.management_unavailable.map(|reason| {
+            use bongocat_platform::AlphaManagementUnavailable as SourceReason;
+            use bongocat_ui_protocol::SettingsAlphaManagementUnavailable as Target;
+            match reason {
+                SourceReason::Authorization => Target::Authorization,
+                SourceReason::LoopbackControl => Target::LoopbackControl,
+                SourceReason::Udev => Target::Udev,
+                SourceReason::ModuleTools => Target::ModuleTools,
+            }
+        }),
+        camera: match source.camera {
+            Source::NotInstalled => SettingsAlphaInstallationStatus::NotInstalled,
+            Source::Installed => SettingsAlphaInstallationStatus::Installed,
+            Source::RecoveryRequired => SettingsAlphaInstallationStatus::RecoveryRequired,
+            Source::Conflict => SettingsAlphaInstallationStatus::Conflict,
+            Source::Unknown => SettingsAlphaInstallationStatus::Unknown,
+        },
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn alpha_system_status() -> SettingsAlphaSystemStatus {
+    SettingsAlphaSystemStatus {
+        driver_installed: None,
+        module_loaded: None,
+        management_available: false,
+        management_unavailable: None,
+        camera: SettingsAlphaInstallationStatus::Unsupported,
+    }
+}
+
+fn finish_alpha_management(cancel: &AtomicBool, worker: &mut Option<thread::JoinHandle<()>>) {
+    cancel.store(true, Ordering::Release);
+    if let Some(worker) = worker.take() {
+        let _ = worker.join();
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_alpha_stop(
+    stop: Option<&crate::AlphaOutputStop>,
+    cancel: &AtomicBool,
+) -> Result<(), SettingsAlphaManagementError> {
+    let Some(stop) = stop else { return Ok(()) };
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !stop.is_complete() {
+        if cancel.load(Ordering::Acquire) || Instant::now() >= deadline {
+            return Err(SettingsAlphaManagementError::OutputStopFailed);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    if cancel.load(Ordering::Acquire) {
+        return Err(SettingsAlphaManagementError::OutputStopFailed);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn map_alpha_admin_error(
+    error: bongocat_platform::AlphaAdminError,
+) -> SettingsAlphaManagementError {
+    use bongocat_platform::AlphaAdminError as Source;
+    match error {
+        Source::AuthorizationDenied => SettingsAlphaManagementError::AuthorizationDenied,
+        Source::DriverMissing => SettingsAlphaManagementError::DriverMissing,
+        Source::UnsupportedSystem => SettingsAlphaManagementError::UnsupportedSystem,
+        Source::Busy => SettingsAlphaManagementError::Busy,
+        Source::OwnershipConflict => SettingsAlphaManagementError::OwnershipConflict,
+        Source::PermissionDenied => SettingsAlphaManagementError::PermissionDenied,
+        Source::RollbackFailed => SettingsAlphaManagementError::RollbackFailed,
+        Source::OperationFailed => SettingsAlphaManagementError::OperationFailed,
     }
 }

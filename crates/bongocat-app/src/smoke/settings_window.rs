@@ -72,6 +72,14 @@ pub(crate) fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
+    // The window is opened attached to a running plugin service, exactly as the
+    // product opens it: a window that started its own would be a different shape
+    // from the one this smoke is meant to exercise. The service is kept alive for
+    // the run and the process exits with it.
+    let (plugin_service, plugin_handles) =
+        bongocat_plugin_service::PluginService::start(&layout.root, 4)?;
+    let plugin_client = plugin_service.client();
+    drop(plugin_handles);
     let gpui_application = gpui_application().with_assets(AllAssets);
     gpui_application.run(move |cx| {
         let window =
@@ -85,6 +93,7 @@ pub(crate) fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error
                     appearance_theme: SettingsTheme::Dark,
                 },
                 SettingsNavigationMemory::new(),
+                Some(plugin_client.clone()),
                 |cx| cx.quit(),
                 |_: &mut App| {},
                 cx,

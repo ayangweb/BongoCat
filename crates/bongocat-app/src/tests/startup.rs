@@ -40,6 +40,8 @@ fn application_loads_config_updates_runtime_and_stops() {
     );
 
     let overlay_settings = OverlaySettings {
+        window_mode: true,
+        window_background_color: [12, 34, 56],
         click_through: true,
         hold_modifier_to_interact: Some(ModifierKey::RightControl),
         always_on_top: false,
@@ -265,6 +267,8 @@ fn application_projects_model_interaction_settings_at_startup() {
             ignore_keyboard: true,
             ignore_gamepad: true,
             show_all_pressed_keys: true,
+            toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: true,
         }
     );

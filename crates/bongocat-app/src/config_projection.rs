@@ -70,6 +70,8 @@ pub(crate) const fn settings_logging_from_config(
 
 pub(crate) fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
     OverlaySettings {
+        window_mode: config.overlay.window_mode,
+        window_background_color: config.overlay.window_background_color,
         click_through: config.overlay.click_through,
         hold_modifier_to_interact: config.overlay.hold_modifier_to_interact,
         always_on_top: config.overlay.always_on_top,
@@ -98,6 +100,8 @@ pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSe
         ignore_keyboard: config.model.ignore_keyboard,
         ignore_gamepad: config.model.ignore_gamepad,
         show_all_pressed_keys: config.model.show_all_pressed_keys,
+        toggle_repeated_expression: config.model.toggle_repeated_expression,
+        allow_motion_overlap: config.model.allow_motion_overlap,
         ignore_pointer: config.model.ignore_pointer,
     }
 }

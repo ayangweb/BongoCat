@@ -22,10 +22,12 @@ workspace 的前置条件，会阻止已经具备自动化契约的业务模块�
 - 允许建立正式 Rust workspace，并逐步实现 runtime、配置、模型、UI、平台和
   renderer；每项仍必须满足自己的自动化测试和代码边界。
 - Phase 0 未完成项继续保持未勾选。缺失的 Cubism 行为、物理设备、辅助功能、
-  GPU、签名和目标系统证据不能由编译或合成测试替代。
+  GPU、更新签名和目标系统证据不能由编译或合成测试替代。
 - Cubism 发布授权、最终 SDK/二进制清单、Windows ARM64 desktop Core、实机矩阵、
-  签名、notarization、更新回滚和 soak 结果全部是 stable 发布门禁，不再阻止
+  更新签名、更新回滚和 soak 结果全部是 stable 发布门禁，不再阻止
   不公开分发的本地开发。
+- 本项目没有 macOS Developer ID 或 Windows 代码签名证书。操作系统代码签名与公证不属于
+  stable 发布门禁；macOS 发布物使用 ad-hoc 签名，Windows 发布未签名安装器。
 - 维护者批准把功能开发所需的最小 Core、header、生成 bindings 和预置模型固定到
   `vendor/` 与 `resources/`，使本地开发和目标 ABI 检查可复现。完整
   SDK ZIP 与 Framework 源码不进入仓库；公开安装包仍在发布阶段核对 attribution、

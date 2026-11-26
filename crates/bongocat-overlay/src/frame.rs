@@ -22,8 +22,19 @@ pub(crate) struct FramePixelStatistics {
 /// Backends sample a fixed grid from a completed BGRA/RGBA drawable and pass
 /// the bytes here. Alpha is channel four in both layouts, while the first
 /// three channels are treated only as an unordered color tuple. The checks
-/// establish that a transparent overlay retained background and anti-aliased
-/// model coverage; they do not claim cross-backend pixels are identical.
+/// establish that the drawable holds a picture rather than one flat surface —
+/// untouched (transparent) background, drawn model pixels, and more than one
+/// visible color; they do not claim cross-backend pixels are identical.
+///
+/// A sample count of semi-transparent pixels is deliberately *not* required.
+/// Anti-aliasing is a property of the artwork and of where the fixed grid
+/// happens to land on it, not of a correct frame: a model whose art has hard
+/// alpha edges and is drawn small in a large canvas can composite to fully
+/// transparent or fully opaque coverage at every sampled point. Requiring a
+/// translucent sample therefore fails a model every renderer can draw — and
+/// because this check gates a model commit, the user saw it as "the selected
+/// model could not be activated". A blank or single-color surface is still
+/// rejected by the three checks below.
 pub(crate) fn validate_frame_smoke(
     pixels: impl IntoIterator<Item = [u8; 4]>,
 ) -> Result<FramePixelStatistics, &'static str> {
@@ -53,9 +64,6 @@ pub(crate) fn validate_frame_smoke(
     }
     if statistics.opaque_pixels + statistics.translucent_pixels == 0 {
         return Err("renderer readback found no model pixels");
-    }
-    if statistics.translucent_pixels == 0 {
-        return Err("renderer readback found no translucent alpha coverage");
     }
     if statistics.distinct_visible_colors < 2 {
         return Err("renderer readback found insufficient visible color variation");

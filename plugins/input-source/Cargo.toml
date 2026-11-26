@@ -1,0 +1,31 @@
+[package]
+name = "bongocat-input-source"
+version = "1.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+bongocat-plugin-sdk.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc.workspace = true
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-core-foundation.workspace = true
+objc2-core-graphics.workspace = true
+objc2-foundation.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"

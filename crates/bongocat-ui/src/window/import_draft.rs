@@ -42,9 +42,11 @@ pub(crate) struct ModelImportDraft {
     /// for this source is still open — the draft keeps no selection once the run
     /// starts, because the request has already carried it.
     pub(crate) mver_mode_dialog: Option<MverModeDialog>,
-    /// The models that existed when the run started, so the cards the run
-    /// installed can be told apart from the ones that were already there and
-    /// held back until their cover capture finishes.
+    /// The optional nested-folder model choices, before any import starts.
+    pub(crate) model_selection_dialog: Option<super::model_selection::ModelSelectionDialog>,
+    /// Selected sources still waiting for the current import and cover capture.
+    pub(crate) queued_sources: std::collections::VecDeque<SettingsModelSourceCandidate>,
+    /// Models present before this run, to gate only newly installed covers.
     pub(crate) baseline_models: BTreeSet<ModelRowKey>,
 }
 
@@ -56,6 +58,8 @@ impl Default for ModelImportDraft {
             state: ModelImportState::Idle,
             mver_mode_dialog: None,
             baseline_models: BTreeSet::new(),
+            model_selection_dialog: None,
+            queued_sources: std::collections::VecDeque::new(),
         }
     }
 }
@@ -116,6 +120,7 @@ impl ModelImportDraft {
             || self.is_validating_drop()
             || self.is_inspecting()
             || self.has_open_mver_mode_dialog()
+            || self.model_selection_dialog.is_some()
     }
 
     /// Whether a dropped source is being checked before inspection begins.
@@ -153,7 +158,14 @@ impl ModelImportDraft {
 
     /// Return to the upload prompt, keeping nothing about the run that ended.
     pub(crate) fn reset(&mut self) {
+        self.queued_sources.clear();
+        self.finish_current();
+    }
+
+    /// Finish one import while retaining independently selected sources.
+    pub(crate) fn finish_current(&mut self) {
         self.state = ModelImportState::Idle;
+        self.model_selection_dialog = None;
         self.source_root = None;
         self.mver_mode_dialog = None;
         self.baseline_models.clear();

@@ -22,6 +22,8 @@ pub(crate) enum PendingOperation {
     CheckForUpdatesIntervalHours,
     LoggingSettings,
     NetworkSettings,
+    #[cfg(target_os = "linux")]
+    AlphaOutput,
     OverlayVisibility,
     OverlaySettings,
     OverlayScale,
@@ -40,10 +42,13 @@ pub(crate) enum PendingOperation {
     CursorSettings,
     GamepadAutoSwitch,
     RememberLastExpression,
+    ToggleRepeatedExpression,
+    AllowMotionOverlap,
     StartupItem,
     ModelSelection,
     ModelDeletion,
     ModelMetadata,
+    ModelBehaviorName,
     ModelLocation,
     OpenLogsLocation,
     SetShortcuts,
@@ -93,6 +98,11 @@ pub(crate) enum SettingValue {
     NetworkSettings {
         expected_config_revision: u64,
         settings: SettingsNetwork,
+    },
+    #[cfg(target_os = "linux")]
+    AlphaOutputEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
     },
     OverlayVisible {
         expected_config_revision: u64,
@@ -170,6 +180,20 @@ pub(crate) enum SettingValue {
     RememberLastExpression {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    ToggleRepeatedExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    AllowMotionOverlap {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    ModelBehaviorName {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
     },
     StartupItemEnabled(bool),
     Shortcuts {

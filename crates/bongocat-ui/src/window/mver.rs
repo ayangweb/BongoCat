@@ -28,19 +28,11 @@ impl SettingsView {
             let result = client.inspect_model_source(source_root).await;
             let _ = this.update(cx, |view, cx| {
                 match result {
-                    Ok(SettingsModelSourceContent::Package) => {
-                        view.model_import.mver_mode_dialog = None;
-                        view.model_import.state = ModelImportState::Idle;
-                        view.start_model_import(cx);
-                    }
-                    Ok(SettingsModelSourceContent::Mver { modes }) => {
-                        view.model_import.mver_mode_dialog =
-                            Some(MverModeDialog::from_available(modes));
-                        view.model_import.state = ModelImportState::Idle;
-                    }
+                    Ok(content) => view.apply_model_source_content(content, cx),
                     Err(error) => {
-                        view.model_import.reset();
+                        view.model_import.finish_current();
                         view.pending_notification = Some(error);
+                        view.advance_model_import_queue(cx);
                     }
                 }
                 cx.notify();
@@ -72,7 +64,7 @@ impl SettingsView {
             // the overlay, Escape, or the window's own close. Dropping the
             // draft is the same reset cancel performs, so the card returns to
             // its prompt with nothing half-chosen.
-            Some((true, false)) => self.model_import.mver_mode_dialog = None,
+            Some((true, false)) => self.model_import.reset(),
             Some((false, _)) => self.open_mver_mode_dialog(window, cx),
             _ => {}
         }

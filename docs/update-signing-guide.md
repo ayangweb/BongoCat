@@ -144,8 +144,10 @@ RFC 8032 因此定义了 **`Ed25519ph`**：先对消息做一次哈希，再对�
 
 > **验证用的公钥必须内嵌在客户端二进制里（编译期常量），绝不能从网络获取。**
 
-如果你从网络拿公钥，攻击者只需把公钥一起换掉，签名验证就变成自证清白。本仓库的公钥就是编译期
-常量：`crates/bongocat-update/src/runtime.rs` 的 `RELEASE_SIGNING_KEY`。
+如果你从网络拿公钥，攻击者只需把公钥一起换掉，签名验证就变成自证清白。本仓库的应用公钥文件是
+`release-trust/app.pub`，通过 `include_str!` 编译进
+`crates/bongocat-update/src/runtime/mod.rs` 的 `RELEASE_SIGNING_KEY`；插件公钥同理来自
+`release-trust/plugin.pub`。文件是版本化的构建输入，不是运行时配置。
 
 推论：**换钥匙必须先发一个"同时认识新旧两把钥匙"的版本**。否则老版本用户会验不过新签名，更新链
 从此断掉。这是 §3.3 密钥轮换的约束来源。
@@ -187,8 +189,9 @@ minisign 改名后技术上仍可验证通过（代价是丢掉了文件名绑�
 | 防的是 | 更新内容不是你发的 | 二进制来源可信、没被篡改、能过 SmartScreen/Gatekeeper |
 | 谁验证 | 你自己的应用 | 操作系统 |
 
-本仓库两者都还是缺口：打包只做 ad-hoc 签名（`crates/bongocat-packaging/src/main.rs:97` 的
-`ADHOC_SIGNING_IDENTITY = "-"`），`release.yml` 里 Windows Authenticode 目前只打 warning。
+本仓库只把更新签名作为发布门禁。本项目没有 macOS Developer ID 或 Windows 代码签名证书；
+macOS 使用 ad-hoc 签名，Windows 发布未签名安装器，Developer ID 公证与 Authenticode
+均不属于发布门禁。
 
 ---
 
@@ -323,7 +326,7 @@ shell history。生成完成后把私钥文件内容放进 `SIGNING_PRIVATE_KEY`
 - `<file>`：私钥，**base64 单行文本**，348 字节，权限 `0600`（工具显式收紧；`save_keypair`
   自身按 umask 落盘，默认账号下会是 644）
 - `<file>.pub`：公钥，**base64 单行文本**，152 字节，`0644`
-- 工具同时把公钥那一行打印出来，可直接粘进 `RELEASE_SIGNING_KEY`
+- 工具同时把公钥那一行打印出来，可直接写入 `release-trust/app.pub`
 
 因为是纯文本，可以直接整段塞进 CI secret，不需要额外编码步骤。
 
@@ -350,10 +353,10 @@ shell history。生成完成后把私钥文件内容放进 `SIGNING_PRIVATE_KEY`
 3. **本地开发一律不签名。** 签名只在发布流水线里发生；本地 `just build` 不设私钥时应当
    **跳过签名**（而不是用一个空密钥签名成功——那是最坏的情况，见 §4.4）。
 
-具体形式（已落地在 `.github/workflows/release.yml`）：
+具体形式（已落地在 `.github/workflows/app-release.yml`）：
 
 ```yaml
-# .github/workflows/release.yml 里新增
+# .github/workflows/app-release.yml 里新增
 - name: Sign the update artifacts
   env:
     SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
@@ -377,7 +380,10 @@ shell history。生成完成后把私钥文件内容放进 `SIGNING_PRIVATE_KEY`
 
 ### 3.4 本仓库的落点
 
-公钥的位置是 `crates/bongocat-update/src/runtime.rs` 的 `RELEASE_SIGNING_KEY`。
+应用公钥的位置是 `release-trust/app.pub`，由
+`crates/bongocat-update/src/runtime/mod.rs` 的 `RELEASE_SIGNING_KEY` 在编译期嵌入。插件公钥位于
+`release-trust/plugin.pub`，由 `PLUGIN_RELEASE_SIGNING_KEY` 嵌入。两个文件都是源码事实
+来源，不能在运行时从用户可写的配置目录读取。
 
 **已落地的形态**（ADR-0034）：base64 的 minisign 公钥盒文本，也就是
 `cargo packager signer generate-key` 写出的 `.pub` 文件内容。仓库现已内嵌发布公钥，
@@ -385,12 +391,13 @@ key ID 为 `DF5E2C9D255DD85E`，因此 Production runtime 的
 `UpdateRuntime::is_available()` 为真，系统菜单可以显示更新入口：
 
 ```rust
-pub const RELEASE_SIGNING_KEY: Option<&str> = Some("<minisign public key>");
+pub const RELEASE_SIGNING_KEY: Option<&str> =
+    Some(include_str!("../../../../release-trust/app.pub"));
 ```
 
 **公钥不是秘密**，可以正常提交到仓库；只有私钥和私钥口令必须留在仓库之外。运行时会拒绝
 `None`、空串和纯空白值，并在构造更新库实例之前返回 `update_signature_key_missing`；
-`runtime.rs` 的定向测试同时锁定已配置公钥和空白值失败关闭两条路径。真实 GitHub 发布链路尚未
+`runtime/mod.rs` 的定向测试同时锁定已配置公钥和空白值失败关闭两条路径。真实 GitHub 发布链路尚未
 验证，不能据此宣称发布签名已经端到端可用（见 ADR-0034 待验证项 1）。
 
 ---
@@ -460,7 +467,7 @@ if keys.is_empty() {
 的封装都会踩这个坑。
 
 本仓库已经做了正确补偿：`RELEASE_SIGNING_KEY` 缺失、为空或纯空白时，runtime 在**发出任何网络
-请求之前**就返回 `update_signature_key_missing`（门禁位于 `runtime.rs` 的 `updater()`，并由
+请求之前**就返回 `update_signature_key_missing`（门禁位于 `runtime/mod.rs` 的 `updater()`，并由
 定向测试锁定）。仓库当前内嵌发布公钥，因此这条拒绝路径只会在未配置的构建或测试输入上命中。
 
 换实现时必须保留这条性质。设计原则一句话：**"验签不可能成功"必须等于"拒绝更新"，而不是
@@ -495,7 +502,7 @@ if keys.is_empty() {
 
 ```
 编译 → 打包（.app / .dmg / .exe）
-     → macOS: codesign + notarize（.app 必须先真正签名并公证）
+     → macOS: ad-hoc codesign
      → 生成更新归档（macOS: .app.tar.gz；Windows: 复用 .exe）
      → 用正式名字命名
      → 签名（产出 .sig）
@@ -509,8 +516,7 @@ if keys.is_empty() {
 
 1. **签名必须是最后一步。** 签名之后任何字节改动（重新压缩、改名、`strip`）都会让签名失效。
    对 zipsign 而言改名**一定**失效（文件名是签名 context）。
-2. **归档内的 `.app` 必须先完成 codesign + notarize。** 一旦打成 tar.gz，再想签名里面的 `.app`
-   就晚了——解压、签名、重新打包会直接让归档签名失效。实际上"先打包再公证"在流程上根本走不通。
+2. **归档内的 `.app` 必须先完成 ad-hoc codesign。** 归档生成后不得再修改 bundle，否则更新载荷签名失效。
 3. **命名和签名严格分先后。** 先改好名字，再签名。
 
 > 现状（2026-09-14）：合并发生在签名**之后**，但只作用于 manifest——它把各 target 已经签好的
@@ -591,9 +597,9 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
    zipsign gen-key release.key release.pub && chmod 600 release.key
    base64 -i release.key | pbcopy        # 存进 GitHub Secret
    ```
-2. **把公钥编译进去**：`release.pub` 是 32 字节裸数据 → 填进
-   `runtime.rs` 的 `RELEASE_SIGNING_KEY`。
-3. **改 CI 的 macOS 归档步骤**（`.github/workflows/release.yml` 的
+2. **把公钥编译进去**：`release.pub` 是 32 字节裸数据 → 写入
+   `release-trust/app.pub`，再由 `RELEASE_SIGNING_KEY` 在编译期嵌入。
+3. **改 CI 的 macOS 归档步骤**（`.github/workflows/app-release.yml` 的
    `Package the bundle for publication`）：现在用 `ditto -c -k` 产的是 `.zip`，改成产
    `BongoCat-$version-${{ matrix.arch }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
 4. **加签名步骤**：在 upload 之前，解码私钥、`zipsign sign tar <归档> release.key`。
@@ -618,12 +624,12 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
 
 4. 新增依赖 `minisign-verify = "=0.2.5"`（MIT，**零依赖**，本机源码确认支持 prehashed 模式
    与 key ID 校验）。按 §9 的依赖纪律，先用 `cargo info minisign-verify` 核对最新稳定版。
-5. 把 `RELEASE_SIGNING_KEY` 换成 minisign 公钥，并把
+5. 把 `release-trust/app.pub` 换成 minisign 公钥，并把
    `builder.verifying_keys([key])` 换成 `builder.verify_archive(|path| ...)`：
    在闭包里读 `<path>.sig`、调 `PublicKey::verify`，失败时返回
    `self_update::Error::archive_verification_rejected(...)`。
 6. **保留 fail-closed 门禁**：公钥未配置时，在发请求前就返回 `update_signature_key_missing`
-   （等价于现在的 `runtime.rs:202`）。
+   （等价于现在的 `runtime/mod.rs` 中 `updater()` 的门禁）。
 7. **新增 ADR**，取代 ADR-0029 的签名部分，并显式记录丢失的能力（§4.5 的降级防护）。
 
 **需要正视的两个未解决问题**
@@ -663,20 +669,20 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
 - [x] 私钥不进仓库、不进构建产物、不进日志；只从 CI secret 注入（`.env` 不生效）
       （`SIGNING_PRIVATE_KEY` 环境变量注入，代码里没有任何密钥字面量）
 - [x] 生成后 `chmod 600` 私钥文件（`just keygen` 已显式收紧到 `0600`；实测确认）
-- [x] 公钥**编译期**内嵌，绝不从网络取（`RELEASE_SIGNING_KEY` 常量）
+- [x] 公钥**编译期**内嵌，绝不从网络或运行时可写路径取（`release-trust/*.pub` 由 `include_str!` 嵌入）
 - [x] 公钥**未配置时在发请求前就失败**（`updater()` 的门禁，有定向测试锁定）
 - [x] 本地构建默认跳过签名，发布构建**断言**签过名
       （release workflow 的 "Require the update signing key" 与 "Verify the signed update assets"）
 - [x] 签名是所有步骤的**最后一步**；签名后不改名、不重新压缩、不 strip
       （`publish_update_assets` 在产物确定后才签名，manifest 的 URL 在签名之后写入）
-- [ ] macOS 的 `.app` 必须在**打 tar.gz 之前**完成 codesign + notarize（公证仍是独立门禁）
+- [x] macOS 的 `.app` 在**打 tar.gz 之前**完成 ad-hoc codesign；不要求 Developer ID 签名或公证
 - [x] 更新载荷名不必再含**完整 target triple**：载荷位置由共享 manifest 的 `platforms` 条目
       给出，不再按资产名匹配（这正是 `asset_for` 退役后的变化）
 - [x] macOS 归档根必须是 `BongoCat.app/`（`write_bundle_archive` 回归 + release workflow 断言）
 - [x] `.dmg` 不作为更新产物（`update_payload` 只取 bundle 或 `.exe`）
 - [x] Windows 的 `resources/` 随安装器一起更新（结构推论，**未在 Windows 实机验证**）
 - [x] `.sig` 只在方案 B 存在；方案 B 已采纳，两平台各一个 `.sig`
-- [ ] 更新签名 ≠ Authenticode / 公证，两件事都要做（Authenticode 仍只打 warning）
+- [x] 更新签名是发布门禁；Developer ID 公证与 Authenticode 明确不要求
 - [ ] 一把钥匙泄露 = 换钥匙 = 必须先发"双钥匙版本"；务必备份私钥
       （**单公钥模型下这条约束更硬**，见 ADR-0034 待验证项 4）
 - [ ] ADR-0029 已丢失的降级防护（`release_sequence`）值得在换实现时补回（**本次未补**）

@@ -8,6 +8,7 @@
 //! on every display scaling.
 
 use super::*;
+use crate::resize_drag::{MAXIMUM_RESIZE_DRAG_SCALE_PERCENT, MINIMUM_RESIZE_DRAG_SCALE_PERCENT};
 
 pub(crate) fn current_cursor_position() -> POINT {
     let mut point = POINT { x: 80, y: 80 };
@@ -107,25 +108,95 @@ pub(crate) fn overlay_bounds_visible(bounds: OverlayWindowBounds) -> bool {
     !unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) }.is_invalid()
 }
 
-pub(crate) fn logical_to_physical(logical: u32, dpi: u32) -> WindowsResult<u32> {
-    let physical = (u64::from(logical) * u64::from(dpi) + 48) / 96;
-    if physical == 0 || physical > i32::MAX as u64 {
-        return Err(invariant_error("overlay dimension exceeds Win32 limits"));
-    }
-    Ok(physical as u32)
+/// One client-size policy for every Windows sizing entry point. Keep the canvas
+/// ratio unrounded; physical pixels are rounded only after choosing the width.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WindowSizing {
+    canvas_width: f64,
+    canvas_height: f64,
 }
 
-/// The physical window size that `100%` maps to for one model canvas.
-///
-/// The drag state machine works in physical pixels because that is the unit
-/// `SetWindowPos` takes, while the `100%` size is defined in logical pixels by
-/// the DPI-independent overlay contract.
-pub(crate) fn resize_base_for_dpi(
-    base_width: u32,
-    base_height: u32,
-    dpi: u32,
-) -> Option<ResizeBase> {
-    let width = logical_to_physical(base_width, dpi).ok()?;
-    let height = logical_to_physical(base_height, dpi).ok()?;
-    ResizeBase::new(f64::from(width), f64::from(height))
+impl WindowSizing {
+    pub(crate) fn new(canvas: CanvasInfo) -> Option<Self> {
+        (canvas.width.is_finite()
+            && canvas.width > 0.0
+            && canvas.height.is_finite()
+            && canvas.height > 0.0)
+            .then_some(Self {
+                canvas_width: f64::from(canvas.width),
+                canvas_height: f64::from(canvas.height),
+            })
+    }
+
+    pub(crate) fn resize_base(self, dpi: u32) -> Option<ResizeBase> {
+        let width = f64::from(crate::DEFAULT_OVERLAY_WINDOW_WIDTH) * f64::from(dpi) / 96.0;
+        ResizeBase::new(width, width * self.canvas_height / self.canvas_width)
+    }
+
+    pub(crate) fn dimensions_for_scale(self, dpi: u32, scale_percent: u16) -> (u32, u32) {
+        let width = f64::from(crate::DEFAULT_OVERLAY_WINDOW_WIDTH)
+            * f64::from(dpi)
+            * f64::from(scale_percent)
+            / 9600.0;
+        self.dimensions_for_width(width)
+    }
+
+    pub(crate) fn scale_percent_for_width(self, dpi: u32, width: u32) -> Option<u16> {
+        let base = self.resize_base(dpi)?;
+        // Several low percentages can share the legal minimum size. Keep the
+        // native gesture at the same 25% endpoint as the numeric control.
+        Some(
+            if width
+                <= self
+                    .dimensions_for_scale(dpi, MINIMUM_RESIZE_DRAG_SCALE_PERCENT)
+                    .0
+            {
+                MINIMUM_RESIZE_DRAG_SCALE_PERCENT
+            } else if width
+                >= self
+                    .dimensions_for_scale(dpi, MAXIMUM_RESIZE_DRAG_SCALE_PERCENT)
+                    .0
+            {
+                MAXIMUM_RESIZE_DRAG_SCALE_PERCENT
+            } else {
+                base.scale_percent_for_width(width)
+            },
+        )
+    }
+
+    pub(crate) fn width_for_height(self, height: u32) -> f64 {
+        f64::from(height) * self.canvas_width / self.canvas_height
+    }
+
+    pub(crate) fn dimensions_for_width(self, width: f64) -> (u32, u32) {
+        let minimum = f64::from(crate::MIN_OVERLAY_WINDOW_DIMENSION);
+        let maximum = f64::from(crate::MAX_OVERLAY_WINDOW_DIMENSION);
+        let minimum_width = minimum
+            .max(minimum * self.canvas_width / self.canvas_height)
+            .ceil();
+        let maximum_width = maximum
+            .min(maximum * self.canvas_width / self.canvas_height)
+            .floor();
+        // Clamp the uniform size, not each axis independently. For canvases
+        // whose extreme ratio cannot fit legal bounds, keep the existing limits.
+        let width = if minimum_width <= maximum_width {
+            width.clamp(minimum_width, maximum_width)
+        } else {
+            width
+        };
+        let width = crate::cover_window_dimension(width);
+        let height = crate::cover_window_dimension(
+            f64::from(width) * self.canvas_height / self.canvas_width,
+        );
+        (width, height)
+    }
+
+    pub(crate) fn normalize(self, bounds: OverlayWindowBounds) -> OverlayWindowBounds {
+        let (width, height) = self.dimensions_for_width(f64::from(bounds.width));
+        OverlayWindowBounds {
+            width,
+            height,
+            ..bounds
+        }
+    }
 }

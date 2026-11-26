@@ -1,6 +1,6 @@
 # Input Semantics
 
-状态：Phase 0 draft
+状态：已接受
 版本：1
 
 ## 时间
