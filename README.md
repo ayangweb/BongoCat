@@ -50,7 +50,7 @@ BongoCat is a desktop companion for Windows and macOS. A Live2D cat lives on you
 and paws follow your mouse, and it reacts to every key, mouse button and gamepad button you press.
 Bring your own models, move the window wherever you like, and it stays out of your way until you
 want it again.
-
+Testing my fork and branch.
 Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 [MMmmmoko](https://github.com/MMmmmoko).
 
